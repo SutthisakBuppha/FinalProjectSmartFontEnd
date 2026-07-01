@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-// --- 1. Import MainLayout เหมือนเดิม ---
 import 'main_layout.dart';
 import 'device_setting.dart';
+import '/services/api_service.dart';
 
 class DeviceManagementScreen extends StatefulWidget {
   const DeviceManagementScreen({super.key});
@@ -13,45 +12,37 @@ class DeviceManagementScreen extends StatefulWidget {
 }
 
 class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
-  // --- Theme Colors ---
   static const Color primaryColor = Color(0xFF0F2646);
-  static const Color secondaryColor = Color(
-    0xFFE63946,
-  ); // สีแดงเดิม (ไม่ได้ใช้กับสถานะแล้ว)
   static const Color backgroundColor = Color(0xFFF3F4F6);
   static const Color cardColor = Colors.white;
   static const Color textMain = Color(0xFF1F2937);
   static const Color textSub = Color(0xFF6B7280);
-  static const Color successGreen = Color(
-    0xFF4ADE80,
-  ); // สีเขียวสำหรับสถานะทำงาน
-  static const Color offlineGrey = Color(
-    0xFF9CA3AF,
-  ); // สีเทาสำหรับสถานะไม่ทำงาน
+  static const Color successGreen = Color(0xFF4ADE80);
+  static const Color offlineGrey = Color(0xFF9CA3AF);
 
-  // --- Mock Data ---
-  List<Map<String, dynamic>> devices = [
-    {
-      "id": "CAM-001",
-      "name": "กล้องหน้า (DMS)",
-      "type": "Camera",
-      "icon": Icons.videocam_rounded,
-      "isOnline": true, // สถานะทำงาน (จุดเขียว)
-      "isEnabled": true,
-      "battery": null,
-      "lastActive": "กำลังทำงาน",
-    },
-    {
-      "id": "CAM-001",
-      "name": "กล้องหน้า (DMS)",
-      "type": "Camera",
-      "icon": Icons.videocam_rounded,
-      "isOnline": false, // สถานะไม่ทำงาน (จุดเทา)
-      "isEnabled": false,
-      "battery": "0%",
-      "lastActive": "10 นาทีที่แล้ว",
-    },
-  ];
+  List<Map<String, dynamic>> _deviceList = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDevices();
+  }
+
+  Future<void> _loadDevices() async {
+    try {
+      final list = await ApiService.instance.devices();
+      setState(() {
+        _deviceList = list;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ดึงรายการอุปกรณ์ผิดพลาด: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,264 +50,114 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       backgroundColor: backgroundColor,
       body: Column(
         children: [
-          // 1. Header
-          _buildHeader(context),
-
-          // 2. Device List
+          _buildTopBanner(),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(20),
-              physics: const BouncingScrollPhysics(),
-              itemCount: devices.length,
-              itemBuilder: (context, index) {
-                final device = devices[index];
-                return _buildDeviceCard(device, index);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- ส่วนที่แก้ไขหลัก: เปลี่ยน Switch เป็นจุดแสดงสถานะ ---
-  Widget _buildDeviceCard(Map<String, dynamic> device, int index) {
-    bool isOnline = device['isOnline'];
-
-    // กำหนดสีและข้อความตามสถานะ
-    Color statusColor = isOnline ? successGreen : offlineGrey;
-    String statusText = isOnline ? "ทำงานปกติ" : "ออฟไลน์";
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      // --- เพิ่ม Material และ InkWell ตรงนี้ ---
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            // เมื่อกดให้ Navigate ไปยังหน้า Device Setting
-            // และส่งข้อมูล device ไปด้วย
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DeviceCustomizationScreen(deviceData: device),
-              ),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    // Icon Box
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: isOnline
-                            ? primaryColor.withOpacity(0.1)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        device['icon'],
-                        color: isOnline ? primaryColor : Colors.grey,
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-
-                    // Device Name & ID
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            device['name'],
-                            style: GoogleFonts.prompt(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: textMain,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "ID: ${device['id']}",
-                            style: GoogleFonts.prompt(
-                              fontSize: 12,
-                              color: textSub,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Status Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: statusColor.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          // จุดสี (Dot)
-                          Container(
-                            width: 8,
-                            height: 8,
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: primaryColor))
+                : _deviceList.isEmpty
+                    ? Center(child: Text("ไม่พบอุปกรณ์ที่เชื่อมต่อ", style: GoogleFonts.prompt(color: textSub)))
+                    : ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        itemCount: _deviceList.length,
+                        itemBuilder: (context, index) {
+                          final dev = _deviceList[index];
+                          final isOnline = dev['status'] == 'ออนไลน์' || dev['status'] == 'online';
+                          
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 14),
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: statusColor,
-                              boxShadow: isOnline
-                                  ? [
-                                      BoxShadow(
-                                        color: successGreen.withOpacity(0.4),
-                                        blurRadius: 4,
-                                        spreadRadius: 1,
-                                      ),
-                                    ]
-                                  : [],
+                              color: cardColor,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10)],
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          // ข้อความสถานะ
-                          Text(
-                            statusText,
-                            style: GoogleFonts.prompt(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: statusColor,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              leading: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: backgroundColor, shape: BoxShape.circle),
+                                child: Icon(Icons.videocam_rounded, color: primaryColor, size: 28),
+                              ),
+                              title: Text(
+                                dev['device_name'] ?? 'กล้องตรวจจับ',
+                                style: GoogleFonts.prompt(fontSize: 16, fontWeight: FontWeight.bold, color: textMain),
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text('S/N: ${dev['serial_number'] ?? '-'}', style: GoogleFonts.prompt(color: textSub, fontSize: 13)),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: isOnline ? successGreen : offlineGrey,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: offlineGrey),
+                                ],
+                              ),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => DeviceCustomizationScreen(deviceData: dev),
+                                  ),
+                                ).then((_) => _loadDevices());
+                              },
                             ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-                const Divider(),
-                const SizedBox(height: 8),
-
-                // Bottom Info
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "สถานะการเชื่อมต่อ",
-                      style: GoogleFonts.prompt(fontSize: 12, color: textSub),
-                    ),
-                    Text(
-                      isOnline
-                          ? "กำลังส่งข้อมูล..."
-                          : "ใช้งานล่าสุด: ${device['lastActive']}",
-                      style: GoogleFonts.prompt(
-                        fontSize: 12,
-                        color: textSub,
-                        fontStyle: isOnline
-                            ? FontStyle.italic
-                            : FontStyle.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildTopBanner() {
+    final onlineCount = _deviceList.where((d) => d['status'] == 'ออนไลน์' || d['status'] == 'online').length;
     return Container(
       width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [primaryColor, Color(0xFF1A3B66)],
-        ),
+        color: primaryColor,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const MainLayout(initialIndex: 3),
-                        ),
-                        (route) => false,
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 16),
-
-                  Text(
-                    "รายการอุปกรณ์",
-                    style: GoogleFonts.prompt(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                onPressed: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const MainLayout(initialIndex: 3)),
+                    (route) => false,
+                  );
+                },
               ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.only(left: 36),
-                child: Text(
-                  "เชื่อมต่อ ${devices.where((d) => d['isOnline'] == true).length} อุปกรณ์",
-                  style: GoogleFonts.prompt(
-                    color: Colors.blue.shade100,
-                    fontSize: 14,
-                  ),
-                ),
+              const SizedBox(width: 8),
+              Text(
+                "รายการอุปกรณ์",
+                style: GoogleFonts.prompt(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
               ),
             ],
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.only(left: 48, top: 4),
+            child: Text(
+              "เชื่อมต่อ $onlineCount อุปกรณ์ออนไลน์",
+              style: GoogleFonts.prompt(color: Colors.blue.shade100, fontSize: 14),
+            ),
+          )
+        ],
       ),
     );
   }

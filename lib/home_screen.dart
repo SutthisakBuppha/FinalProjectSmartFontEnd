@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Import ไฟล์ ProfileScreen ของจริง
-import 'profile_screen.dart';
+// Import ApiService
+import '/services/api_service.dart';
+import 'profile_screen.dart'; // ของคุณ
 
 void main() {
   runApp(const MaterialApp(
@@ -18,18 +19,21 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   bool _isMonitoring = false;
+  
+  // State สำหรับจัดการข้อมูล API
+  bool _isLoading = true;
+  String? _errorMessage;
+  Map<String, dynamic>? _dashboardData;
 
-  // --- ปรับชุดสีใหม่ให้เข้มและชัดขึ้น ---
-  static const Color primaryColor = Color(0xFF0F2557); // น้ำเงินเข้ม (Deep Navy)
-  static const Color primaryLight = Color(0xFF24469C); // น้ำเงินสว่างขึ้นเล็กน้อย
-  static const Color backgroundLight = Color(0xFFECF0F3); // พื้นหลังเทาอมฟ้า (เข้มกว่าเดิม)
-  static const Color accentSuccess = Color(0xFF059669); // เขียวเข้ม (Emerald 600)
-  static const Color textDark = Color(0xFF1E293B); // สีข้อความหัวข้อ (Slate 800)
-  static const Color textGrey = Color(0xFF64748B); // สีข้อความรอง (Slate 500)
+  static const Color primaryColor = Color(0xFF0F2557);
+  static const Color primaryLight = Color(0xFF24469C);
+  static const Color backgroundLight = Color(0xFFECF0F3);
+  static const Color accentSuccess = Color(0xFF059669);
+  static const Color textDark = Color(0xFF1E293B);
+  static const Color textGrey = Color(0xFF64748B);
 
   @override
   void initState() {
@@ -38,6 +42,9 @@ class _HomeScreenState extends State<HomeScreen>
       vsync: this,
       duration: const Duration(seconds: 3),
     );
+    
+    // ดึงข้อมูลเมื่อเริ่มเปิดหน้าจอ
+    _fetchDashboardData();
   }
 
   @override
@@ -46,16 +53,76 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  void _toggleMonitoring() {
+  // --- ฟังก์ชันดึงข้อมูลจาก Backend ---
+  Future<void> _fetchDashboardData() async {
     setState(() {
-      _isMonitoring = !_isMonitoring;
-      if (_isMonitoring) {
-        _controller.repeat();
-      } else {
-        _controller.stop();
-        _controller.reset();
-      }
+      _isLoading = true;
+      _errorMessage = null;
     });
+
+    try {
+      final data = await ApiService.instance.dashboard();
+      setState(() {
+        _dashboardData = data;
+        // เช็คว่ามี trip ที่กำลัง active อยู่หรือไม่
+        _isMonitoring = data['current_trip'] != null;
+        if (_isMonitoring) {
+          _controller.repeat();
+        } else {
+          _controller.stop();
+          _controller.reset();
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  // --- ฟังก์ชันจัดการปุ่ม เริ่ม/หยุด ตรวจจับ ---
+  Future<void> _toggleMonitoring() async {
+    // ป้องกันการกดซ้ำขณะโหลด
+    if (_isLoading) return; 
+
+    try {
+      setState(() => _isLoading = true);
+
+      if (_isMonitoring) {
+        // กรณีหยุด: อัปเดต Trip ปัจจุบันให้สถานะเป็น completed
+        final currentTripId = _dashboardData?['current_trip']?['trip_id'];
+        if (currentTripId != null) {
+          await ApiService.instance.updateTrip(
+            currentTripId, 
+            endTime: DateTime.now(), 
+            status: 'completed',
+          );
+        }
+      } else {
+        // กรณีเริ่ม: สร้าง Trip ใหม่ (หากมี Device ID ควรรหัสส่งไปด้วย)
+        await ApiService.instance.createTrip(); 
+      }
+
+      // ดึงข้อมูลใหม่เพื่ออัปเดตหน้าจอ
+      await _fetchDashboardData();
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เกิดข้อผิดพลาด: $e')),
+        );
+      }
+    }
+  }
+
+  // ฟังก์ชันแปลงนาทีเป็นรูปแบบ HH:MM
+  String _formatDuration(int? minutes) {
+    if (minutes == null || minutes == 0) return "00:00";
+    final int hours = minutes ~/ 60;
+    final int mins = minutes % 60;
+    return '${hours.toString().padLeft(2, '0')}:${mins.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -69,33 +136,13 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               _buildHeader(context),
               Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 30, 24, 120), // เพิ่ม Top padding
-                    child: Column(
-                      children: [
-                        _buildPulsingCircle(),
-                        const SizedBox(height: 40),
-                        
-                        // Stats Grid
-                        Opacity(
-                          opacity: _isMonitoring ? 1.0 : 0.6, // ปรับ Opacity ตอนปิดให้เห็นชัดขึ้น (จาก 0.5 เป็น 0.6)
-                          child: Row(
-                            children: [
-                              Expanded(
-                                  child: _buildStatCard(Icons.alt_route_rounded,
-                                      "ระยะทาง", "45", "กม.")),
-                              const SizedBox(width: 16), // เพิ่มระยะห่าง
-                              Expanded(
-                                  child: _buildStatCard(Icons.schedule_rounded,
-                                      "เวลาขับขี่", "01:12", "ชม.")),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        _buildControlButton(),
-                      ],
+                child: RefreshIndicator( // ลากลงเพื่อโหลดข้อมูลใหม่ได้
+                  onRefresh: _fetchDashboardData,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 30, 24, 120),
+                      child: _buildBodyContent(),
                     ),
                   ),
                 ),
@@ -107,7 +154,84 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
- Widget _buildHeader(BuildContext context) {
+  Widget _buildBodyContent() {
+    if (_isLoading && _dashboardData == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 100),
+          child: CircularProgressIndicator(color: primaryColor),
+        ),
+      );
+    }
+
+    if (_errorMessage != null && _dashboardData == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 100),
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(_errorMessage!, style: GoogleFonts.kanit(color: textDark)),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _fetchDashboardData,
+                child: Text('ลองใหม่', style: GoogleFonts.kanit()),
+              )
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ดึงค่าสถิติจาก API
+    final currentTrip = _dashboardData?['current_trip'];
+    final num distance = currentTrip?['distance'] ?? 0;
+    final int durationMin = currentTrip?['duration'] ?? 0;
+
+    return Column(
+      children: [
+        _buildPulsingCircle(),
+        const SizedBox(height: 40),
+        
+        Opacity(
+          opacity: _isMonitoring ? 1.0 : 0.6,
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  Icons.alt_route_rounded,
+                  "ระยะทาง",
+                  distance.toStringAsFixed(1), // ทศนิยม 1 ตำแหน่ง
+                  "กม."
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _buildStatCard(
+                  Icons.schedule_rounded,
+                  "เวลาขับขี่",
+                  _formatDuration(durationMin),
+                  "ชม."
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 40),
+        
+        // แสดง loading ย่อยที่ปุ่มกรณีที่มีการรอ API ตอบกลับ
+        _isLoading 
+            ? const CircularProgressIndicator(color: primaryColor)
+            : _buildControlButton(),
+      ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    // ดึงชื่อคนขับจาก ApiService ที่เก็บไว้ตอน Login
+    final driverName = ApiService.instance.currentDriver?['name'] ?? "Driver";
+
     return Container(
       padding: const EdgeInsets.only(bottom: 40),
       decoration: const BoxDecoration(
@@ -134,23 +258,20 @@ class _HomeScreenState extends State<HomeScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text("9:41",
+                  Text("Smart Drive Guard",
                       style: GoogleFonts.kanit(
                           color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w600)),
                   Row(
                     children: [
-                      const Icon(Icons.signal_cellular_alt_rounded,
-                          color: Colors.white, size: 16),
+                      const Icon(Icons.signal_cellular_alt_rounded, color: Colors.white, size: 16),
                       const SizedBox(width: 6),
-                      const Icon(Icons.wifi_rounded,
-                          color: Colors.white, size: 16),
+                      const Icon(Icons.wifi_rounded, color: Colors.white, size: 16),
                       const SizedBox(width: 6),
                       const RotatedBox(
                           quarterTurns: 1,
-                          child: Icon(Icons.battery_full_rounded,
-                              color: Colors.white, size: 16)),
+                          child: Icon(Icons.battery_full_rounded, color: Colors.white, size: 16)),
                     ],
                   )
                 ],
@@ -170,18 +291,16 @@ class _HomeScreenState extends State<HomeScreen>
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.15),
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.3)),
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
                         ),
-                        child: const Icon(Icons.directions_car_rounded,
-                            color: Colors.white, size: 24),
+                        child: const Icon(Icons.directions_car_rounded, color: Colors.white, size: 24),
                       ),
                       const SizedBox(width: 16),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "Smart Drive Guard",
+                            "สวัสดี, $driverName", // ใช้ชื่อจาก API
                             style: GoogleFonts.kanit(
                               color: Colors.white,
                               fontSize: 22,
@@ -203,10 +322,8 @@ class _HomeScreenState extends State<HomeScreen>
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      // --- แก้ไขตรงนี้: ลบ Navigator.push ออก หรือใส่เป็น null ---
                       onTap: () {
-                         // ใส่ว่างๆ ไว้เพื่อให้กดได้แต่ไม่ไปไหน
-                         // หรือถ้าไม่อยากให้กดได้เลย ให้เปลี่ยน onTap: () { ... } เป็น onTap: null,
+                         // กดเพื่อไปหน้าโปรไฟล์
                       },
                       borderRadius: BorderRadius.circular(50),
                       child: Container(
@@ -215,13 +332,11 @@ class _HomeScreenState extends State<HomeScreen>
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.15),
                           shape: BoxShape.circle,
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.3)),
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
                         ),
-                        child: CircleAvatar(
+                        child: const CircleAvatar(
                           backgroundColor: Colors.transparent,
-                          child: const Icon(Icons.person_rounded,
-                              color: Colors.white, size: 26),
+                          child: Icon(Icons.person_rounded, color: Colors.white, size: 26),
                         ),
                       ),
                     ),
@@ -235,6 +350,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // --- ส่วน UI ที่เหลือเหมือนเดิมเป๊ะ ---
   Widget _buildPulsingCircle() {
     return Column(
       children: [
@@ -249,18 +365,17 @@ class _HomeScreenState extends State<HomeScreen>
                   animation: _controller,
                   builder: (context, child) {
                     return Transform.scale(
-                      scale: 0.95 + (_controller.value * 0.1), // ขยายวงให้กว้างขึ้น
+                      scale: 0.95 + (_controller.value * 0.1),
                       child: Container(
                         width: 260,
                         height: 260,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          // เพิ่มความเข้มของสี Pulse จาก 0.05 เป็น 0.15
                           color: primaryColor.withOpacity(0.15),
                           boxShadow: [
                             if (_controller.value < 0.7)
                               BoxShadow(
-                                color: primaryColor.withOpacity(0.3 * (1 - _controller.value)), // เงาเข้มขึ้น
+                                color: primaryColor.withOpacity(0.3 * (1 - _controller.value)),
                                 blurRadius: 10,
                                 spreadRadius: 30 * _controller.value,
                               )
@@ -270,19 +385,17 @@ class _HomeScreenState extends State<HomeScreen>
                     );
                   },
                 ),
-              // Inner Circle
               Container(
                 width: 210,
                 height: 210,
                 decoration: BoxDecoration(
-                  // เปลี่ยนสีตอนปิด จากเทาอ่อน เป็นเทาเข้ม (Blue Grey 300) ให้เห็นชัด
                   color: _isMonitoring ? primaryColor : const Color(0xFF90A4AE), 
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 8), // ขอบหนาขึ้น
+                  border: Border.all(color: Colors.white, width: 8),
                   boxShadow: [
                     BoxShadow(
                       color: _isMonitoring
-                          ? primaryColor.withOpacity(0.4) // เงาเข้มขึ้น
+                          ? primaryColor.withOpacity(0.4)
                           : Colors.grey.withOpacity(0.4),
                       blurRadius: 40,
                       spreadRadius: 5,
@@ -294,39 +407,33 @@ class _HomeScreenState extends State<HomeScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _isMonitoring
-                          ? Icons.verified_user_rounded
-                          : Icons.gpp_maybe_rounded,
+                      _isMonitoring ? Icons.verified_user_rounded : Icons.gpp_maybe_rounded,
                       color: Colors.white,
-                      size: 64, // ไอคอนใหญ่ขึ้น
+                      size: 64,
                     ),
                     const SizedBox(height: 8),
                     Text(
                       _isMonitoring ? "ขับขี่ปลอดภัย" : "พร้อมใช้งาน",
                       style: GoogleFonts.kanit(
                         color: Colors.white,
-                        fontSize: 26, // ตัวใหญ่ขึ้น
+                        fontSize: 26,
                         fontWeight: FontWeight.bold,
                         shadows: [
-                            const Shadow(
-                                offset: Offset(0, 2),
-                                blurRadius: 4,
-                                color: Colors.black26)
+                            const Shadow(offset: Offset(0, 2), blurRadius: 4, color: Colors.black26)
                         ]
                       ),
                     ),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.2), // พื้นหลังป้าย Status เข้มขึ้น
+                        color: Colors.black.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         _isMonitoring ? "AI กำลังทำงาน" : "รอการเริ่มระบบ",
                         style: GoogleFonts.kanit(
-                          color: Colors.white, // เปลี่ยนเป็นขาวล้วนเพื่อความชัด
+                          color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
@@ -350,7 +457,7 @@ class _HomeScreenState extends State<HomeScreen>
               border: Border.all(color: primaryColor.withOpacity(0.1)),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF0F2557).withOpacity(0.1), // เงาสีน้ำเงิน
+                  color: const Color(0xFF0F2557).withOpacity(0.1),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -396,8 +503,8 @@ class _HomeScreenState extends State<HomeScreen>
                   "กำลังตรวจจับ...",
                   style: GoogleFonts.kanit(
                     color: primaryColor,
-                    fontSize: 16, // ใหญ่ขึ้น
-                    fontWeight: FontWeight.w600, // หนาขึ้น
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -408,16 +515,15 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildStatCard(IconData icon, String label, String value, String unit,
-      {bool isScore = false}) {
+  Widget _buildStatCard(IconData icon, String label, String value, String unit, {bool isScore = false}) {
     return Container(
-      padding: const EdgeInsets.all(16), // Padding เยอะขึ้น
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF64748B).withOpacity(0.15), // เงาสีเทาเข้ม
+            color: const Color(0xFF64748B).withOpacity(0.15),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -432,9 +538,9 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF), // Blue 50
+                  color: const Color(0xFFEFF6FF),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFDBEAFE)), // ขอบจางๆ
+                  border: Border.all(color: const Color(0xFFDBEAFE)),
                 ),
                 child: Icon(icon, color: primaryColor, size: 22),
               ),
@@ -442,7 +548,7 @@ class _HomeScreenState extends State<HomeScreen>
               Text(
                 label,
                 style: GoogleFonts.kanit(
-                  color: textGrey, // สีเทาเข้ม อ่านง่ายกว่าเดิม
+                  color: textGrey,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -454,8 +560,8 @@ class _HomeScreenState extends State<HomeScreen>
                     TextSpan(
                       text: value,
                       style: GoogleFonts.kanit(
-                        color: textDark, // สีดำ Slate 800
-                        fontSize: 24, // ใหญ่ขึ้น
+                        color: textDark,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -481,7 +587,7 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildControlButton() {
     return Container(
       width: double.infinity,
-      height: 68, // สูงขึ้น
+      height: 68,
       decoration: BoxDecoration(
         color: _isMonitoring ? primaryColor : accentSuccess,
         borderRadius: BorderRadius.circular(20),
@@ -489,7 +595,7 @@ class _HomeScreenState extends State<HomeScreen>
           BoxShadow(
             color: _isMonitoring 
                 ? primaryColor.withOpacity(0.4) 
-                : accentSuccess.withOpacity(0.4), // เงาเข้มขึ้น
+                : accentSuccess.withOpacity(0.4),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -498,15 +604,13 @@ class _HomeScreenState extends State<HomeScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _toggleMonitoring,
+          onTap: _toggleMonitoring, // เปลี่ยนไปเรียกฟังก์ชันที่ยิง API
           borderRadius: BorderRadius.circular(20),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                _isMonitoring
-                    ? Icons.stop_circle_rounded
-                    : Icons.play_circle_fill_rounded,
+                _isMonitoring ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded,
                 color: Colors.white,
                 size: 32,
               ),

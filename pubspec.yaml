@@ -19,6 +19,8 @@ dependencies:
   google_sign_in: ^6.2.1 
   cupertino_icons: ^1.0.8
   url_launcher: ^6.3.2
+  flutter_blue_plus: ^1.31.0
+  permission_handler: ^11.0.0
 
 dev_dependencies:
   flutter_test:
@@ -27,5 +29,5 @@ dev_dependencies:
 
 flutter:
   assets:
-     - images/  
+    - images/  
   uses-material-design: true

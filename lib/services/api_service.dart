@@ -59,14 +59,14 @@ class ApiService {
     final response = await _request(
       'POST',
       'driver/login',
-      body: {
-        'username': username,
-        'password': password,
-      },
+      body: {'username': username, 'password': password},
       requireAuth: false,
     );
 
-    return _applyAuthResponse(response, 'Login response does not include driver token.');
+    return _applyAuthResponse(
+      response,
+      'Login response does not include driver token.',
+    );
   }
 
   /// Sign in (or auto-register) a driver using a Google ID token.
@@ -79,13 +79,14 @@ class ApiService {
     final response = await _request(
       'POST',
       'driver/google-login',
-      body: {
-        'id_token': idToken,
-      },
+      body: {'id_token': idToken},
       requireAuth: false,
     );
 
-    return _applyAuthResponse(response, 'Google login response does not include driver token.');
+    return _applyAuthResponse(
+      response,
+      'Google login response does not include driver token.',
+    );
   }
 
   Future<Map<String, dynamic>> registerDriver({
@@ -106,7 +107,10 @@ class ApiService {
       requireAuth: false,
     );
 
-    return _applyAuthResponse(response, 'Register response does not include driver token.');
+    return _applyAuthResponse(
+      response,
+      'Register response does not include driver token.',
+    );
   }
 
   Future<void> forgotPasswordDriver({required String email}) async {
@@ -157,7 +161,10 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> dashboard() async {
-    final response = await _request('GET', 'drivers/${_requireDriverId()}/dashboard');
+    final response = await _request(
+      'GET',
+      'drivers/${_requireDriverId()}/dashboard',
+    );
     return _dataMap(response);
   }
 
@@ -189,7 +196,10 @@ class ApiService {
   }
 
   Future<List<Map<String, dynamic>>> devices() async {
-    final response = await _request('GET', 'app/drivers/${_requireDriverId()}/devices');
+    final response = await _request(
+      'GET',
+      'app/drivers/${_requireDriverId()}/devices',
+    );
     return _dataList(response);
   }
 
@@ -205,13 +215,26 @@ class ApiService {
         'serial_number': serialNumber,
         'device_name': deviceName,
         'device_type': deviceType,
-        'status': 'online',
+        'status': 'ว่าง', 
         'is_active': true,
       },
     );
     return _dataMap(response);
   }
-
+/// ลงทะเบียนอุปกรณ์ใหม่ด้วย Serial Number อย่างเดียว
+/// (ตั้งชื่อ/ประเภทเริ่มต้นให้อัตโนมัติ เพราะหน้าจอมีแค่ช่อง S/N)
+Future<bool> registerDevice(String serialNumber) async {
+  try {
+    await createDevice(
+      serialNumber: serialNumber,
+      deviceName: 'อุปกรณ์ใหม่ #$serialNumber',
+      deviceType: 'ESP32-CAM',
+    );
+    return true;
+  } on ApiException {
+    return false;
+  }
+}
   Future<Map<String, dynamic>> updateDevice({
     required dynamic deviceId,
     String? serialNumber,
@@ -265,9 +288,7 @@ class ApiService {
     final response = await _request(
       'GET',
       'app/drivers/${_requireDriverId()}/trips',
-      query: {
-        if (status != null) 'status': status,
-      },
+      query: {if (status != null) 'status': status},
     );
     return _dataList(response);
   }
@@ -333,9 +354,7 @@ class ApiService {
     final response = await _request(
       'GET',
       'app/drivers/${_requireDriverId()}/alerts',
-      query: {
-        if (tripId != null) 'trip_id': tripId.toString(),
-      },
+      query: {if (tripId != null) 'trip_id': tripId.toString()},
     );
     return _dataList(response);
   }
@@ -352,14 +371,14 @@ class ApiService {
     final response = await _request(
       'GET',
       'app/drivers/${_requireDriverId()}/notifications',
-      query: {
-        if (isRead != null) 'is_read': isRead ? '1' : '0',
-      },
+      query: {if (isRead != null) 'is_read': isRead ? '1' : '0'},
     );
     return _dataList(response);
   }
 
-  Future<Map<String, dynamic>> markNotificationRead(dynamic notificationId) async {
+  Future<Map<String, dynamic>> markNotificationRead(
+    dynamic notificationId,
+  ) async {
     final response = await _request(
       'PATCH',
       'app/drivers/${_requireDriverId()}/notifications/$notificationId/read',
@@ -374,6 +393,58 @@ class ApiService {
     );
   }
 
+  /// ดึงข้อมูลโปรไฟล์ล่าสุดของ Driver ที่ล็อกอินอยู่
+  Future<Map<String, dynamic>> getProfile() async {
+    final response = await _request('GET', 'app/drivers/${_requireDriverId()}');
+    _driver = _dataMap(response);
+    return _driver!;
+  }
+
+  /// อัปเดตข้อมูลโปรไฟล์ (สำหรับหน้า ProfileEditScreen)
+  Future<Map<String, dynamic>> updateProfile({
+    required String name,
+    String? password,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      'app/drivers/${_requireDriverId()}',
+      body: {
+        'name': name,
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    );
+    _driver = _dataMap(response);
+    return _driver!;
+  }
+
+  /// ดึงรายการอุปกรณ์เฉพาะของ Driver คนนี้
+  Future<List<Map<String, dynamic>>> getMyDevices() async {
+    final response = await _request(
+      'GET',
+      'app/drivers/${_requireDriverId()}/devices',
+    );
+    return _dataList(response);
+  }
+
+  /// อัปเดตตั้งค่าเสียงอุปกรณ์ (สำหรับหน้า DeviceCustomizationScreen)
+  Future<Map<String, dynamic>> updateDeviceSettings({
+    required dynamic deviceId,
+    required int volumeLevel,
+    required bool soundEnabled,
+    required String activeTone,
+  }) async {
+    final response = await _request(
+      'PATCH',
+      'app/drivers/${_requireDriverId()}/devices/$deviceId/setting',
+      body: {
+        'volume_level': volumeLevel,
+        'sound_enabled': soundEnabled,
+        'active_tone': activeTone,
+      },
+    );
+    return _dataMap(response);
+  }
+
   int _requireDriverId() {
     final id = _driverId;
     if (_token == null || id == null) {
@@ -384,7 +455,10 @@ class ApiService {
 
   /// Shared logic for login / register / google-login responses:
   /// they all return the same { token, driver_id, name, avatar_url, status } shape.
-  Map<String, dynamic> _applyAuthResponse(Map<String, dynamic> response, String errorMessage) {
+  Map<String, dynamic> _applyAuthResponse(
+    Map<String, dynamic> response,
+    String errorMessage,
+  ) {
     final token = response['token']?.toString();
     final driverId = _toInt(response['driver_id']);
 
@@ -433,7 +507,11 @@ class ApiService {
       case 'PUT':
         response = await _client.put(uri, headers: headers, body: encodedBody);
       case 'PATCH':
-        response = await _client.patch(uri, headers: headers, body: encodedBody);
+        response = await _client.patch(
+          uri,
+          headers: headers,
+          body: encodedBody,
+        );
       case 'DELETE':
         response = await _client.delete(uri, headers: headers);
       default:
