@@ -17,6 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static const Color backgroundLight = Color(0xFFF8FAFC);
   static const Color accentBlue = Color(0xFF3B82F6);
   static const Color successGreen = Color(0xFF10B981);
+  static const Color dangerRed = Color(0xFFDC2626);
   static const Color textDark = Color(0xFF0F172A);
 
   Map<String, dynamic>? _profileData;
@@ -41,6 +42,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
         SnackBar(content: Text('โหลดข้อมูลโปรไฟล์ล้มเหลว: $e')),
       );
     }
+  }
+
+  /// Backend stores `status` as a tinyint (0/1) on the `drivers` table.
+  /// This converts that numeric code into a Thai label for display.
+  /// Falls back gracefully if a String ever comes through instead.
+  static String statusLabel(dynamic value) {
+    if (value == null) return 'ไม่มีสถานะ';
+    if (value is String) {
+      // Already text (e.g. legacy/admin data) — use as-is.
+      if (value.trim().isEmpty) return 'ไม่มีสถานะ';
+      final parsed = int.tryParse(value);
+      if (parsed == null) return value;
+      value = parsed;
+    }
+    switch (value) {
+      case 1:
+        return 'ปฏิบัติงานปกติ';
+      case 0:
+        return 'ระงับการขับขี่';
+      default:
+        return 'ไม่มีสถานะ';
+    }
+  }
+
+  /// Whether the status code represents an active/normal driver.
+  static bool statusIsActive(dynamic value) {
+    if (value is String) value = int.tryParse(value);
+    return value == 1;
   }
 
   void _handleLogout() {
@@ -181,7 +210,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildHeader() {
     final name = _profileData?['name'] ?? 'ไม่ระบุชื่อ';
     final username = _profileData?['username'] ?? 'No Username';
-    final status = _profileData?['status'] ?? 'ไม่มีสถานะ';
+    final rawStatus = _profileData?['status'];
+    final status = statusLabel(rawStatus);
+    final isActive = statusIsActive(rawStatus);
     final avatarUrl = _profileData?['avatar_url'];
 
     return Container(
@@ -245,7 +276,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(color: successGreen, borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(
+                color: isActive ? successGreen : dangerRed,
+                borderRadius: BorderRadius.circular(20),
+              ),
               child: Text(
                 status,
                 style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),

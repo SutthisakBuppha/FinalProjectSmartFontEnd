@@ -1,4 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ===== Permissions สำหรับ Bluetooth Low Energy ===== -->
+
+    <!-- Android 11 (API 30) ลงไป ต้องใช้ permission เก่านี้ -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+
+    <!-- Android 12 (API 31) ขึ้นไป ต้องใช้ permission ใหม่นี้แทน -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+
+    <!-- จำเป็นสำหรับสแกน BLE (โดยเฉพาะ Android 6-11 การสแกนต้องขอ Location ด้วย) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- บอกระบบว่าแอปนี้ใช้ BLE จริง แต่ไม่บังคับให้เครื่องต้องมี BLE ถึงจะติดตั้งได้ -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
     <application
         android:label="mockup_project"
         android:name="${applicationName}"

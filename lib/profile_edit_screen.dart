@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:math' as math;
 import '/services/api_service.dart';
 
 class ProfileEditScreen extends StatefulWidget {
@@ -18,22 +17,37 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   static const Color textDark = Color(0xFF0F172A);
   static const Color textGrey = Color(0xFF64748B);
   static const Color borderColor = Color(0xFFE2E8F0);
-  
+
+  // Backend (`drivers.status`) is a tinyint that only accepts 0 or 1
+  // (see AppController::updateDriver → 'status' => 'sometimes|integer|in:0,1').
+  static const Map<int, String> _statusOptions = {
+    1: 'ปฏิบัติงานปกติ',
+    0: 'ระงับการขับขี่',
+  };
+
   late TextEditingController _nameController;
-  late TextEditingController _statusController;
+  late int _selectedStatus;
   bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.currentData['name'] ?? '');
-    _statusController = TextEditingController(text: widget.currentData['status'] ?? 'ปฏิบัติงานปกติ');
+    _selectedStatus = _parseStatus(widget.currentData['status']);
+  }
+
+  int _parseStatus(dynamic value) {
+    if (value is int) return _statusOptions.containsKey(value) ? value : 1;
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      if (parsed != null && _statusOptions.containsKey(parsed)) return parsed;
+    }
+    return 1; // default: ปฏิบัติงานปกติ
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _statusController.dispose();
     super.dispose();
   }
 
@@ -42,7 +56,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     try {
       await ApiService.instance.updateDriverProfile(
         name: _nameController.text.trim(),
-        status: _statusController.text.trim(),
+        status: _selectedStatus.toString(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -75,7 +89,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                   children: [
                     _buildInputField("ชื่อ-นามสกุลคนขับ", _nameController, Icons.person_outline_rounded),
                     const SizedBox(height: 16),
-                    _buildInputField("สถานะการทำงาน", _statusController, Icons.work_outline_rounded),
+                    _buildStatusDropdown(),
                     const SizedBox(height: 36),
                     SizedBox(
                       width: double.infinity,
@@ -145,6 +159,41 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             fillColor: Colors.white,
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: borderColor)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primaryLight, width: 2)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("สถานะการทำงาน", style: GoogleFonts.inter(color: textDark, fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedStatus,
+              isExpanded: true,
+              icon: Icon(Icons.keyboard_arrow_down_rounded, color: textGrey),
+              items: _statusOptions.entries
+                  .map((entry) => DropdownMenuItem<int>(
+                        value: entry.key,
+                        child: Text(entry.value, style: GoogleFonts.inter(color: textDark)),
+                      ))
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => _selectedStatus = value);
+              },
+            ),
           ),
         ),
       ],

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'welcome_screen.dart';
-// ไม่ต้อง import login_screen ที่นี่ เพราะ welcome_screen จะเป็นคนเรียกไปหาเอง
+import 'splash_screen.dart'; // 💡 เพิ่ม import นี้
+// welcome_screen.dart ไม่ต้อง import ตรงนี้แล้ว เพราะ splash_screen จะเป็นคนเรียกไปหาเอง
 import 'main_layout.dart';
 
 void main() {
@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F284E)),
         useMaterial3: true,
       ),
-      home: const WelcomeScreen(), // เรียกหน้านี้เป็นหน้าแรก
+      home: const SplashScreen(), // 💡 เปลี่ยนจาก WelcomeScreen() เป็น SplashScreen()
     );
   }
 }

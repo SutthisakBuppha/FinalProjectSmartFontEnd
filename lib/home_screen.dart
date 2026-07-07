@@ -186,8 +186,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     // ดึงค่าสถิติจาก API
     final currentTrip = _dashboardData?['current_trip'];
-    final num distance = currentTrip?['distance'] ?? 0;
-    final int durationMin = currentTrip?['duration'] ?? 0;
+final num distance = num.tryParse(currentTrip?['distance']?.toString() ?? '') ?? 0;
+final int durationMin = int.tryParse(currentTrip?['duration']?.toString() ?? '') ?? 0;
 
     return Column(
       children: [

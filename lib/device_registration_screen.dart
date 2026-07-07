@@ -24,7 +24,14 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   final _formKey = GlobalKey<FormState>();
 
   int _currentIndex = 1; 
-  bool _isLoading = false; // เพิ่มสถานะ Loading ป้องกันการกดปุ่มซ้ำ
+  bool _isLoading = false; 
+  bool _isCheckingDevice = true; // สถานะตรวจเช็กข้อมูลเดิมตอนเปิดหน้าแอป
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingDevices(); // เรียกใช้งานการตรวจสอบอัตโนมัติทันที
+  }
 
   @override
   void dispose() {
@@ -32,261 +39,231 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     super.dispose();
   }
 
-  // ฟังก์ชันจัดการการลงทะเบียน
+  // ฟังก์ชันตรวจสอบ: ถ้ามีอุปกรณ์ที่เคยลงทะเบียนอยู่แล้ว ให้เปิดหน้ารายการอุปกรณ์ทันที
+  Future<void> _checkExistingDevices() async {
+    try {
+      // เรียกใช้ devices() แบบไม่มี arguments ตามที่ ApiService ของคุณกำหนดไว้
+      final devices = await ApiService.instance.devices();
+      
+      // ถ้าพบข้อมูลอุปกรณ์ในฐานข้อมูลแล้ว ให้ย้ายข้ามหน้านี้ไปหน้ารายการเลยครับ
+      if (devices.isNotEmpty && mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
+        );
+        return;
+      }
+    } catch (e) {
+      debugPrint("Error auto-checking devices: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingDevice = false; // ตรวจสอบเสร็จสิ้น ปิดหน้าโหลดนิ่ง
+        });
+      }
+    }
+  }
+
+  // ฟังก์ชันจัดการการลงทะเบียนอุปกรณ์ชิ้นใหม่
   Future<void> _handleRegistration() async {
     if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true); // เปิดวงแหวนโหลดดิ่ง
+      setState(() {
+        _isLoading = true;
+      });
 
-      // ยิง API ไปที่ Laravel Backend เพื่อบันทึก S/N
-      String serialNumber = _serialController.text.trim();
-      bool isSuccess = await ApiService.instance.registerDevice(serialNumber);
+      try {
+        // ดึง serial number จากกล่องข้อความ
+        final serialNumber = _serialController.text.trim();
 
-      setState(() => _isLoading = false); // ปิดวงแหวนโหลดดิ่ง
+        // registerDevice รับ positional parameter และคืนค่าเป็น bool (ไม่ throw)
+        final isSuccess = await ApiService.instance.registerDevice(serialNumber);
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (isSuccess) {
-        // [Success] บันทึกลง Database สำเร็จ
+        if (!isSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("ลงทะเบียนไม่สำเร็จ: S/N นี้อาจถูกใช้ไปแล้ว หรือเซิร์ฟเวอร์มีปัญหา")),
+          );
+          return;
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 10),
-                Text("ลงทะเบียนฐานข้อมูลสำเร็จ!", style: GoogleFonts.inter()),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 1),
-          ),
+          const SnackBar(content: Text("ลงทะเบียนอุปกรณ์สำเร็จแล้ว")),
         );
-        
-        // เด้งไปหน้าจับคู่ Bluetooth เพื่อส่งรหัส Wi-Fi ให้กล้อง
-        Future.delayed(const Duration(seconds: 1), () {
-            if (!mounted) return;
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => WifiProvisioningScreen(
-                  serialNumber: serialNumber,
-                ), 
-              ),
-            );
-        });
-      } else {
-        // [Error] บันทึกไม่สำเร็จ (เช่น กรอก S/N ซ้ำ หรือเน็ตหลุด)
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(
-              "ไม่สามารถลงทะเบียนได้",
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
-            ),
-            content: Text(
-              "อุปกรณ์นี้อาจถูกลงทะเบียนไปแล้ว หรือระบบเซิร์ฟเวอร์มีปัญหา กรุณาลองใหม่อีกครั้ง",
-              style: GoogleFonts.inter(),
-            ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text("ตกลง", style: GoogleFonts.inter(fontWeight: FontWeight.bold, color: primaryColor)),
-              ),
-            ],
-          ),
+
+        // เมื่อลงทะเบียนเสร็จสำเร็จ ส่งไปยังหน้ารายการอุปกรณ์
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
         );
+
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // หากระบบกำลังเรียกเช็กประวัติอุปกรณ์เดิมจาก API ให้แสดงวงกลมโหลดข้อมูลสั้นๆ
+    if (_isCheckingDevice) {
+      return const Scaffold(
+        backgroundColor: backgroundColor,
+        body: Center(
+          child: CircularProgressIndicator(color: primaryColor),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: backgroundColor,
       appBar: AppBar(
-        backgroundColor: primaryColor,
-        elevation: 0,
-        centerTitle: true,
-        automaticallyImplyLeading: false,
         title: Text(
-          "ลงทะเบียนอุปกรณ์",
-          style: GoogleFonts.plusJakartaSans(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
+          "ตั้งค่าอุปกรณ์",
+          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
         ),
+        backgroundColor: primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 20),
-
-                // 1. Icon Section
-                Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: primaryColor.withOpacity(0.1),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.cast_connected_rounded,
-                      size: 64,
-                      color: primaryColor,
-                    ),
-                  ),
-                ),
-
                 const SizedBox(height: 32),
-
-                // 2. Title Text
+                
+                // 1. Welcome Header
                 Text(
-                  "เชื่อมต่ออุปกรณ์ SaveDrive",
+                  "ยินดีต้อนรับ!",
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 20,
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: const Color(0xFF1F2937),
+                    color: primaryColor,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "กรุณากรอก Serial Number (MAC) ที่อยู่ด้านหลังอุปกรณ์\nหรือสแกน QR Code เพื่อเริ่มต้นใช้งาน",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    color: const Color(0xFF6B7280),
+                  "กรุณาลงทะเบียนอุปกรณ์ของคุณเพื่อเริ่มต้นใช้งานระบบตรวจจับ",
+                  style: GoogleFonts.notoSansThai(
+                    fontSize: 15,
+                    color: Colors.grey[600],
                     height: 1.5,
                   ),
                 ),
+                const SizedBox(height: 32),
 
-                const SizedBox(height: 40),
-
-                // 3. Input Field (Serial Number)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Serial Number (S/N)",
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF374151),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _serialController,
-                      enabled: !_isLoading, // ล็อกช่องกรอกหากกำลังโหลด
-                      style: GoogleFonts.inter(
-                        fontWeight: FontWeight.w600,
-                        color: primaryColor,
-                        letterSpacing: 1.0,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: "เช่น SN-2024-XXXX",
-                        hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
-                        filled: true,
-                        fillColor: Colors.white,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.shade200),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: primaryColor, width: 1.5),
-                        ),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.qr_code_scanner_rounded),
-                          color: primaryColor,
-                          onPressed: _isLoading ? null : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text("กำลังเปิดกล้องสแกน QR Code...", style: GoogleFonts.inter()),
-                                backgroundColor: primaryColor,
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'กรุณากรอก Serial Number';
-                        }
-                        if (value.length < 5) {
-                          return 'Serial Number สั้นเกินไป';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 24),
-
-                // 4. Policy Warning
+                // 2. Warning Box
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: warningBgColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFFFEDD5)),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: warningTextColor.withOpacity(0.2)),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.info_outline_rounded, color: Color(0xFFF97316), size: 22),
+                      const Icon(Icons.warning_amber_rounded, color: warningTextColor),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "ข้อกำหนดการใช้งาน",
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: warningTextColor,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "1 บัญชีผู้ใช้ สามารถลงทะเบียนเชื่อมต่ออุปกรณ์ได้หลายอุปกณ์ แต่ละอุปกรณ์ต้องมี Serial Number ที่ไม่ซ้ำกัน กรุณาเก็บรักษา Serial Number ไว้ให้ดี",
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: warningTextColor.withOpacity(0.8),
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          "คำแนะนำ: หมายเลข Serial Number จะอยู่บนสติกเกอร์ที่ติดอยู่กับตัวเครื่องโปรดตรวจสอบให้ถูกต้อง",
+                          style: GoogleFonts.notoSansThai(
+                            fontSize: 13,
+                            color: warningTextColor,
+                            height: 1.5,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 32),
 
+                // 3. Form Input Field
+                Text(
+                  "หมายเลข Serial Number อุปกรณ์",
+                  style: GoogleFonts.notoSansThai(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _serialController,
+                  decoration: InputDecoration(
+                    hintText: "เช่น SD-AI-2024XXXX",
+                    hintStyle: GoogleFonts.plusJakartaSans(color: Colors.grey[400]),
+                    prefixIcon: const Icon(Icons.qr_code_scanner_rounded, color: primaryColor),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: primaryColor, width: 2),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: Colors.red, width: 1),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'กรุณากรอกหมายเลข Serial Number อุปกรณ์';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                // 4. Shortcut link to Wi-Fi Provisioning
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      final serialNumber = _serialController.text.trim();
+                      if (serialNumber.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("กรุณากรอก Serial Number ก่อนไปตั้งค่า Wi-Fi")),
+                        );
+                        return;
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => WifiProvisioningScreen(serialNumber: serialNumber),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.wifi_rounded, size: 18),
+                    label: Text(
+                      "เชื่อมต่อไวไฟให้อุปกรณ์",
+                      style: GoogleFonts.notoSansThai(fontWeight: FontWeight.bold),
+                    ),
+                    style: TextButton.styleFrom(foregroundColor: primaryColor),
+                  ),
+                ),
                 const SizedBox(height: 40),
 
                 // 5. Submit Button

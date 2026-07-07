@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode});
@@ -90,28 +91,30 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> registerDriver({
-    required String name,
-    required String email,
-    required String password,
-    required String passwordConfirmation,
-  }) async {
-    final response = await _request(
-      'POST',
-      'driver/register',
-      body: {
-        'name': name,
-        'email': email,
-        'password': password,
-        'password_confirmation': passwordConfirmation,
-      },
-      requireAuth: false,
-    );
+  required String name,
+  required String username, // เพิ่มใหม่
+  required String email,
+  required String password,
+  required String passwordConfirmation,
+}) async {
+  final response = await _request(
+    'POST',
+    'driver/register',
+    body: {
+      'name': name,
+      'username': username, // เพิ่มใหม่
+      'email': email,
+      'password': password,
+      'password_confirmation': passwordConfirmation,
+    },
+    requireAuth: false,
+  );
 
-    return _applyAuthResponse(
-      response,
-      'Register response does not include driver token.',
-    );
-  }
+  return _applyAuthResponse(
+    response,
+    'Register response does not include driver token.',
+  );
+}
 
   Future<void> forgotPasswordDriver({required String email}) async {
     await _request(
@@ -158,6 +161,34 @@ class ApiService {
     _token = null;
     _driverId = null;
     _driver = null;
+    // ล้างค่าที่เคยจำไว้ใน local storage ด้วย (ไม่ await เพราะ clearSession() เป็น sync)
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.remove(_kTokenKey);
+      prefs.remove(_kDriverIdKey);
+    });
+  }
+
+  static const _kTokenKey = 'auth_token';
+  static const _kDriverIdKey = 'auth_driver_id';
+
+  /// เรียกครั้งเดียวตอนแอปเริ่มทำงาน (splash) เพื่อโหลด session ที่เคย login ค้างไว้
+  /// คืน true ถ้ามี token เก่าอยู่ (ยังไม่ได้ตรวจกับ backend ว่า token หมดอายุหรือยัง)
+  Future<bool> restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_kTokenKey);
+    final driverId = prefs.getInt(_kDriverIdKey);
+
+    if (token == null || driverId == null) return false;
+
+    _token = token;
+    _driverId = driverId;
+    return true;
+  }
+
+  Future<void> _persistSession(String token, int driverId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kTokenKey, token);
+    await prefs.setInt(_kDriverIdKey, driverId);
   }
 
   Future<Map<String, dynamic>> dashboard() async {
@@ -474,6 +505,8 @@ Future<bool> registerDevice(String serialNumber) async {
       'avatar_url': response['avatar_url'],
       'status': response['status'],
     };
+
+    _persistSession(token, driverId);
 
     return Map<String, dynamic>.from(_driver!);
   }

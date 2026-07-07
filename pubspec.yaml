@@ -19,8 +19,9 @@ dependencies:
   google_sign_in: ^6.2.1 
   cupertino_icons: ^1.0.8
   url_launcher: ^6.3.2
-  flutter_blue_plus: ^1.31.0
-  permission_handler: ^11.0.0
+  flutter_blue_plus: ^1.32.12
+  permission_handler: ^11.3.0
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

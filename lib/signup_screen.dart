@@ -18,6 +18,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscureConfirmPassword = true;
 
   final _nameController = TextEditingController();
+  final _usernameController = TextEditingController(); // เพิ่มใหม่
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -46,6 +47,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _usernameController.dispose(); // เพิ่มใหม่
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -54,6 +56,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
+    final username = _usernameController.text.trim(); // เพิ่มใหม่
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
@@ -63,6 +66,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     if (name.isEmpty ||
+        username.isEmpty || // เพิ่มใหม่
         email.isEmpty ||
         password.isEmpty ||
         confirmPassword.isEmpty) {
@@ -86,6 +90,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       await ApiService.instance.registerDriver(
         name: name,
+        username: username, // เพิ่มใหม่
         email: email,
         password: password,
         passwordConfirmation: confirmPassword,
@@ -333,6 +338,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       hint: "ชื่อ-นามสกุล",
                       icon: Icons.person_outline,
                       inputType: TextInputType.name,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // เพิ่มฟิลด์ username ใหม่
+                    _buildTextField(
+                      controller: _usernameController,
+                      hint: "ชื่อผู้ใช้ (Username)",
+                      icon: Icons.account_circle_outlined,
+                      inputType: TextInputType.text,
                     ),
                     const SizedBox(height: 20),
 
