@@ -29,6 +29,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    double scale = screenWidth / 375.0;
+    scale = scale.clamp(0.85, 1.25);
+    final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 32.0);
+
     return Scaffold(
       backgroundColor: backgroundColor,
       extendBody: true,
@@ -36,57 +41,56 @@ class _NotificationScreenState extends State<NotificationScreen> {
         children: [
           Column(
             children: [
-              // --- 1. Header Section ---
-              _buildHeader(context),
+              _buildHeader(context, scale, horizontalPadding),
 
-              // --- 2. Main Content ---
               Expanded(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                    padding: EdgeInsets.fromLTRB(horizontalPadding, 24 * scale, horizontalPadding, 120 * scale),
                     child: Column(
                       children: [
-                        _buildDivider("วันนี้"),
+                        _buildDivider("วันนี้", scale),
 
-                        // --- ตัวอย่างที่ 1: ความเสี่ยงสูง (เกิน 1 นาที) ---
                         _buildRiskAlertCard(
-                          eventType: "หลับตา", // Detail: อาการ
-                          durationSeconds: 65, // 1 นาที 5 วิ -> ระดับ 3
+                          eventType: "หลับตา",
+                          durationSeconds: 65,
                           time: "14:32 น.",
                           statusText: "ส่งเสียงแจ้งเตือนต่อเนื่อง",
+                          scale: scale,
                         ),
                         
-                        const SizedBox(height: 16),
+                        SizedBox(height: 16 * scale),
 
-                        // --- ตัวอย่างที่ 2: ความเสี่ยงปานกลาง (30-59 วิ) ---
                         _buildRiskAlertCard(
-                          eventType: "เหม่อลอย", // Detail: อาการ
-                          durationSeconds: 45, // -> ระดับ 2
+                          eventType: "เหม่อลอย",
+                          durationSeconds: 45,
                           time: "11:15 น.",
                           statusText: "สั่นเตือนแรง",
+                          scale: scale,
                         ),
 
-                        const SizedBox(height: 16),
+                        SizedBox(height: 16 * scale),
 
-                        // --- ตัวอย่างที่ 3: ความเสี่ยงต่ำ (3-10 วิ) ---
                         _buildRiskAlertCard(
-                          eventType: "เหม่อลอย", // Detail: อาการ
-                          durationSeconds: 5, // -> ระดับ 1
+                          eventType: "เหม่อลอย",
+                          durationSeconds: 5,
                           time: "09:45 น.",
                           statusText: "แจ้งเตือนด้วยเสียงเบา",
+                          scale: scale,
                         ),
 
-                        const SizedBox(height: 8),
-                        _buildDivider("เมื่อวาน"),
+                        SizedBox(height: 8 * scale),
+                        _buildDivider("เมื่อวาน", scale),
 
                         Opacity(
                           opacity: 0.8,
                           child: _buildRiskAlertCard(
                             eventType: "หลับตา",
-                            durationSeconds: 8, // -> ระดับ 1
+                            durationSeconds: 8,
                             time: "18:20 น.",
                             statusText: "บันทึกเหตุการณ์",
+                            scale: scale,
                           ),
                         ),
                       ],
@@ -101,9 +105,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // --- Helper Methods ---
-
-  // ฟังก์ชันคำนวณระดับความเสี่ยงและสี
   Map<String, dynamic> _getRiskDetails(int seconds) {
     if (seconds >= 60) {
       return {
@@ -122,7 +123,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
         'desc': 'เริ่มมีอาการเหนื่อยล้า'
       };
     } else {
-      // 3-29 วินาที (ครอบคลุม 3-10 ตามโจทย์)
       return {
         'level': 1,
         'label': 'ความเสี่ยงต่ำ',
@@ -133,21 +133,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
   }
 
-  // Widget การ์ดแบบใหม่ที่รับค่าเป็นวินาทีและประเภทอาการ
   Widget _buildRiskAlertCard({
-    required String eventType,    // เช่น "หลับตา", "เหม่อลอย"
-    required int durationSeconds, // ระยะเวลาที่เป็น (วินาที)
+    required String eventType,
+    required int durationSeconds,
     required String time,
     required String statusText,
+    required double scale,
   }) {
-    // 1. ดึงค่า Config ตามความเสี่ยง
     final riskData = _getRiskDetails(durationSeconds);
     final int level = riskData['level'];
     final Color color = riskData['color'];
     final String label = riskData['label'];
     final IconData icon = riskData['icon'];
 
-    // แปลงวินาทีเป็นข้อความ (เช่น "1 นาที 5 วินาที")
     String durationText = "$durationSeconds วินาที";
     if (durationSeconds >= 60) {
       int m = durationSeconds ~/ 60;
@@ -156,12 +154,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(12),
-        // เส้นขอบซ้ายแสดงสีตามระดับความเสี่ยง
-        border: Border(left: BorderSide(color: color, width: 6)),
+        border: Border(left: BorderSide(color: color, width: 6 * scale)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
@@ -173,36 +170,34 @@ class _NotificationScreenState extends State<NotificationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: หัวข้อ (อาการ) และ Badge ระดับความเสี่ยง
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
-                  Icon(icon, color: color, size: 24),
-                  const SizedBox(width: 10),
+                  Icon(icon, color: color, size: 24 * scale),
+                  SizedBox(width: 10 * scale),
                   Text(
-                    eventType, // แสดง "หลับตา" หรือ "เหม่อลอย"
+                    eventType,
                     style: GoogleFonts.prompt(
-                      fontSize: 18,
+                      fontSize: 18 * scale,
                       fontWeight: FontWeight.bold,
                       color: textMain,
                     ),
                   ),
                 ],
               ),
-              // Risk Badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 4 * scale),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: color.withOpacity(0.3)),
                 ),
                 child: Text(
-                  "ระดับ $level", // Level 1, 2, 3
+                  "ระดับ $level",
                   style: GoogleFonts.prompt(
-                    fontSize: 12,
+                    fontSize: 12 * scale,
                     fontWeight: FontWeight.bold,
                     color: color,
                   ),
@@ -211,24 +206,23 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ],
           ),
           
-          const SizedBox(height: 12),
+          SizedBox(height: 12 * scale),
           
-          // Row 2: รายละเอียด (ระยะเวลา)
           Row(
             children: [
-              const SizedBox(width: 34), // เว้นระยะให้ตรงกับ Text ข้างบน
+              SizedBox(width: 34 * scale),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     RichText(
                       text: TextSpan(
-                        style: GoogleFonts.prompt(fontSize: 14, color: textSub),
+                        style: GoogleFonts.prompt(fontSize: 14 * scale, color: textSub),
                         children: [
                           const TextSpan(text: "ระยะเวลา: "),
                           TextSpan(
-                            text: durationText, // แสดงเวลาที่คำนวณไว้
-                            style: TextStyle(
+                            text: durationText,
+                            style: const TextStyle(
                               color: textMain,
                               fontWeight: FontWeight.w600,
                             ),
@@ -237,20 +231,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       ),
                     ),
                      Text(
-                      label, // "ความเสี่ยงสูง/กลาง/ต่ำ"
+                      label,
                       style: GoogleFonts.prompt(
-                        fontSize: 12,
+                        fontSize: 12 * scale,
                         color: color,
                       ),
                     ),
                   ],
                 ),
               ),
-              // เวลาที่เกิดเหตุ
               Text(
                 time,
                 style: GoogleFonts.prompt(
-                  fontSize: 12,
+                  fontSize: 12 * scale,
                   color: Colors.grey.shade400,
                   fontWeight: FontWeight.w500,
                 ),
@@ -258,23 +251,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ],
           ),
 
-          const SizedBox(height: 12),
+          SizedBox(height: 12 * scale),
           
-          // Row 3: สถานะการแจ้งเตือน (เส้นประ + ข้อความ)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 8 * scale),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
-                Icon(Icons.check_circle_outline, size: 16, color: Colors.green.shade400),
-                const SizedBox(width: 8),
+                Icon(Icons.check_circle_outline, size: 16 * scale, color: Colors.green.shade400),
+                SizedBox(width: 8 * scale),
                 Text(
                   statusText,
                   style: GoogleFonts.prompt(
-                    fontSize: 12,
+                    fontSize: 12 * scale,
                     color: textSub,
                   ),
                 ),
@@ -286,9 +278,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // --- Widget เดิม (Header & Divider) ---
-
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, double scale, double padding) {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -305,28 +295,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Status Bar จำลอง
+            // นำ Mock Status Bar ออกแล้ว
+            SizedBox(height: 16 * scale),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("9:41", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
-                  Row(
-                    children: const [
-                      Icon(Icons.signal_cellular_alt, color: Colors.white, size: 14),
-                      SizedBox(width: 4),
-                      Icon(Icons.wifi, color: Colors.white, size: 14),
-                      SizedBox(width: 4),
-                      RotatedBox(quarterTurns: 1, child: Icon(Icons.battery_full, color: Colors.white, size: 14)),
-                    ],
-                  )
-                ],
-              ),
-            ),
-            
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              padding: EdgeInsets.fromLTRB(padding, 0, padding, 32 * scale),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -336,7 +308,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       IconButton(
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.notifications_rounded, color: Colors.white, size: 28),
+                        icon: Icon(Icons.notifications_rounded, color: Colors.white, size: 28 * scale),
                         onPressed: () {
                           Navigator.push(
                             context,
@@ -346,29 +318,28 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: 24 * scale),
                   
                   Text(
                     "ประวัติการแจ้งเตือน",
-                    style: GoogleFonts.prompt( // ใช้ Prompt เพื่อภาษาไทยที่สวยงาม
+                    style: GoogleFonts.prompt(
                       color: Colors.white,
-                      fontSize: 30,
+                      fontSize: 30 * scale,
                       fontWeight: FontWeight.bold,
                       height: 1.1,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4 * scale),
                   Text(
                     "ตรวจสอบระดับความเสี่ยงล่าสุดของคุณ",
                     style: GoogleFonts.prompt(
                       color: Colors.blue.shade100.withOpacity(0.9),
-                      fontSize: 14,
+                      fontSize: 14 * scale,
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  SizedBox(height: 24 * scale),
 
-                  // Summary Cards
                   Row(
                     children: [
                       Expanded(
@@ -376,15 +347,17 @@ class _NotificationScreenState extends State<NotificationScreen> {
                           label: "วันนี้",
                           value: "3",
                           subLabel: "เหตุการณ์",
+                          scale: scale,
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      SizedBox(width: 16 * scale),
                       Expanded(
                         child: _buildHeaderSummaryCard(
                           label: "ความเสี่ยงสูงสุด",
                           value: "ระดับ 3",
                           subLabel: "อันตราย",
-                          valueColor: riskHigh, // ส่งสีแดงไป
+                          valueColor: riskHigh,
+                          scale: scale,
                         ),
                       ),
                     ],
@@ -398,9 +371,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildHeaderSummaryCard({required String label, required String value, required String subLabel, Color? valueColor}) {
+  Widget _buildHeaderSummaryCard({required String label, required String value, required String subLabel, Color? valueColor, required double scale}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(12 * scale),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -413,16 +386,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
             label,
             style: GoogleFonts.prompt(
               color: Colors.blue.shade100,
-              fontSize: 10,
+              fontSize: 10 * scale,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4 * scale),
           Text(
             value,
             style: GoogleFonts.prompt(
               color: valueColor ?? Colors.white,
-              fontSize: 24,
+              fontSize: 24 * scale,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -430,7 +403,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             subLabel,
             style: GoogleFonts.prompt(
               color: Colors.blue.shade200,
-              fontSize: 10,
+              fontSize: 10 * scale,
             ),
           ),
         ],
@@ -438,19 +411,19 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildDivider(String text) {
+  Widget _buildDivider(String text, double scale) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: EdgeInsets.symmetric(vertical: 8.0 * scale),
       child: Row(
         children: [
           Expanded(child: Container(height: 1, color: Colors.grey.shade300)),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            padding: EdgeInsets.symmetric(horizontal: 16.0 * scale),
             child: Text(
               text,
               style: GoogleFonts.prompt(
                 color: textSub,
-                fontSize: 12,
+                fontSize: 12 * scale,
                 fontWeight: FontWeight.w600,
               ),
             ),

@@ -20,8 +20,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   static const Color primaryColor = Color(0xFF0F2647);
   static const Color secondaryColor = Color(0xFF1E3A66);
   static const Color accentColor = Color(0xFF3B82F6);
-  static const Color backgroundColor = Color(0xFFF3F4F6); // background-light
-  static const Color cardColor = Color(0xFFFFFFFF); // card-light
+  static const Color backgroundColor = Color(0xFFF3F4F6);
+  static const Color cardColor = Color(0xFFFFFFFF);
   static const Color dangerColor = Color(0xFFEF4444);
   static const Color successColor = Color(0xFF10B981);
   static const Color warningColor = Color(0xFFF59E0B);
@@ -44,7 +44,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _fetchHistoryData();
   }
 
-  // ฟังก์ชันดึงข้อมูลจาก API
   Future<void> _fetchHistoryData() async {
     setState(() {
       _isLoading = true;
@@ -58,11 +57,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
       double distanceSum = 0.0;
 
       for (var trip in fetchedTrips) {
-        alertsSum += (trip['alerts_count'] as num?)?.toInt() ?? 0;
-        distanceSum += (trip['distance'] as num?)?.toDouble() ?? 0.0;
+        // แก้ไขจุดนี้: ใช้ num.tryParse เพื่อป้องกัน Error ในกรณีที่ API คืนค่าเป็น String
+        final alertsCount = num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ?? 0;
+        final distance = num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
+
+        alertsSum += alertsCount;
+        distanceSum += distance;
       }
 
-      // คำนวณคะแนนขับขี่แบบจำลองอ้างอิงจากยอด Alert (เช่น เริ่มต้น 100 หักครั้งละ 5 คะแนน)
       int calculatedScore = 100 - (alertsSum * 5);
       if (calculatedScore < 0) calculatedScore = 0;
 
@@ -81,7 +83,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  // ฟังก์ชันแปลงรูปแบบวันที่แบบอ่านง่าย (ภาษาไทย)
   String _formatDateTime(String? dateStr) {
     if (dateStr == null) return '-';
     final dateTime = DateTime.tryParse(dateStr);
@@ -101,7 +102,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return '$dayName, ${dateTime.day} $monthName • $hour:$minute น.';
   }
 
-  // ประเมินระดับความปลอดภัยตามจำนวนครั้งที่แจ้งเตือน
   Map<String, dynamic> _getSafetyStatus(int alertsCount) {
     if (alertsCount == 0) {
       return {
@@ -126,6 +126,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    double scale = screenWidth / 375.0;
+    scale = scale.clamp(0.85, 1.25);
+    final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 32.0);
+
     return Scaffold(
       backgroundColor: backgroundColor,
       extendBody: true,
@@ -133,10 +138,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           Column(
             children: [
-              // --- 1. Header Section (Gradient + Total Distance Summary) ---
-              _buildHeader(),
-
-              // --- 2. Main Content (Scrollable or Loading) ---
+              _buildHeader(scale, horizontalPadding),
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -147,22 +149,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     : _errorMessage.isNotEmpty
                         ? Center(
                             child: Padding(
-                              padding: const EdgeInsets.all(24.0),
+                              padding: EdgeInsets.all(24.0 * scale),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.error_outline, color: dangerColor, size: 48),
-                                  const SizedBox(height: 16),
+                                  Icon(Icons.error_outline, color: dangerColor, size: 48 * scale),
+                                  SizedBox(height: 16 * scale),
                                   Text(
                                     _errorMessage,
-                                    style: GoogleFonts.kanit(color: textLight),
+                                    style: GoogleFonts.kanit(color: textLight, fontSize: 14 * scale),
                                     textAlign: TextAlign.center,
                                   ),
-                                  const SizedBox(height: 16),
+                                  SizedBox(height: 16 * scale),
                                   ElevatedButton(
                                     onPressed: _fetchHistoryData,
                                     style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
-                                    child: Text("ลองใหม่อีกครั้ง", style: GoogleFonts.kanit(color: Colors.white)),
+                                    child: Text("ลองใหม่อีกครั้ง", style: GoogleFonts.kanit(color: Colors.white, fontSize: 14 * scale)),
                                   )
                                 ],
                               ),
@@ -174,10 +176,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             child: SingleChildScrollView(
                               physics: const BouncingScrollPhysics(),
                               child: Padding(
-                                padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                                padding: EdgeInsets.fromLTRB(horizontalPadding, 24 * scale, horizontalPadding, 120 * scale),
                                 child: Column(
                                   children: [
-                                    // Stats Grid (Safety Score & Total Alerts)
                                     Row(
                                       children: [
                                         Expanded(
@@ -187,9 +188,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             suffix: "/100",
                                             icon: Icons.shield_outlined,
                                             iconColor: primaryColor,
+                                            scale: scale,
                                           ),
                                         ),
-                                        const SizedBox(width: 16),
+                                        SizedBox(width: 16 * scale),
                                         Expanded(
                                           child: _buildSummaryCard(
                                             title: "แจ้งเตือนทั้งหมด",
@@ -197,14 +199,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             suffix: " ครั้ง",
                                             icon: Icons.warning_amber_rounded,
                                             iconColor: warningColor,
+                                            scale: scale,
                                           ),
                                         ),
                                       ],
                                     ),
 
-                                    const SizedBox(height: 24),
+                                    SizedBox(height: 24 * scale),
 
-                                    // Section Title (Recent Trips)
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -212,7 +214,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         Text(
                                           "การเดินทางล่าสุด",
                                           style: GoogleFonts.kanit(
-                                            fontSize: 18,
+                                            fontSize: 18 * scale,
                                             fontWeight: FontWeight.bold,
                                             color: primaryColor,
                                           ),
@@ -220,7 +222,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         Text(
                                           "ดูทั้งหมด",
                                           style: GoogleFonts.kanit(
-                                            fontSize: 14,
+                                            fontSize: 14 * scale,
                                             fontWeight: FontWeight.w500,
                                             color: accentColor,
                                             decoration: TextDecoration.underline,
@@ -230,16 +232,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       ],
                                     ),
 
-                                    const SizedBox(height: 16),
+                                    SizedBox(height: 16 * scale),
 
-                                    // --- Trip Cards (Dynamic from API) ---
                                     if (_trips.isEmpty)
                                       Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 40),
+                                        padding: EdgeInsets.symmetric(vertical: 40 * scale),
                                         child: Center(
                                           child: Text(
                                             "ไม่พบประวัติการเดินทางของท่าน",
-                                            style: GoogleFonts.kanit(color: subTextLight, fontSize: 16),
+                                            style: GoogleFonts.kanit(color: subTextLight, fontSize: 16 * scale),
                                           ),
                                         ),
                                       )
@@ -250,14 +251,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         itemCount: _trips.length,
                                         itemBuilder: (context, index) {
                                           final trip = _trips[index];
-                                          final alertsCount = (trip['alerts_count'] as num?)?.toInt() ?? 0;
+                                          
+                                          // แก้ไขจุดนี้เช่นกัน: ใช้การ parse ที่ปลอดภัยสำหรับแต่ละไอเทมในลิสต์
+                                          final alertsCount = num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ?? 0;
                                           final statusData = _getSafetyStatus(alertsCount);
 
-                                          // **จุดที่แก้ไข:** ดึงค่า tripId และแปลงให้เป็นตัวเลข (int) อย่างปลอดภัย
-                                          final int tripIdInt = (trip['trip_id'] as num?)?.toInt() ?? 
-                                                                (trip['id'] as num?)?.toInt() ?? 0;
+                                          final int tripIdInt = num.tryParse(trip['trip_id']?.toString() ?? '')?.toInt() ?? 
+                                                                num.tryParse(trip['id']?.toString() ?? '')?.toInt() ?? 0;
 
-                                          // กำหนดชื่อ Title ของทริปให้ยืดหยุ่นตามข้อมูลที่มี
                                           final startLoc = trip['start_location']?.toString() ?? '';
                                           final endLoc = trip['end_location']?.toString() ?? '';
                                           String tripTitle = "การเดินทาง #$tripIdInt";
@@ -268,9 +269,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             tripTitle = "มุ่งสู่ $endLoc";
                                           }
 
-                                          final distanceVal = (trip['distance'] as num?)?.toDouble() ?? 0.0;
+                                          final distanceVal = num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
                                           
-                                          // จัดการเรื่องข้อความของเวลาที่ใช้ไป
                                           String durationText = '-';
                                           if (trip['duration'] != null) {
                                             durationText = trip['duration'].toString();
@@ -286,7 +286,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                           }
 
                                           return _buildTripCard(
-                                            tripId: tripIdInt, // ส่งพารามิเตอร์แบบ int
+                                            tripId: tripIdInt,
                                             title: tripTitle,
                                             date: _formatDateTime(trip['start_time']),
                                             status: statusData['text'],
@@ -296,6 +296,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             distance: "${distanceVal.toStringAsFixed(1)} กม.",
                                             duration: durationText,
                                             alerts: alertsCount.toString(),
+                                            scale: scale,
                                           );
                                         },
                                       ),
@@ -312,9 +313,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  // --- Helper Widgets ---
-
-  Widget _buildHeader() {
+  Widget _buildHeader(double scale, double padding) {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -335,29 +334,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Status Bar จำลอง
+            SizedBox(height: 16 * scale),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text("9:41", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
-                  Row(
-                    children: const [
-                      Icon(Icons.signal_cellular_alt, color: Colors.white, size: 16),
-                      SizedBox(width: 4),
-                      Icon(Icons.wifi, color: Colors.white, size: 16),
-                      SizedBox(width: 4),
-                      Icon(Icons.battery_full, color: Colors.white, size: 16),
-                    ],
-                  )
-                ],
-              ),
-            ),
-            
-            // App Bar Content
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+              padding: EdgeInsets.fromLTRB(padding, 0, padding, 32 * scale),
               child: Column(
                 children: [
                   Row(
@@ -367,7 +346,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         "ประวัติการขับขี่",
                         style: GoogleFonts.kanit(
                           color: Colors.white,
-                          fontSize: 24,
+                          fontSize: 24 * scale,
                           fontWeight: FontWeight.bold,
                           letterSpacing: -0.5,
                         ),
@@ -382,20 +361,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(20),
                             onTap: _fetchHistoryData,
-                            child: const Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                            child: Padding(
+                              padding: EdgeInsets.all(8.0 * scale),
+                              child: Icon(Icons.refresh_rounded, color: Colors.white, size: 20 * scale),
                             ),
                           ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: 24 * scale),
                   
-                  // Date Selector
                   Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: EdgeInsets.all(4 * scale),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
@@ -404,23 +382,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.chevron_left_rounded, color: Colors.white70),
+                          icon: Icon(Icons.chevron_left_rounded, color: Colors.white70, size: 24 * scale),
                           onPressed: () {},
                         ),
                         Column(
                           children: [
                             Text(
                               "ประวัติทั้งหมด",
-                              style: GoogleFonts.kanit(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                              style: GoogleFonts.kanit(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w600),
                             ),
                             Text(
                               "ระยะทางรวม ${_totalDistance.toStringAsFixed(1)} กม.",
-                              style: GoogleFonts.kanit(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w500),
+                              style: GoogleFonts.kanit(color: Colors.white60, fontSize: 12 * scale, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
                         IconButton(
-                          icon: const Icon(Icons.chevron_right_rounded, color: Colors.white70),
+                          icon: Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 24 * scale),
                           onPressed: () {},
                         ),
                       ],
@@ -441,9 +419,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     required String suffix,
     required IconData icon,
     required Color iconColor,
+    required double scale,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(12),
@@ -457,14 +436,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, color: iconColor, size: 20),
-              const SizedBox(width: 8),
+              Icon(icon, color: iconColor, size: 20 * scale),
+              SizedBox(width: 8 * scale),
               Expanded(
                 child: Text(
                   title.toUpperCase(),
                   style: GoogleFonts.kanit(
                     color: iconColor,
-                    fontSize: 10,
+                    fontSize: 10 * scale,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
@@ -473,7 +452,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8 * scale),
           RichText(
             text: TextSpan(
               children: [
@@ -481,7 +460,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   text: value,
                   style: GoogleFonts.kanit(
                     color: textLight,
-                    fontSize: 24,
+                    fontSize: 24 * scale,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -490,7 +469,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     text: suffix,
                     style: GoogleFonts.kanit(
                       color: subTextLight,
-                      fontSize: 14,
+                      fontSize: 14 * scale,
                       fontWeight: FontWeight.normal,
                     ),
                   ),
@@ -503,7 +482,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildTripCard({
-    required int tripId, // **จุดที่แก้ไข:** กำหนดให้รับค่า id เป็นประเภทตัวเลข (int)
+    required int tripId,
     required String title,
     required String date,
     required String status,
@@ -513,13 +492,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
     required String distance,
     required String duration,
     required String alerts,
+    required double scale,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: 16 * scale),
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: statusColor, width: 4)),
+        border: Border(left: BorderSide(color: statusColor, width: 4 * scale)),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2)),
         ],
@@ -532,7 +512,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               context,
               MaterialPageRoute(
                 builder: (context) => HistoryDetailScreen(
-                  tripId: tripId, // ส่งค่า int ที่ถูกต้องไปยังหน้า HistoryDetailScreen
+                  tripId: tripId,
                   title: title,
                   date: date,
                   distance: distance,
@@ -548,7 +528,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16 * scale),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -557,14 +537,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: EdgeInsets.all(8 * scale),
                             decoration: BoxDecoration(
                               color: Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(icon, color: subTextLight, size: 24),
+                            child: Icon(icon, color: subTextLight, size: 24 * scale),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12 * scale),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -573,7 +553,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   title,
                                   style: GoogleFonts.kanit(
                                     color: textLight,
-                                    fontSize: 16,
+                                    fontSize: 16 * scale,
                                     fontWeight: FontWeight.bold,
                                   ),
                                   overflow: TextOverflow.ellipsis,
@@ -582,7 +562,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   date,
                                   style: GoogleFonts.kanit(
                                     color: subTextLight,
-                                    fontSize: 12,
+                                    fontSize: 12 * scale,
                                   ),
                                 ),
                               ],
@@ -592,7 +572,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale),
                       decoration: BoxDecoration(
                         color: statusColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
@@ -600,13 +580,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(statusIcon, color: statusColor, size: 14),
-                          const SizedBox(width: 4),
+                          Icon(statusIcon, color: statusColor, size: 14 * scale),
+                          SizedBox(width: 4 * scale),
                           Text(
                             status,
                             style: GoogleFonts.kanit(
                               color: statusColor,
-                              fontSize: 12,
+                              fontSize: 12 * scale,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -618,14 +598,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
               Divider(height: 1, color: Colors.grey.shade100),
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: EdgeInsets.symmetric(vertical: 12 * scale),
                 child: Row(
                   children: [
-                    _buildTripStatItem("ระยะทาง", distance, false),
-                    Container(width: 1, height: 24, color: Colors.grey.shade100),
-                    _buildTripStatItem("เวลาที่ใช้", duration, false),
-                    Container(width: 1, height: 24, color: Colors.grey.shade100),
-                    _buildTripStatItem("แจ้งเตือน", alerts, true, valueColor: statusColor),
+                    _buildTripStatItem("ระยะทาง", distance, false, scale),
+                    Container(width: 1, height: 24 * scale, color: Colors.grey.shade100),
+                    _buildTripStatItem("เวลาที่ใช้", duration, false, scale),
+                    Container(width: 1, height: 24 * scale, color: Colors.grey.shade100),
+                    _buildTripStatItem("แจ้งเตือน", alerts, true, scale, valueColor: statusColor),
                   ],
                 ),
               ),
@@ -636,7 +616,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildTripStatItem(String label, String value, bool isAlert, {Color? valueColor}) {
+  Widget _buildTripStatItem(String label, String value, bool isAlert, double scale, {Color? valueColor}) {
     return Expanded(
       child: Column(
         children: [
@@ -644,16 +624,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
             label,
             style: GoogleFonts.kanit(
               color: isAlert && valueColor != null ? valueColor : subTextLight,
-              fontSize: 12,
+              fontSize: 12 * scale,
               fontWeight: isAlert ? FontWeight.w500 : FontWeight.normal,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: 2 * scale),
           Text(
             value,
             style: GoogleFonts.kanit(
               color: isAlert && valueColor != null ? valueColor : textLight,
-              fontSize: 14,
+              fontSize: 14 * scale,
               fontWeight: FontWeight.bold,
             ),
           ),

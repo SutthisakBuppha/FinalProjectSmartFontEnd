@@ -18,7 +18,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscureConfirmPassword = true;
 
   final _nameController = TextEditingController();
-  final _usernameController = TextEditingController(); // เพิ่มใหม่
+  final _usernameController = TextEditingController(); 
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -47,7 +47,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _usernameController.dispose(); // เพิ่มใหม่
+    _usernameController.dispose(); 
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -56,7 +56,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
-    final username = _usernameController.text.trim(); // เพิ่มใหม่
+    final username = _usernameController.text.trim(); 
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
@@ -66,7 +66,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     if (name.isEmpty ||
-        username.isEmpty || // เพิ่มใหม่
+        username.isEmpty || 
         email.isEmpty ||
         password.isEmpty ||
         confirmPassword.isEmpty) {
@@ -90,13 +90,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       await ApiService.instance.registerDriver(
         name: name,
-        username: username, // เพิ่มใหม่
+        username: username, 
         email: email,
         password: password,
         passwordConfirmation: confirmPassword,
       );
 
-      // สมัครสำเร็จแล้ว ไม่ auto-login — เคลียร์ session แล้วให้ผู้ใช้ login เองอีกครั้ง
       ApiService.instance.clearSession();
 
       if (!mounted) return;
@@ -134,14 +133,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final idToken = await GoogleAuthService.instance.signInAndGetIdToken();
 
       if (idToken == null) {
-        // ผู้ใช้กดยกเลิกหน้าเลือกบัญชี Google
         return;
       }
 
-      // googleLogin ฝั่ง backend จะ "หาหรือสร้าง" driver ให้อัตโนมัติ —
-      // เท่ากับสมัครสมาชิกและล็อกอินในขั้นตอนเดียว จึงพาไปหน้า MainLayout ได้เลย
       await ApiService.instance.loginWithGoogle(idToken: idToken);
-      ApiService.instance.clearSession(); // เคลียร์ session ก่อน
+      ApiService.instance.clearSession(); 
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -165,65 +161,38 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- Responsive Helpers แบบเดียวกับหน้า Login ---
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    
+    double scale = screenWidth / 375.0;
+    scale = scale.clamp(0.85, 1.25);
+
+    final horizontalPadding = (screenWidth * 0.08).clamp(20.0, 40.0);
+    final logoSize = (96 * scale).clamp(72.0, 120.0);
+    final isCompactHeight = screenHeight < 700;
+
     return Scaffold(
       backgroundColor: backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24.0,
-                vertical: 12.0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "9:41",
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white : Colors.black,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.signal_cellular_alt,
-                        size: 16,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
-                      const SizedBox(width: 6),
-                      Icon(
-                        Icons.wifi,
-                        size: 16,
-                        color: isDark ? Colors.white : Colors.black,
-                      ),
-                      const SizedBox(width: 6),
-                      RotatedBox(
-                        quarterTurns: 1,
-                        child: Icon(
-                          Icons.battery_full,
-                          size: 16,
-                          color: isDark ? Colors.white : Colors.black,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            // นำแถวเวลา แบตเตอรี่ ด้านบนสุดออกแล้ว เปลี่ยนเป็น Spacer ตัวเล็กแทนเพื่อความสวยงาม
+            SizedBox(height: isCompactHeight ? 12 : 24),
+            
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const SizedBox(height: 20),
+                    SizedBox(height: 10 * scale),
+                    
+                    // Logo
                     SizedBox(
-                      width: 96,
-                      height: 96,
+                      width: logoSize,
+                      height: logoSize,
                       child: SvgPicture.string(
                         _logoSvg,
                         colorFilter: ColorFilter.mode(
@@ -232,21 +201,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16 * scale),
+                    
+                    // Title
                     Text(
                       "Smart Drive Guard",
                       style: GoogleFonts.inter(
-                        fontSize: 30,
+                        fontSize: (30 * scale).clamp(24.0, 34.0),
                         fontWeight: FontWeight.w700,
                         color: isDark ? Colors.white : primaryColor,
                         letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    SizedBox(height: (isCompactHeight ? 20 : 32) * scale),
+                    
                     Text(
                       "สมัครสมาชิก",
                       style: GoogleFonts.inter(
-                        fontSize: 24,
+                        fontSize: (24 * scale).clamp(20.0, 28.0),
                         fontWeight: FontWeight.w700,
                         color: isDark ? Colors.white : primaryColor,
                       ),
@@ -254,20 +226,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     const SizedBox(height: 8),
                     Text(
                       "ลงทะเบียนเพื่อเริ่มติดตามการขับขี่ของคุณ",
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.prompt( // เปลี่ยนเป็นฟอนต์ไทยให้อ่านง่ายสอดคล้องกัน
+                        fontSize: 13 * scale,
                         color: isDark
                             ? const Color(0xFF9CA3AF)
                             : const Color(0xFF6B7280),
                       ),
                     ),
 
-                    const SizedBox(height: 28),
+                    SizedBox(height: 24 * scale),
 
-                    // --- Google Sign-Up (ก่อนฟอร์ม email — สมัคร+ล็อกอินในคลิกเดียว) ---
+                    // --- Google Sign-Up ---
                     SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: (48 * scale).clamp(44.0, 54.0),
                       child: Material(
                         color: isDark ? const Color(0xFF1E293B) : Colors.white,
                         borderRadius: BorderRadius.circular(12),
@@ -283,24 +256,24 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 if (_isGoogleLoading)
-                                  const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
+                                  SizedBox(
+                                    width: 18 * scale,
+                                    height: 18 * scale,
+                                    child: const CircularProgressIndicator(
                                       strokeWidth: 2,
                                     ),
                                   )
                                 else ...[
                                   SvgPicture.string(
                                     _googleSvg,
-                                    width: 20,
-                                    height: 20,
+                                    width: 20 * scale,
+                                    height: 20 * scale,
                                   ),
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: 8 * scale),
                                   Text(
                                     "สมัครสมาชิกด้วย Google",
-                                    style: GoogleFonts.inter(
-                                      fontSize: 14,
+                                    style: GoogleFonts.prompt(
+                                      fontSize: 14 * scale,
                                       fontWeight: FontWeight.w500,
                                       color: textColor,
                                     ),
@@ -313,7 +286,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20 * scale),
                     Row(
                       children: [
                         Expanded(child: Divider(color: borderColor)),
@@ -321,8 +294,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 12.0),
                           child: Text(
                             "หรือสมัครด้วยอีเมล",
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
+                            style: GoogleFonts.prompt(
+                              fontSize: 12 * scale,
                               color: placeholderColor,
                             ),
                           ),
@@ -330,33 +303,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         Expanded(child: Divider(color: borderColor)),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 20 * scale),
 
-                    // --- Form Fields ---
-                    _buildTextField(
-                      controller: _nameController,
-                      hint: "ชื่อ-นามสกุล",
-                      icon: Icons.person_outline,
-                      inputType: TextInputType.name,
-                    ),
-                    const SizedBox(height: 20),
+                    // --- Form Fields (Responsive padding) ---
+                    // _buildTextField(
+                    //   controller: _nameController,
+                    //   hint: "ชื่อ-นามสกุล",
+                    //   icon: Icons.person_outline,
+                    //   inputType: TextInputType.name,
+                    //   scale: scale,
+                    // ),
+                    // SizedBox(height: 16 * scale),
 
-                    // เพิ่มฟิลด์ username ใหม่
                     _buildTextField(
                       controller: _usernameController,
                       hint: "ชื่อผู้ใช้ (Username)",
                       icon: Icons.account_circle_outlined,
                       inputType: TextInputType.text,
+                      scale: scale,
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 16 * scale),
 
                     _buildTextField(
                       controller: _emailController,
                       hint: "อีเมล",
                       icon: Icons.email_outlined,
                       inputType: TextInputType.emailAddress,
+                      scale: scale,
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 16 * scale),
 
                     _buildTextField(
                       controller: _passwordController,
@@ -364,11 +339,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       icon: Icons.lock_outline,
                       isPassword: true,
                       isObscure: _obscurePassword,
+                      scale: scale,
                       onToggleVisibility: () {
                         setState(() => _obscurePassword = !_obscurePassword);
                       },
                     ),
-                    const SizedBox(height: 20),
+                    SizedBox(height: 16 * scale),
 
                     _buildTextField(
                       controller: _confirmPasswordController,
@@ -376,16 +352,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       icon: Icons.verified_user_outlined,
                       isPassword: true,
                       isObscure: _obscureConfirmPassword,
+                      scale: scale,
                       onToggleVisibility: () {
                         setState(
-                          () => _obscureConfirmPassword =
-                              !_obscureConfirmPassword,
+                          () => _obscureConfirmPassword = !_obscureConfirmPassword,
                         );
                       },
                     ),
 
                     if (_errorMessage != null) ...[
-                      const SizedBox(height: 16),
+                      SizedBox(height: 16 * scale),
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
@@ -399,27 +375,29 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                         child: Text(
                           _errorMessage!,
-                          style: GoogleFonts.inter(
-                            fontSize: 13,
+                          style: GoogleFonts.prompt(
+                            fontSize: 13 * scale,
                             color: const Color(0xFFB91C1C),
                           ),
                         ),
                       ),
                     ],
 
-                    const SizedBox(height: 24),
+                    SizedBox(height: 24 * scale),
 
+                    // --- Register Button ---
                     Container(
                       width: double.infinity,
-                      height: 56,
+                      height: (56 * scale).clamp(48.0, 64.0),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
-                          BoxShadow(
-                            color: primaryColor.withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
+                          if (!isDark)
+                            BoxShadow(
+                              color: primaryColor.withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
                         ],
                       ),
                       child: ElevatedButton(
@@ -427,9 +405,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryColor,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: primaryColor.withOpacity(
-                            0.6,
-                          ),
+                          disabledBackgroundColor: primaryColor.withOpacity(0.6),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
@@ -437,10 +413,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           padding: EdgeInsets.zero,
                         ),
                         child: _isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
+                            ? SizedBox(
+                                width: 20 * scale,
+                                height: 20 * scale,
+                                child: const CircularProgressIndicator(
                                   strokeWidth: 2.5,
                                   color: Colors.white,
                                 ),
@@ -450,27 +426,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 children: [
                                   Text(
                                     "ลงทะเบียน",
-                                    style: GoogleFonts.inter(
-                                      fontSize: 16,
+                                    style: GoogleFonts.prompt(
+                                      fontSize: 16 * scale,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  const Icon(Icons.arrow_forward, size: 20),
+                                  SizedBox(width: 8 * scale),
+                                  Icon(Icons.arrow_forward, size: 20 * scale),
                                 ],
                               ),
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    SizedBox(height: 32 * scale),
 
+                    // --- Login Redirect ---
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           "มีบัญชีอยู่แล้วใช่ไหม?",
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
+                          style: GoogleFonts.prompt(
+                            fontSize: 14 * scale,
                             color: isDark
                                 ? const Color(0xFF9CA3AF)
                                 : const Color(0xFF6B7280),
@@ -492,8 +469,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           ),
                           child: Text(
                             "เข้าสู่ระบบ",
-                            style: GoogleFonts.inter(
-                              fontSize: 14,
+                            style: GoogleFonts.prompt(
+                              fontSize: 14 * scale,
                               fontWeight: FontWeight.w600,
                               color: isDark ? Colors.white : primaryColor,
                             ),
@@ -502,10 +479,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 40),
-
+                    SizedBox(height: (isCompactHeight ? 24 : 40) * scale),
+                    
+                    // Bottom Accent Line
                     Container(
-                      width: 64,
+                      width: 64 * scale,
                       height: 4,
                       decoration: BoxDecoration(
                         color: isDark
@@ -514,7 +492,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16 * scale),
                   ],
                 ),
               ),
@@ -528,6 +506,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildTextField({
     required String hint,
     required IconData icon,
+    required double scale,
     TextEditingController? controller,
     bool isPassword = false,
     bool isObscure = false,
@@ -551,22 +530,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
         controller: controller,
         obscureText: isPassword ? isObscure : false,
         keyboardType: inputType,
-        style: GoogleFonts.inter(color: textColor, fontSize: 16),
+        style: GoogleFonts.prompt(color: textColor, fontSize: 16 * scale),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.inter(color: placeholderColor),
+          hintStyle: GoogleFonts.prompt(color: placeholderColor, fontSize: 15 * scale),
           filled: true,
           fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            vertical: 20,
+          contentPadding: EdgeInsets.symmetric(
+            vertical: 18 * scale,
             horizontal: 16,
           ),
-          prefixIcon: Icon(icon, color: iconColor),
+          prefixIcon: Icon(icon, color: iconColor, size: 22 * scale),
           suffixIcon: onToggleVisibility != null
               ? IconButton(
                   icon: Icon(
                     isObscure ? Icons.visibility_off : Icons.visibility,
                     color: const Color(0xFF9CA3AF),
+                    size: 22 * scale,
                   ),
                   onPressed: onToggleVisibility,
                 )

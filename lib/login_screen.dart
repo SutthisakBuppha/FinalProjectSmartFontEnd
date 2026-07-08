@@ -120,8 +120,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- Responsive helpers ---
+    // ใช้ความกว้างหน้าจอเป็นฐาน (อ้างอิงจากดีไซน์ iPhone ~375px)
+    // แล้วคำนวณ scale factor เพื่อปรับขนาด font/spacing/รูปให้พอดีกับมือถือทุกขนาด
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    double scale = screenWidth / 375.0;
+    scale = scale.clamp(0.85, 1.25);
+
+    final horizontalPadding = (screenWidth * 0.08).clamp(20.0, 40.0);
+    final logoSize = (96 * scale).clamp(72.0, 120.0);
+    final isCompactHeight = screenHeight < 700;
+
     return Scaffold(
       backgroundColor: background,
+      resizeToAvoidBottomInset: true,
       body: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         color: background,
@@ -166,258 +179,235 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             SafeArea(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0,
-                      vertical: 12.0,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: 16,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: Column(
                       children: [
-                        Text(
-                          "9:41",
-                          style: GoogleFonts.prompt(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: textMain,
+                        SizedBox(height: isCompactHeight ? 8 : 20),
+                        SizedBox(
+                          width: logoSize,
+                          height: logoSize,
+                          child: SvgPicture.string(
+                            _logoSvgString(_isDarkMode),
                           ),
                         ),
+                        SizedBox(height: 16 * scale),
+                        Text(
+                          "Smart Drive Guard",
+                          style: GoogleFonts.prompt(
+                            fontSize: 28 * scale,
+                            fontWeight: FontWeight.w700,
+                            color: primary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        SizedBox(height: 8 * scale),
+                        Text(
+                          "ระบบติดตามอัจฉริยะ เพื่อการขับขี่ที่ปลอดภัย",
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.prompt(
+                            fontSize: 13 * scale,
+                            fontWeight: FontWeight.w400,
+                            color: textSub,
+                          ),
+                        ),
+                        SizedBox(height: (isCompactHeight ? 24 : 36) * scale),
+                        Text(
+                          "ยินดีต้อนรับกลับ",
+                          style: GoogleFonts.prompt(
+                            fontSize: 22 * scale,
+                            fontWeight: FontWeight.w600,
+                            color: primary,
+                          ),
+                        ),
+                        SizedBox(height: 4 * scale),
+                        Text(
+                          "กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบ",
+                          style: GoogleFonts.prompt(
+                            fontSize: 13 * scale,
+                            color: textSub,
+                          ),
+                        ),
+                        SizedBox(height: 22 * scale),
+                        _buildLabel("ชื่อผู้ใช้ (Username)", scale),
+                        SizedBox(height: 6 * scale),
+                        _buildTextField(
+                          controller: _usernameController,
+                          hint: "username",
+                          icon: Icons.person_outline,
+                          inputType: TextInputType.text,
+                          scale: scale,
+                        ),
+                        SizedBox(height: 18 * scale),
+                        _buildLabel("รหัสผ่าน", scale),
+                        SizedBox(height: 6 * scale),
+                        _buildTextField(
+                          controller: _passwordController,
+                          hint: "••••••••",
+                          icon: Icons.lock_outline,
+                          isPassword: true,
+                          scale: scale,
+                        ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Padding(
+                            padding: EdgeInsets.only(top: 8.0 * scale),
+                            child: TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const ForgotPasswordScreen(),
+                                  ),
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                "ลืมรหัสผ่าน?",
+                                style: GoogleFonts.prompt(
+                                  fontSize: 12 * scale,
+                                  fontWeight: FontWeight.w500,
+                                  color: primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 14 * scale),
+                        Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            boxShadow: [
+                              BoxShadow(
+                                color: primary.withOpacity(0.08),
+                                offset: const Offset(0, 4),
+                                blurRadius: 20,
+                                spreadRadius: -2,
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _handleLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primary,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: EdgeInsets.symmetric(vertical: 15 * scale),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2.5,
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        "เข้าสู่ระบบ",
+                                        style: GoogleFonts.prompt(
+                                          fontSize: 15 * scale,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      SizedBox(width: 8 * scale),
+                                      Icon(Icons.arrow_forward, size: 18 * scale),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                        SizedBox(height: (isCompactHeight ? 18 : 24) * scale),
                         Row(
                           children: [
-                            Icon(Icons.signal_cellular_alt, size: 16, color: textMain),
-                            const SizedBox(width: 6),
-                            Icon(Icons.wifi, size: 16, color: textMain),
-                            const SizedBox(width: 6),
-                            Icon(Icons.battery_full, size: 16, color: textMain),
+                            Expanded(child: Divider(color: inputBorder)),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16.0 * scale),
+                              child: Text(
+                                "หรือเข้าสู่ระบบด้วย",
+                                style: GoogleFonts.prompt(
+                                  fontSize: 12 * scale,
+                                  fontWeight: FontWeight.w400,
+                                  color: const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ),
+                            Expanded(child: Divider(color: inputBorder)),
                           ],
                         ),
+                        SizedBox(height: (isCompactHeight ? 18 : 24) * scale),
+                        // Social Buttons — ปุ่ม Google ทำงานจริงแล้ว
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildSocialButton(
+                                label: "Google",
+                                svgIcon: _googleSvg,
+                                isLoading: _isGoogleLoading,
+                                onTap: _isGoogleLoading ? null : _handleGoogleLogin,
+                                scale: scale,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: (isCompactHeight ? 20 : 32) * scale),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "ยังไม่มีบัญชี?",
+                              style: GoogleFonts.prompt(
+                                fontSize: 13 * scale,
+                                color: textSub,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const SignUpScreen(),
+                                  ),
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.symmetric(horizontal: 4 * scale),
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                "สมัครสมาชิก",
+                                style: GoogleFonts.prompt(
+                                  fontSize: 13 * scale,
+                                  fontWeight: FontWeight.w700,
+                                  color: primary,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: (isCompactHeight ? 16 : 24) * scale),
                       ],
                     ),
                   ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: 96,
-                            height: 96,
-                            child: SvgPicture.string(
-                              _logoSvgString(_isDarkMode),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            "Smart Drive Guard",
-                            style: GoogleFonts.prompt(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w700,
-                              color: primary,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            "ระบบติดตามอัจฉริยะ เพื่อการขับขี่ที่ปลอดภัย",
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.prompt(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                              color: textSub,
-                            ),
-                          ),
-                          const SizedBox(height: 40),
-                          Text(
-                            "ยินดีต้อนรับกลับ",
-                            style: GoogleFonts.prompt(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w600,
-                              color: primary,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            "กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบ",
-                            style: GoogleFonts.prompt(
-                              fontSize: 14,
-                              color: textSub,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          _buildLabel("ชื่อผู้ใช้ (Username)"),
-                          const SizedBox(height: 6),
-                          _buildTextField(
-                            controller: _usernameController,
-                            hint: "username",
-                            icon: Icons.person_outline,
-                            inputType: TextInputType.text,
-                          ),
-                          const SizedBox(height: 20),
-                          _buildLabel("รหัสผ่าน"),
-                          const SizedBox(height: 6),
-                          _buildTextField(
-                            controller: _passwordController,
-                            hint: "••••••••",
-                            icon: Icons.lock_outline,
-                            isPassword: true,
-                          ),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: TextButton(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const ForgotPasswordScreen(),
-                                    ),
-                                  );
-                                },
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: Text(
-                                  "ลืมรหัสผ่าน?",
-                                  style: GoogleFonts.prompt(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: primary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              boxShadow: [
-                                BoxShadow(
-                                  color: primary.withOpacity(0.08),
-                                  offset: const Offset(0, 4),
-                                  blurRadius: 20,
-                                  spreadRadius: -2,
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: primary,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          "เข้าสู่ระบบ",
-                                          style: GoogleFonts.prompt(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Icon(Icons.arrow_forward, size: 18),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          Row(
-                            children: [
-                              Expanded(child: Divider(color: inputBorder)),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                                child: Text(
-                                  "หรือเข้าสู่ระบบด้วย",
-                                  style: GoogleFonts.prompt(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                    color: const Color(0xFF94A3B8),
-                                  ),
-                                ),
-                              ),
-                              Expanded(child: Divider(color: inputBorder)),
-                            ],
-                          ),
-                          const SizedBox(height: 24),
-                          // Social Buttons — ปุ่ม Google ทำงานจริงแล้ว
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildSocialButton(
-                                  label: "Google",
-                                  svgIcon: _googleSvg,
-                                  isLoading: _isGoogleLoading,
-                                  onTap: _isGoogleLoading ? null : _handleGoogleLogin,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 32),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "ยังไม่มีบัญชี?",
-                                style: GoogleFonts.prompt(
-                                  fontSize: 14,
-                                  color: textSub,
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const SignUpScreen(),
-                                    ),
-                                  );
-                                },
-                                style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: Text(
-                                  "สมัครสมาชิก",
-                                  style: GoogleFonts.prompt(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: primary,
-                                    decoration: TextDecoration.underline,
-                                    decorationColor: primary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 32),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ],
@@ -426,15 +416,15 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildLabel(String text) {
+  Widget _buildLabel(String text, double scale) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4.0),
+      padding: EdgeInsets.only(left: 4.0 * scale),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
           text,
           style: GoogleFonts.prompt(
-            fontSize: 14,
+            fontSize: 13 * scale,
             fontWeight: FontWeight.w500,
             color: primary,
           ),
@@ -446,6 +436,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildTextField({
     required String hint,
     required IconData icon,
+    required double scale,
     TextEditingController? controller,
     bool isPassword = false,
     TextInputType inputType = TextInputType.text,
@@ -460,19 +451,19 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: controller,
         obscureText: isPassword && _obscurePassword,
         keyboardType: inputType,
-        style: GoogleFonts.prompt(fontSize: 14, color: textMain),
+        style: GoogleFonts.prompt(fontSize: 14 * scale, color: textMain),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.prompt(color: const Color(0xFF94A3B8)),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16),
-          prefixIcon: Icon(icon, color: iconColor, size: 20),
+          contentPadding: EdgeInsets.symmetric(vertical: 14 * scale),
+          prefixIcon: Icon(icon, color: iconColor, size: 20 * scale),
           suffixIcon: isPassword
               ? IconButton(
                   icon: Icon(
                     _obscurePassword ? Icons.visibility_off : Icons.visibility,
                     color: iconColor,
-                    size: 20,
+                    size: 20 * scale,
                   ),
                   onPressed: () {
                     setState(() {
@@ -490,10 +481,11 @@ class _LoginScreenState extends State<LoginScreen> {
     required String label,
     required String svgIcon,
     required VoidCallback? onTap,
+    required double scale,
     bool isLoading = false,
   }) {
     return Container(
-      height: 48,
+      height: 46 * scale,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: inputBorder),
@@ -514,12 +506,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               else ...[
-                SvgPicture.string(svgIcon, width: 20, height: 20),
-                const SizedBox(width: 8),
+                SvgPicture.string(svgIcon, width: 20 * scale, height: 20 * scale),
+                SizedBox(width: 8 * scale),
                 Text(
                   label,
                   style: GoogleFonts.prompt(
-                    fontSize: 14,
+                    fontSize: 13 * scale,
                     fontWeight: FontWeight.w500,
                     color: const Color(0xFF475569),
                   ),

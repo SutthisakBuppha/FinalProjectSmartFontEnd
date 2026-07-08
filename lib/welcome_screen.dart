@@ -1,8 +1,8 @@
-import 'dart:async'; // 1. เพิ่ม import นี้สำหรับ Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'login_screen.dart'; // Import หน้า Login
+import 'login_screen.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -12,25 +12,23 @@ class WelcomeScreen extends StatefulWidget {
 }
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
-  // สีที่ดึงมาจาก Config ของ Tailwind ในไฟล์ HTML
-  static const Color primaryColor = Color(0xFF0F284E);
-  static const Color slate50 = Color(0xFFF8FAFC);
-  static const Color slate100 = Color(0xFFF1F5F9);
-  static const Color slate200 = Color(0xFFE2E8F0);
-  static const Color slate400 = Color(0xFF94A3B8);
-  static const Color blue50 = Color(0xFFEFF6FF);
-  static const Color blue900 = Color(0xFF1E3A8A);
+  // --- Color Palette (ปรับให้สอดคล้องกับ LoginScreen) ---
+  Color get primaryColor => const Color(0xFF0F284E);
+  Color get slate50 => const Color(0xFFF8FAFC);
+  Color get slate100 => const Color(0xFFF1F5F9);
+  Color get slate200 => const Color(0xFFE2E8F0);
+  Color get slate400 => const Color(0xFF94A3B8);
+  Color get blue50 => const Color(0xFFEFF6FF);
+  Color get blue900 => const Color(0xFF1E3A8A);
 
-  Timer? _timer; // ตัวแปรเก็บ Timer
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    // --- 2. จับเวลา 5 วินาที ด้วย Timer (ปลอดภัยกว่า Future.delayed) ---
     _timer = Timer(const Duration(seconds: 5), _navigateToLogin);
   }
 
-  // ฟังก์ชันสำหรับเปลี่ยนหน้า
   void _navigateToLogin() {
     if (mounted) {
       Navigator.pushReplacement(
@@ -42,16 +40,27 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel(); // 3. ยกเลิก Timer ถ้าปิดหน้าจอก่อนครบเวลา
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // --- Responsive Helpers (ถอดแบบมาจาก login_screen.dart) ---
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    double scale = screenWidth / 375.0;
+    scale = scale.clamp(0.85, 1.25);
+
+    final horizontalPadding = (screenWidth * 0.08).clamp(20.0, 40.0);
+    final logoBoxSize = (128 * scale).clamp(96.0, 160.0);
+    final logoSvgSize = (100 * scale).clamp(76.0, 124.0);
+    final isCompactHeight = screenHeight < 700;
+
     return Scaffold(
-      // พื้นหลัง Gradient
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -60,7 +69,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         ),
         child: Stack(
           children: [
-            // 1. Background Blobs (วงกลมเบลอๆ ด้านหลัง)
+            // Top Right Blob
             // Top Right Blob
             Positioned(
               top: -160,
@@ -72,7 +81,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   shape: BoxShape.circle,
                   color: blue50.withOpacity(0.6),
                 ),
-                child: const DecoratedBox(
+                child: DecoratedBox(
+                  // เอา const ตรงนี้ออก
                   decoration: BoxDecoration(
                     color: Colors.transparent,
                     boxShadow: [
@@ -97,7 +107,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   shape: BoxShape.circle,
                   color: slate100.withOpacity(0.6),
                 ),
-                child: const DecoratedBox(
+                child: DecoratedBox(
+                  // เอา const ตรงนี้ออกเช่นกันครับ
                   decoration: BoxDecoration(
                     color: Colors.transparent,
                     boxShadow: [
@@ -112,137 +123,116 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ),
             ),
 
-            // 2. Main Content
+            // Main Content
             SafeArea(
-              child: Column(
-                children: [
-                  // --- Status Bar (Simulated to match HTML) ---
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "9:41",
-                          style: GoogleFonts.outfit(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: primaryColor.withOpacity(0.8),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                child: Column(
+                  children: [
+                    SizedBox(height: isCompactHeight ? 12 : 24),
+
+                    const Spacer(),
+
+                    // --- Center Content (Logo & Title) ---
+                    Transform.translate(
+                      offset: Offset(0, isCompactHeight ? -12 : -30),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Logo Container
+                          SizedBox(
+                            width: logoBoxSize,
+                            height: logoBoxSize,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Glow effect behind logo
+                                Container(
+                                  width: logoBoxSize,
+                                  height: logoBoxSize,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: blue900.withOpacity(0.1),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: blue900.withOpacity(0.1),
+                                        blurRadius: 24,
+                                        spreadRadius: 5,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // SVG Logo
+                                SvgPicture.string(
+                                  _logoSvgString,
+                                  width: logoSvgSize,
+                                  height: logoSvgSize,
+                                  colorFilter: ColorFilter.mode(
+                                    primaryColor,
+                                    BlendMode.srcIn,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Row(
-                          children: [
-                            _buildStatusIcon(Icons.signal_cellular_alt),
-                            const SizedBox(width: 6),
-                            _buildStatusIcon(Icons.wifi),
-                            const SizedBox(width: 6),
-                            _buildStatusIcon(Icons.battery_full),
-                          ],
-                        ),
-                      ],
+                          SizedBox(height: (isCompactHeight ? 20 : 32) * scale),
+
+                          // Text Content
+                          Text(
+                            "Smart Drive Guard",
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.outfit(
+                              fontSize: (32 * scale).clamp(26.0, 38.0),
+                              fontWeight: FontWeight.w700,
+                              color: primaryColor,
+                              height: 1.1,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          SizedBox(height: 8 * scale),
+                          Text(
+                            "สำหรับผู้ขับรถ",
+                            style: GoogleFonts.prompt(
+                              // เปลี่ยนเป็น Prompt เพื่อให้เข้ากับฟอนต์ภาษาไทยของหน้า Login
+                              fontSize: 13 * scale,
+                              fontWeight: FontWeight.w500,
+                              color: primaryColor.withOpacity(0.7),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-                  const Spacer(), // ดันเนื้อหาตรงกลาง
+                    const Spacer(),
 
-                  // --- Center Content (Logo & Title) ---
-                  Transform.translate(
-                    offset: const Offset(0, -30),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    // --- Footer (Spinner & Powered By) ---
+                    Column(
                       children: [
-                        // Logo Container
                         SizedBox(
-                          width: 128,
-                          height: 128,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Glow effect behind logo
-                              Container(
-                                width: 128,
-                                height: 128,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: blue900.withOpacity(0.1),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: blue900.withOpacity(0.1),
-                                      blurRadius: 24,
-                                      spreadRadius: 5,
-                                    )
-                                  ],
-                                ),
-                              ),
-                              // SVG Logo
-                              SvgPicture.string(
-                                _logoSvgString,
-                                width: 100,
-                                height: 100,
-                                colorFilter: const ColorFilter.mode(
-                                  primaryColor,
-                                  BlendMode.srcIn,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 32), // mb-8
-                        
-                        // Text Content
-                        Text(
-                          "Smart Drive Guard",
-                          style: GoogleFonts.outfit(
-                            fontSize: 36, // ~text-4xl
-                            fontWeight: FontWeight.w700,
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
                             color: primaryColor,
-                            height: 1.1,
-                            letterSpacing: -0.5,
+                            backgroundColor: slate200,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        SizedBox(height: 16 * scale),
                         Text(
-                          "สำหรับผู้ขับรถ",
+                          "POWERED BY AI",
                           style: GoogleFonts.outfit(
-                            fontSize: 14, // text-sm
-                            fontWeight: FontWeight.w500,
-                            color: primaryColor.withOpacity(0.7),
-                            letterSpacing: 0.5,
+                            fontSize: 10 * scale,
+                            fontWeight: FontWeight.w700,
+                            color: slate400,
+                            letterSpacing: 2.5,
                           ),
                         ),
                       ],
                     ),
-                  ),
-
-                  const Spacer(), // ดัน Footer ลงล่าง
-
-                  // --- Footer (Spinner & Powered By) ---
-                  Column(
-                    children: [
-                      // Spinner (Custom CircularProgressIndicator)
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: primaryColor,
-                          backgroundColor: slate200,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        "POWERED BY AI",
-                        style: GoogleFonts.outfit(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: slate400,
-                          letterSpacing: 2.5, // tracking-[0.25em]
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 48), // pb-12
-                ],
+                    SizedBox(height: (isCompactHeight ? 28 : 48) * scale),
+                  ],
+                ),
               ),
             ),
           ],
@@ -251,16 +241,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  // Helper สำหรับสร้างไอคอน Status bar
-  Widget _buildStatusIcon(IconData icon) {
-    return Icon(
-      icon,
-      size: 16, // text-sm
-      color: primaryColor.withOpacity(0.8),
-    );
-  }
-
-  // SVG String จาก HTML
   static const String _logoSvgString = '''
   <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
     <path d="M50 10C27.9086 10 10 27.9086 10 50C10 72.0914 27.9086 90 50 90C72.0914 90 90 72.0914 90 50C90 27.9086 72.0914 10 50 10ZM50 82C32.3269 82 18 67.6731 18 50C18 32.3269 32.3269 18 50 18C67.6731 18 82 32.3269 82 50C82 67.6731 67.6731 82 50 82Z" fill="currentColor"/>
