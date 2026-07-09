@@ -8,7 +8,7 @@ import 'profile_screen.dart';
 import 'device_registration_screen.dart';
 import 'risk_summary_screen.dart';
 // Import ไฟล์ Navbar ของคุณ
-import 'custom_bottom_nav_bar.dart'; 
+import 'menu/custom_bottom_nav_bar.dart'; 
 
 class MainLayout extends StatefulWidget {
   // 1. เพิ่มตัวแปร initialIndex รับค่าเริ่มต้น

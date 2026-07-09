@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Import Navbar ที่คุณมีอยู่แล้ว
-import 'custom_bottom_nav_bar.dart';
-// Import หน้า Detail เพื่อให้ลิงก์ไปหาได้
+import 'menu/custom_bottom_nav_bar.dart';
 import 'history_detail_screen.dart';
-// Import ApiService เพื่อเชื่อมต่อข้อมูลจริง
 import '/services/api_service.dart';
 
 class HistoryScreen extends StatefulWidget {

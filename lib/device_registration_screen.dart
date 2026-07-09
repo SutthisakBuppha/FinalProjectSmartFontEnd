@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 // --- Import ไฟล์ที่เกี่ยวข้อง ---
 import 'devices_screen.dart';
-import 'custom_bottom_nav_bar.dart';
+import 'menu/custom_bottom_nav_bar.dart';
 import 'WifiProvisioningScreen.dart'; // ไปหน้าต่อ Wi-Fi (BLE)
 import '/services/api_service.dart'; // ดึง ApiService มาใช้งาน
 

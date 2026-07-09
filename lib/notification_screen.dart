@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// Import หน้า AlertScreen ที่สร้างไว้
 import 'alert_screen.dart';
-// Import Navbar เดิมของคุณ
-import 'custom_bottom_nav_bar.dart';
+import 'menu/custom_bottom_nav_bar.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});

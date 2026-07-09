@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'custom_bottom_nav_bar.dart'; // เรียกใช้ Navbar ของคุณ
+import 'menu/custom_bottom_nav_bar.dart'; // เรียกใช้ Navbar ของคุณ
 
 class RiskTrendsScreen extends StatefulWidget {
   const RiskTrendsScreen({super.key});

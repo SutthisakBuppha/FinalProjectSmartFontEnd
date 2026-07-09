@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'devices_screen.dart';
 import '/services/api_service.dart';
+import '/services/media_upload_service.dart';
 
 class DeviceCustomizationScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData;
@@ -25,10 +26,18 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   bool _isLoadingSetting = true;
   bool _isSavingSetting = false;
 
+  // ---- ส่วนอัปโหลดไฟล์เสียง (เสียงที่ผู้ใช้อัปโหลดเอง เพิ่มเป็นตัวเลือกควบคู่กับเสียงสำเร็จรูป) ----
+  List<UploadedMedia> _audioTones = [];
+  bool _isLoadingAudio = true;
+  bool _isUploadingAudio = false;
+
+  String get _deviceId => widget.deviceData['device_id'].toString();
+
   @override
   void initState() {
     super.initState();
     _fetchDeviceConfig();
+    _fetchAudioTones();
   }
 
   Future<void> _fetchDeviceConfig() async {
@@ -42,11 +51,28 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         });
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ล้มเหลวในการอ่านการตั้งค่าปัจจุบัน: $e')),
       );
     } finally {
-      setState(() => _isLoadingSetting = false);
+      if (mounted) setState(() => _isLoadingSetting = false);
+    }
+  }
+
+  Future<void> _fetchAudioTones() async {
+    setState(() => _isLoadingAudio = true);
+    try {
+      final list = await MediaUploadService.instance.fetchDeviceMedia(_deviceId);
+      // กรองเอาเฉพาะไฟล์เสียงจากรายการสื่อทั้งหมดของอุปกรณ์
+      if (mounted) {
+        setState(() => _audioTones = list.where((m) => m.type == 'audio').toList());
+      }
+    } catch (e) {
+      // ไม่ต้องโชว์ error รบกวนผู้ใช้ตอนโหลดครั้งแรก แค่ log ไว้พอ
+      debugPrint('โหลดรายการไฟล์เสียงไม่สำเร็จ: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingAudio = false);
     }
   }
 
@@ -70,9 +96,39 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
       }
     } catch (e) {
       setState(() => _isSavingSetting = false);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('ไม่สามารถบันทึกได้: $e')),
       );
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // เลือกไฟล์เสียงจากเครื่อง -> อัปโหลด -> เพิ่มเป็นตัวเลือกเสียงเพิ่มเติม
+  // หมายเหตุ: ปรับชื่อเมธอด pickAndUploadAudio ให้ตรงกับที่มีจริงใน
+  // MediaUploadService ของโปรเจกต์คุณ (ยังไม่เห็นไฟล์ media_upload_service.dart
+  // ตอนแก้ไขนี้ จึงอ้างอิงชื่อเมธอดตามรูปแบบเดียวกับ pickCompressAndUploadImage/Video เดิม)
+  // ---------------------------------------------------------------------
+  Future<void> _handleUploadAudio() async {
+    setState(() => _isUploadingAudio = true);
+    try {
+      final result = await MediaUploadService.instance.pickAndUploadAudio(
+        deviceId: _deviceId,
+      );
+      if (result != null) {
+        setState(() => _audioTones.insert(0, result));
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('อัปโหลดไฟล์เสียงสำเร็จแล้ว')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('อัปโหลดไฟล์เสียงไม่สำเร็จ: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isUploadingAudio = false);
     }
   }
 
@@ -184,6 +240,36 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
             _buildToneOption('เสียงคลาสสิก (Classic)'),
             _buildToneOption('เสียงสัญญาณสั้น (Beep)'),
             _buildToneOption('เสียงแจ้งเตือนไซเรน (Siren)'),
+
+            // ── เสียงที่ผู้ใช้อัปโหลดเอง (เพิ่มเติมจากเสียงสำเร็จรูปด้านบน) ──
+            if (_isLoadingAudio) ...[
+              const SizedBox(height: 12),
+              const Center(
+                child: SizedBox(
+                  width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
+                ),
+              ),
+            ] else
+              ..._audioTones.map((audio) => _buildToneOption(audio.fileName)),
+
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _isUploadingAudio ? null : _handleUploadAudio,
+                icon: _isUploadingAudio
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
+                      )
+                    : const Icon(Icons.audiotrack_outlined, color: primaryColor, size: 20),
+                label: Text(
+                  "อัปโหลดไฟล์เสียงใหม่",
+                  style: GoogleFonts.notoSansThai(color: primaryColor, fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ),
           ]
         ],
       ),
@@ -203,4 +289,5 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
       },
     );
   }
+
 }
