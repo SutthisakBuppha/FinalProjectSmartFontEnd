@@ -6,8 +6,8 @@ class GoogleAuthService {
   static final GoogleAuthService instance = GoogleAuthService._();
 
   static const String _webClientId =
-      '813400070963-t55qlrbag595qe51rmrq95m5k2sbn1om.apps.googleusercontent.com';
-      // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com';
+      '813400070963-t55qlrbag595qe51rmrq95m5k2sbn1om.apps.googleusercontent.com'; //web app
+      // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com'; MobileApp
 
   GoogleSignIn? _googleSignInInstance;
   
