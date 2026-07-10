@@ -7,17 +7,22 @@ class GoogleAuthService {
 
   static const String _webClientId =
       '813400070963-t55qlrbag595qe51rmrq95m5k2sbn1om.apps.googleusercontent.com';
+      // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com';
 
   GoogleSignIn? _googleSignInInstance;
+  
   GoogleSignIn get _googleSignIn {
     return _googleSignInInstance ??= GoogleSignIn(
       scopes: ['email', 'profile'],
       clientId: kIsWeb ? _webClientId : null,
-      // ✅ serverClientId ใช้ได้เฉพาะ Mobile เท่านั้น
       serverClientId: kIsWeb ? null : _webClientId,
     );
   }
 
+  /// ✨ เพิ่มสิ่งนี้: ใช้สำหรับดักฟังการเปลี่ยนแปลงสิทธิ์ (เช่น เมื่อกดปุ่ม Sign-In บน Web สำเร็จ)
+  Stream<GoogleSignInAccount?> get googleSignInEvents => _googleSignIn.onCurrentUserChanged;
+
+  /// ฟังก์ชันสำหรับ Mobile (ดั้งเดิม) หรือการล็อกอินเบื้องหลัง
   Future<String?> signInAndGetIdToken() async {
     final account = await _googleSignIn.signIn().timeout(
       const Duration(seconds: 15),
@@ -31,7 +36,6 @@ class GoogleAuthService {
     );
 
     final token = auth.idToken ?? auth.accessToken;
-
     if (token == null) throw Exception('ไม่สามารถรับ Token ได้');
     return token;
   }

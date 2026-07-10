@@ -276,17 +276,24 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     );
   }
 
+  // แก้ไข: ห่อ RadioListTile ด้วย Material(color: Colors.transparent, ...)
+  // เพื่อให้พื้นหลัง/ink splash ของ RadioListTile วาดผลได้ถูกต้อง
+  // ไม่ถูก DecoratedBox (Container สีขาวใน _buildSoundPreferences) บังไว้
+  // แก้ปัญหา Flutter assertion: "ListTile background color or ink splashes may be invisible."
   Widget _buildToneOption(String title) {
     final isSelected = _activeTone == title;
-    return RadioListTile<String>(
-      title: Text(title, style: GoogleFonts.notoSansThai(fontSize: 14)),
-      value: title,
-      groupValue: _activeTone,
-      activeColor: primaryColor,
-      contentPadding: EdgeInsets.zero,
-      onChanged: (val) {
-        if (val != null) setState(() => _activeTone = val);
-      },
+    return Material(
+      color: Colors.transparent,
+      child: RadioListTile<String>(
+        title: Text(title, style: GoogleFonts.notoSansThai(fontSize: 14)),
+        value: title,
+        groupValue: _activeTone,
+        activeColor: primaryColor,
+        contentPadding: EdgeInsets.zero,
+        onChanged: (val) {
+          if (val != null) setState(() => _activeTone = val);
+        },
+      ),
     );
   }
 

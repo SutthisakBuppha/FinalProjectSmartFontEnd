@@ -85,12 +85,22 @@ class MediaUploadService {
 
   /// เปิดตัวเลือกไฟล์ของเครื่อง เพื่อเลือกไฟล์เสียง (mp3, wav, m4a, aac ฯลฯ)
   /// ใช้ file_picker เพราะ image_picker ไม่รองรับไฟล์เสียง
-  Future<File?> pickAudio() async {
+  ///
+  /// หมายเหตุสำคัญ (แก้บั๊กเว็บ): บน Flutter Web ไม่มี filesystem path ให้ใช้
+  /// (result.files.single.path จะเป็น null เสมอ) การเรียก File(path!) บนเว็บ
+  /// จะได้ error "On web `path` is unavailable... You should access `bytes`
+  /// property instead" ดังนั้นฟังก์ชันนี้จึงคืนค่าเป็น PlatformFile แทน File
+  /// เพื่อให้ใช้ได้ทั้งบนมือถือ (มี path) และบนเว็บ (มี bytes)
+  ///
+  /// ต้องส่ง withData: true เพื่อบังคับให้ file_picker โหลด bytes มาด้วย
+  /// (จำเป็นบนเว็บ และช่วยให้ใช้ path ร่วมกับ bytes ได้บนมือถือด้วยถ้าต้องการ)
+  Future<PlatformFile?> pickAudio() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
+      withData: true, // สำคัญ: บังคับให้มี bytes เสมอ ใช้ได้ทั้งเว็บและมือถือ
     );
-    if (result == null || result.files.single.path == null) return null;
-    return File(result.files.single.path!);
+    if (result == null || result.files.isEmpty) return null;
+    return result.files.single;
   }
 
   // =====================================================================
@@ -147,11 +157,31 @@ class MediaUploadService {
   // 3) อัปโหลดไฟล์ขึ้น backend
   // =====================================================================
 
-  /// อัปโหลดไฟล์ (รูป/วิดีโอที่บีบอัดแล้ว หรือไฟล์เสียง) ไปที่ backend
-  /// backend จะเก็บไฟล์ใน storage/app/public/devices/{device_id}/{type}s
-  /// และบันทึก file_name / url ลงตาราง device_media
+  /// อัปโหลดไฟล์ (รูป/วิดีโอที่บีบอัดแล้ว) ไปที่ backend โดยรับเป็น File
+  /// ใช้ได้เฉพาะแพลตฟอร์มที่มี filesystem path จริง (Android/iOS/Desktop)
+  /// ห้ามใช้กับ Flutter Web เพราะ File ต้องการ path ซึ่งบนเว็บไม่มี
   Future<UploadedMedia> uploadFile({
     required File file,
+    required String deviceId,
+    required String type, // 'image', 'video' หรือ 'audio'
+  }) async {
+    final fileName = p.basename(file.path);
+    final bytes = await file.readAsBytes();
+    return uploadBytes(
+      bytes: bytes,
+      fileName: fileName,
+      deviceId: deviceId,
+      type: type,
+    );
+  }
+
+  /// อัปโหลดไฟล์จาก raw bytes ไปที่ backend
+  /// ใช้ได้ทุกแพลตฟอร์ม (รวมถึง Flutter Web ที่ไม่มี filesystem path)
+  /// backend จะเก็บไฟล์ใน storage/app/public/devices/{device_id}/{type}s
+  /// และบันทึก file_name / url ลงตาราง device_media
+  Future<UploadedMedia> uploadBytes({
+    required List<int> bytes,
+    required String fileName,
     required String deviceId,
     required String type, // 'image', 'video' หรือ 'audio'
   }) async {
@@ -161,9 +191,8 @@ class MediaUploadService {
     request.fields['device_id'] = deviceId;
     request.fields['type'] = type;
 
-    final fileName = p.basename(file.path);
     request.files.add(
-      await http.MultipartFile.fromPath('file', file.path, filename: fileName),
+      http.MultipartFile.fromBytes('file', bytes, filename: fileName),
     );
 
     final streamedResponse = await request.send();
@@ -217,12 +246,26 @@ class MediaUploadService {
 
   /// เลือกไฟล์เสียงจากเครื่อง -> อัปโหลดขึ้น backend ทันที (ไม่มีการบีบอัด
   /// เพราะไฟล์เสียง preset ทั่วไปมีขนาดเล็กอยู่แล้ว)
+  ///
+  /// แก้บั๊กเว็บ: ใช้ PlatformFile.bytes แทน File(path) เพราะบน Flutter Web
+  /// ไม่มี filesystem path ให้เข้าถึง (path จะเป็น null เสมอ) การอัปโหลดจึง
+  /// ใช้ uploadBytes() ซึ่งทำงานได้ทั้งบนเว็บและมือถือ
   Future<UploadedMedia?> pickAndUploadAudio({
     required String deviceId,
   }) async {
-    final file = await pickAudio();
-    if (file == null) return null;
+    final platformFile = await pickAudio();
+    if (platformFile == null) return null;
 
-    return uploadFile(file: file, deviceId: deviceId, type: 'audio');
+    final bytes = platformFile.bytes;
+    if (bytes == null) {
+      throw Exception('ไม่พบข้อมูลไฟล์เสียง (bytes เป็น null) กรุณาลองเลือกไฟล์ใหม่อีกครั้ง');
+    }
+
+    return uploadBytes(
+      bytes: bytes,
+      fileName: platformFile.name,
+      deviceId: deviceId,
+      type: 'audio',
+    );
   }
 }
