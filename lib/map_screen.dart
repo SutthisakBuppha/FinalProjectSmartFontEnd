@@ -1,16 +1,63 @@
+// map_screen.dart
+// ─────────────────────────────────────────────────────────────────────────
+// หน้า Map แบบเชื่อม GPS จริง (ต่อจากไฟล์คู่มือ gps_map_integration_guide.md
+// ทำต่อจากข้อ 3 เป็นต้นไป: เช็ค GPS -> ขอ permission -> ดึงตำแหน่งปัจจุบัน ->
+// ติดตามตำแหน่ง real-time -> หาปั๊ม/จุดพักรถใกล้เคียง (Overpass API) ->
+// คำนวณเส้นทางนำทาง (OSRM) -> เรียงตามระยะทางใกล้สุด
+//
+// ⚠️ ต้องติดตั้ง package เพิ่มจากเดิม (นอกจาก geolocator ที่ทำไปแล้วในข้อ 1-2):
+//   flutter pub add http
+//
+// และตรวจสอบว่าได้ตั้งค่า permission ตามข้อ 2 แล้ว:
+//   Android -> android/app/src/main/AndroidManifest.xml
+//     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+//     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+//   iOS -> ios/Runner/Info.plist
+//     <key>NSLocationWhenInUseUsageDescription</key>
+//     <string>แอปต้องใช้ตำแหน่งของคุณเพื่อค้นหาจุดพักรถที่ใกล้ที่สุด</string>
+// ─────────────────────────────────────────────────────────────────────────
+
+import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-// import 'dart:math' as math; 
+import 'package:http/http.dart' as http;
 
 // --- External Packages ---
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-// import 'package:url_launcher/url_launcher.dart'; // เปิดบรรทัดนี้ถ้าลง package แล้วเพื่อให้กดลิงก์เครดิตได้
+import 'package:geolocator/geolocator.dart';
+// import 'package:url_launcher/url_launcher.dart'; // เปิดถ้าลง package แล้วเพื่อให้กดลิงก์เครดิตได้
 
 // --- Internal Imports ---
 import 'menu/custom_bottom_nav_bar.dart';
 import 'main_layout.dart';
+
+/// โมเดลข้อมูลสถานที่ใกล้เคียง (ปั๊มน้ำมัน / จุดพักรถ) ที่ได้จาก Overpass API
+class NearbyPlace {
+  final String id;
+  final String name;
+  final LatLng location;
+  final bool isGasStation; // true = ปั๊มน้ำมัน, false = จุดพักรถ
+  double distanceMeters;
+
+  NearbyPlace({
+    required this.id,
+    required this.name,
+    required this.location,
+    required this.isGasStation,
+    this.distanceMeters = 0,
+  });
+
+  String get distanceLabel {
+    if (distanceMeters < 1000) {
+      return '${distanceMeters.toStringAsFixed(0)} ม.';
+    }
+    return '${(distanceMeters / 1000).toStringAsFixed(1)} กม.';
+  }
+}
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -27,13 +74,28 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   static const Color cardDark = Color(0xFF1E293B);
   static const Color textDark = Color(0xFFF8FAFC);
   static const Color subtextDark = Color(0xFF94A3B8);
+  static const Color dangerRed = Color(0xFFDC2626);
 
   late AnimationController _pulseController;
+  final MapController _mapController = MapController();
 
-  // พิกัดตัวอย่าง (อนุสาวรีย์ชัยสมรภูมิ)
-  final LatLng _center = const LatLng(13.765, 100.538);
-  final LatLng _shellStation = const LatLng(13.768, 100.542);
-  final LatLng _restArea = const LatLng(13.760, 100.532);
+  // ── GPS / ตำแหน่งปัจจุบัน ──────────────────────────────────────────────
+  LatLng? _currentLatLng;
+  StreamSubscription<Position>? _positionStream;
+  bool _isResolvingLocation = true; // กำลังเช็ค GPS / ขอ permission / ดึงตำแหน่งแรก
+  String? _locationError; // ข้อความ error ถ้าเปิด GPS ไม่ได้ / โดนปฏิเสธสิทธิ์
+
+  // ── สถานที่ใกล้เคียง ────────────────────────────────────────────────────
+  List<NearbyPlace> _nearbyPlaces = [];
+  bool _isLoadingPlaces = false;
+  String? _placesError;
+
+  // ── เส้นทางนำทาง ─────────────────────────────────────────────────────
+  List<LatLng> _routePoints = [];
+  NearbyPlace? _selectedDestination;
+  bool _isLoadingRoute = false;
+  double? _routeDistanceMeters;
+  double? _routeDurationSeconds;
 
   @override
   void initState() {
@@ -42,25 +104,349 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
+
+    _initLocationFlow(); // ← เริ่ม flow ทั้งหมดตั้งแต่เช็ค GPS จนถึงหาสถานที่ใกล้เคียง
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    _positionStream?.cancel();
     super.dispose();
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ข้อ 3-6: เช็ค GPS -> ขอ permission -> ดึงตำแหน่งปัจจุบัน -> ติดตาม real-time
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Future<void> _initLocationFlow() async {
+    setState(() {
+      _isResolvingLocation = true;
+      _locationError = null;
+    });
+
+    // ── ข้อ 3: เช็คว่า GPS (Location Service) เปิดอยู่ไหม ──────────────
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() {
+        _isResolvingLocation = false;
+        _locationError = 'กรุณาเปิดสัญญาณ GPS ของเครื่องก่อนใช้งานแผนที่';
+      });
+      return;
+    }
+
+    // ── ข้อ 4: ขอสิทธิ์การเข้าถึงตำแหน่ง ─────────────────────────────
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          _isResolvingLocation = false;
+          _locationError = 'แอปต้องการสิทธิ์เข้าถึงตำแหน่งเพื่อค้นหาจุดพักรถที่ใกล้ที่สุด';
+        });
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        _isResolvingLocation = false;
+        _locationError =
+            'สิทธิ์เข้าถึงตำแหน่งถูกปิดถาวร กรุณาไปเปิดในตั้งค่าแอปด้วยตนเอง';
+      });
+      return;
+    }
+
+    // ── ข้อ 5: ดึงตำแหน่งปัจจุบัน (ใช้แทนค่า hardcode เดิม) ────────────
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      final latLng = LatLng(position.latitude, position.longitude);
+
+      if (!mounted) return;
+      setState(() {
+        _currentLatLng = latLng;
+        _isResolvingLocation = false;
+      });
+
+      // เลื่อนกล้องแผนที่ไปที่ตำแหน่งปัจจุบันทันที
+      _mapController.move(latLng, 15.0);
+
+      // ── ข้อ 7: ค้นหาปั๊ม/จุดพักรถใกล้เคียงจากตำแหน่งจริง ─────────────
+      _fetchNearbyPlaces(latLng);
+
+      // ── ข้อ 6: เริ่มติดตามตำแหน่งแบบ real-time ───────────────────────
+      _startLiveTracking();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isResolvingLocation = false;
+        _locationError = 'ไม่สามารถดึงตำแหน่งปัจจุบันได้: $e';
+      });
+    }
+  }
+
+  void _startLiveTracking() {
+    _positionStream?.cancel();
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // อัปเดตทุกๆ 10 เมตรที่เคลื่อนที่
+      ),
+    ).listen((Position pos) {
+      if (!mounted) return;
+      final updated = LatLng(pos.latitude, pos.longitude);
+      setState(() {
+        _currentLatLng = updated;
+        // อัปเดตระยะทางของสถานที่ใกล้เคียงตามตำแหน่งใหม่ทุกครั้ง
+        for (final place in _nearbyPlaces) {
+          place.distanceMeters = Geolocator.distanceBetween(
+            updated.latitude,
+            updated.longitude,
+            place.location.latitude,
+            place.location.longitude,
+          );
+        }
+        _nearbyPlaces.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+      });
+    }, onError: (_) {
+      // ไม่ต้อง block UI ถ้า stream error ระหว่างทาง แค่เงียบไว้
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ข้อ 7: หาปั๊ม/จุดพักรถใกล้เคียงจริง ผ่าน Overpass API (OpenStreetMap)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Future<void> _fetchNearbyPlaces(LatLng center, {double radiusMeters = 5000}) async {
+    setState(() {
+      _isLoadingPlaces = true;
+      _placesError = null;
+    });
+
+    final query = '''
+      [out:json][timeout:25];
+      (
+        node["amenity"="fuel"](around:$radiusMeters,${center.latitude},${center.longitude});
+        node["highway"="rest_area"](around:$radiusMeters,${center.latitude},${center.longitude});
+        node["highway"="services"](around:$radiusMeters,${center.latitude},${center.longitude});
+      );
+      out body;
+    ''';
+
+    final url = Uri.parse(
+      'https://overpass-api.de/api/interpreter?data=${Uri.encodeComponent(query)}',
+    );
+
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        throw Exception('เซิร์ฟเวอร์แผนที่ตอบกลับผิดพลาด (${response.statusCode})');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final elements = (data['elements'] as List<dynamic>? ?? []);
+
+      final places = elements.map((el) {
+        final tags = (el['tags'] as Map<String, dynamic>? ?? {});
+        final isGas = tags['amenity'] == 'fuel';
+        final name = tags['name'] as String? ?? (isGas ? 'ปั๊มน้ำมัน' : 'จุดพักรถ');
+
+        final loc = LatLng(
+          (el['lat'] as num).toDouble(),
+          (el['lon'] as num).toDouble(),
+        );
+
+        return NearbyPlace(
+          id: el['id'].toString(),
+          name: name,
+          location: loc,
+          isGasStation: isGas,
+          distanceMeters: Geolocator.distanceBetween(
+            center.latitude,
+            center.longitude,
+            loc.latitude,
+            loc.longitude,
+          ),
+        );
+      }).toList();
+
+      // ── ข้อ 9: เรียงลำดับตามระยะทางใกล้สุดก่อน ──────────────────────
+      places.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+
+      if (!mounted) return;
+      setState(() {
+        _nearbyPlaces = places.take(20).toList(); // เอามาแสดง 20 อันดับแรกพอ
+        _isLoadingPlaces = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingPlaces = false;
+        _placesError = 'ค้นหาสถานที่ใกล้เคียงไม่สำเร็จ: $e';
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ข้อ 8: คำนวณเส้นทางนำทางด้วย OSRM (ฟรี) แล้ววาดเส้น Polyline บนแผนที่
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Future<void> _navigateTo(NearbyPlace place) async {
+    if (_currentLatLng == null) return;
+
+    setState(() {
+      _isLoadingRoute = true;
+      _selectedDestination = place;
+      _routePoints = [];
+      _routeDistanceMeters = null;
+      _routeDurationSeconds = null;
+    });
+
+    final start = _currentLatLng!;
+    final end = place.location;
+
+    final url = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/'
+      '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
+      '?overview=full&geometries=geojson',
+    );
+
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode != 200) {
+        throw Exception('คำนวณเส้นทางไม่สำเร็จ (${response.statusCode})');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final routes = data['routes'] as List<dynamic>?;
+
+      if (routes == null || routes.isEmpty) {
+        throw Exception('ไม่พบเส้นทางไปยังจุดหมายนี้');
+      }
+
+      final route = routes.first as Map<String, dynamic>;
+      final coords = (route['geometry']['coordinates'] as List<dynamic>);
+
+      final points = coords
+          .map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+          .toList();
+
+      if (!mounted) return;
+      setState(() {
+        _routePoints = points;
+        _routeDistanceMeters = (route['distance'] as num).toDouble();
+        _routeDurationSeconds = (route['duration'] as num).toDouble();
+        _isLoadingRoute = false;
+      });
+
+      // ปรับกล้องให้เห็นทั้งเส้นทาง
+      if (points.isNotEmpty) {
+        final bounds = LatLngBounds.fromPoints(points);
+        _mapController.fitCamera(
+          CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(60)),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingRoute = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('นำทางไม่สำเร็จ: $e')),
+      );
+    }
+  }
+
+  void _clearRoute() {
+    setState(() {
+      _routePoints = [];
+      _selectedDestination = null;
+      _routeDistanceMeters = null;
+      _routeDurationSeconds = null;
+    });
+  }
+
+  Future<void> _recenterToCurrentLocation() async {
+    if (_currentLatLng == null) return;
+    _mapController.move(_currentLatLng!, 16.0);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI
+  // ═══════════════════════════════════════════════════════════════════════
+
   @override
   Widget build(BuildContext context) {
+    // กำลังเช็ค GPS / ขอ permission / ดึงตำแหน่งครั้งแรก
+    if (_isResolvingLocation) {
+      return Scaffold(
+        backgroundColor: backgroundDark,
+        body: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: accent),
+              SizedBox(height: 16),
+              Text('กำลังค้นหาตำแหน่งของคุณ...', style: TextStyle(color: subtextDark)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // เปิด GPS ไม่ได้ / โดนปฏิเสธ permission -> แสดงหน้าขอให้แก้ไขก่อน
+    if (_locationError != null) {
+      return Scaffold(
+        backgroundColor: backgroundDark,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.location_off_rounded, color: dangerRed, size: 56),
+                const SizedBox(height: 16),
+                Text(
+                  _locationError!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(color: textDark, fontSize: 15),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _initLocationFlow,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('ลองอีกครั้ง'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final center = _currentLatLng!;
+
     return Scaffold(
       backgroundColor: backgroundDark,
-      extendBody: true, 
+      extendBody: true,
       body: Stack(
         children: [
-          // --- 1. Real Map Layer (แก้ไขส่วนนี้) ---
+          // --- 1. Real Map Layer ---
           FlutterMap(
+            mapController: _mapController,
             options: MapOptions(
-              initialCenter: _center,
+              initialCenter: center,
               initialZoom: 15.0,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
@@ -69,58 +455,61 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             children: [
               // 1.1 Tile Layer (OpenStreetMap Standard)
               TileLayer(
-                // URL มาตรฐานของ OpenStreetMap
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.savedriveai.app', // ควรใส่เพื่อป้องกันการโดนบล็อก
+                userAgentPackageName: 'com.savedriveai.app',
               ),
 
-              // 1.2 Marker Layer
+              // 1.2 เส้นทางนำทาง (ถ้ามี)
+              if (_routePoints.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints,
+                      strokeWidth: 5,
+                      color: accent,
+                    ),
+                  ],
+                ),
+
+              // 1.3 Marker Layer
               MarkerLayer(
                 markers: [
-                  // Current Location
+                  // ตำแหน่งปัจจุบัน (จาก GPS จริง)
                   Marker(
-                    point: _center,
+                    point: center,
                     width: 120,
                     height: 120,
                     child: _buildCurrentLocationPin(),
                   ),
 
-                  // Shell Station
-                  Marker(
-                    point: _shellStation,
-                    width: 60,
-                    height: 80,
-                    alignment: Alignment.topCenter,
-                    child: _buildMapMarker(
-                      icon: Icons.local_gas_station_rounded,
-                      label: "ปั๊มเชลล์",
-                      isGas: true,
-                    ),
-                  ),
-
-                  // Rest Area
-                  Marker(
-                    point: _restArea,
-                    width: 60,
-                    height: 80,
-                    alignment: Alignment.topCenter,
-                    child: _buildMapMarker(
-                      icon: Icons.chair_rounded,
-                      label: "จุดพักรถ A",
-                      isGas: false,
+                  // สถานที่ใกล้เคียงทั้งหมดที่ดึงมาจาก Overpass API
+                  ..._nearbyPlaces.map(
+                    (place) => Marker(
+                      point: place.location,
+                      width: 60,
+                      height: 80,
+                      alignment: Alignment.topCenter,
+                      child: GestureDetector(
+                        onTap: () => _navigateTo(place),
+                        child: _buildMapMarker(
+                          icon: place.isGasStation
+                              ? Icons.local_gas_station_rounded
+                              : Icons.chair_rounded,
+                          label: place.name,
+                          isGas: place.isGasStation,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
 
-              // 1.3 Attribution (เครดิต OSM - จำเป็นต้องมี)
+              // 1.4 Attribution (เครดิต OSM - จำเป็นต้องมี)
               RichAttributionWidget(
                 attributions: [
                   TextSourceAttribution(
                     'OpenStreetMap contributors',
-                    // ใส่ onTap: null เพื่อป้องกัน error หากยังไม่ได้ลง url_launcher
-                    // ถ้าลงแล้วให้ใช้: onTap: () => launchUrl(Uri.parse('https://openstreetmap.org/copyright')),
-                    onTap: null, 
+                    onTap: null,
                   ),
                 ],
               ),
@@ -132,6 +521,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             child: Column(
               children: [
                 _buildHeader(),
+                if (_selectedDestination != null) _buildActiveRouteBanner(),
               ],
             ),
           ),
@@ -142,16 +532,16 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             right: 16,
             child: Column(
               children: [
-                _buildFab(Icons.layers_rounded),
+                _buildFab(Icons.layers_rounded, onTap: () {}),
                 const SizedBox(height: 12),
-                _buildFab(Icons.my_location_rounded),
+                _buildFab(Icons.my_location_rounded, onTap: _recenterToCurrentLocation),
               ],
             ),
           ),
 
           // --- 4. Bottom Sheet (Nearest Locations) ---
           Positioned(
-            bottom: 85, 
+            bottom: 85,
             left: 0,
             right: 0,
             child: _buildBottomSheet(),
@@ -163,12 +553,12 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             left: 0,
             right: 0,
             child: CustomBottomNavBar(
-              currentIndex: -1, 
+              currentIndex: -1,
               onTap: (index) {
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const MainLayout(), 
+                    builder: (context) => const MainLayout(),
                   ),
                   (route) => false,
                 );
@@ -206,8 +596,8 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                "ค้นหาจุดพักรถ...", 
-                style: GoogleFonts.inter( 
+                _isLoadingPlaces ? "กำลังค้นหาจุดพักรถ..." : "ค้นหาจุดพักรถ...",
+                style: GoogleFonts.inter(
                   color: subtextDark,
                   fontSize: 14,
                 ),
@@ -229,19 +619,77 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _buildFab(IconData icon) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: cardDark,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-        boxShadow: const [
-          BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 2)),
-        ],
+  /// แถบแสดงเส้นทางที่กำลังนำทางอยู่ (แสดงเมื่อเลือกสถานที่แล้ว)
+  Widget _buildActiveRouteBanner() {
+    final dest = _selectedDestination!;
+    final distanceLabel = _routeDistanceMeters != null
+        ? (_routeDistanceMeters! < 1000
+            ? '${_routeDistanceMeters!.toStringAsFixed(0)} ม.'
+            : '${(_routeDistanceMeters! / 1000).toStringAsFixed(1)} กม.')
+        : '-';
+    final durationLabel = _routeDurationSeconds != null
+        ? '${(_routeDurationSeconds! / 60).ceil()} นาที'
+        : '-';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: primary,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: const [
+            BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.directions_rounded, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'กำลังนำทางไป ${dest.name}',
+                    style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  if (!_isLoadingRoute)
+                    Text(
+                      '$distanceLabel • $durationLabel',
+                      style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+                    )
+                  else
+                    Text('กำลังคำนวณเส้นทาง...', style: GoogleFonts.inter(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close_rounded, color: Colors.white),
+              onPressed: _clearRoute,
+            ),
+          ],
+        ),
       ),
-      child: Icon(icon, color: Colors.white, size: 22),
+    );
+  }
+
+  Widget _buildFab(IconData icon, {required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: cardDark,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          boxShadow: const [
+            BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 2)),
+          ],
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
     );
   }
 
@@ -329,6 +777,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         const SizedBox(height: 4),
         // Label
         Container(
+          constraints: const BoxConstraints(maxWidth: 90),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: primary,
@@ -339,6 +788,8 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           ),
           child: Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.inter(
               color: Colors.white,
               fontSize: 10,
@@ -354,6 +805,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.only(bottom: 16),
+      constraints: const BoxConstraints(maxHeight: 320),
       decoration: BoxDecoration(
         color: cardDark.withOpacity(0.98),
         borderRadius: const BorderRadius.vertical(
@@ -382,60 +834,101 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "สถานที่ใกล้เคียง", 
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      "ในระยะ 5 กม.", 
-                      style: TextStyle(color: subtextDark, fontSize: 12),
-                    ),
-                  ],
+                const Text(
+                  "สถานที่ใกล้เคียง",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                const SizedBox(height: 16),
-                _buildLocationCard(
-                  name: "ปั๊มเชลล์",
-                  distance: "1.2 กม. • 4 นาที",
-                  icon: Icons.local_gas_station_rounded,
-                  iconColor: Colors.blue.shade400,
-                  iconBg: Colors.blue.shade900.withOpacity(0.4),
-                ),
-                const SizedBox(height: 12),
-                _buildLocationCard(
-                  name: "จุดพักรถ A",
-                  distance: "2.5 กม. • 8 นาที",
-                  icon: Icons.chair_rounded,
-                  iconColor: Colors.indigo.shade400,
-                  iconBg: Colors.indigo.shade900.withOpacity(0.4),
+                Text(
+                  "ในระยะ 5 กม.",
+                  style: TextStyle(color: subtextDark, fontSize: 12),
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 12),
+
+          Flexible(
+            child: _buildPlacesListContent(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildLocationCard({
-    required String name,
-    required String distance,
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-  }) {
+  Widget _buildPlacesListContent() {
+    if (_isLoadingPlaces) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+          ),
+        ),
+      );
+    }
+
+    if (_placesError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Column(
+          children: [
+            Text(
+              _placesError!,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(color: subtextDark, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () {
+                if (_currentLatLng != null) _fetchNearbyPlaces(_currentLatLng!);
+              },
+              child: const Text('ลองอีกครั้ง'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_nearbyPlaces.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Text(
+          'ไม่พบปั๊มน้ำมันหรือจุดพักรถในระยะ 5 กม.',
+          style: GoogleFonts.inter(color: subtextDark, fontSize: 13),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      shrinkWrap: true,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: _nearbyPlaces.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final place = _nearbyPlaces[index];
+        return _buildLocationCard(place);
+      },
+    );
+  }
+
+  Widget _buildLocationCard(NearbyPlace place) {
+    final iconColor = place.isGasStation ? Colors.blue.shade400 : Colors.indigo.shade400;
+    final iconBg = place.isGasStation
+        ? Colors.blue.shade900.withOpacity(0.4)
+        : Colors.indigo.shade900.withOpacity(0.4);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -447,68 +940,82 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           // Left: Info
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      color: textDark,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(height: 4),
-                  Row(
+                  child: Icon(
+                    place.isGasStation ? Icons.local_gas_station_rounded : Icons.chair_rounded,
+                    color: iconColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.near_me, size: 12, color: subtextDark),
-                      const SizedBox(width: 4),
                       Text(
-                        distance,
+                        place.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: subtextDark,
-                          fontSize: 12,
+                          color: textDark,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.near_me, size: 12, color: subtextDark),
+                          const SizedBox(width: 4),
+                          Text(
+                            place.distanceLabel,
+                            style: const TextStyle(
+                              color: subtextDark,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ],
-          ),
-
-          // Right: Button
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: primary,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: const [
-                Icon(Icons.directions, color: Colors.white, size: 16),
-                SizedBox(width: 4),
-                Text(
-                  "นำทาง",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Right: Button
+          GestureDetector(
+            onTap: () => _navigateTo(place),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: primary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.directions, color: Colors.white, size: 16),
+                  SizedBox(width: 4),
+                  Text(
+                    "นำทาง",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -520,7 +1027,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
 class TriangleClipper extends CustomClipper<ui.Path> {
   @override
   ui.Path getClip(Size size) {
-    final path = ui.Path(); 
+    final path = ui.Path();
     path.moveTo(0, 0);
     path.lineTo(size.width, 0);
     path.lineTo(size.width / 2, size.height);

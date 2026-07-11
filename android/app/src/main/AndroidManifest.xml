@@ -18,7 +18,9 @@
 
     <!-- บอกระบบว่าแอปนี้ใช้ BLE จริง แต่ไม่บังคับให้เครื่องต้องมี BLE ถึงจะติดตั้งได้ -->
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
-
+    <!-- ใช้สำหรับ GPS -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="mockup_project"
         android:name="${applicationName}"
