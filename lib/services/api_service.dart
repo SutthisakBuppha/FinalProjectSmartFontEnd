@@ -70,10 +70,10 @@ class ApiService {
     );
   }
 
-  /// Sign in (or auto-register) a driver using a Google ID token.
-  ///
-  /// [idToken] must be the ID token obtained from `GoogleSignInAuthentication`
-  /// on the Flutter side. The backend verifies it directly with Google.
+  // / Sign in (or auto-register) a driver using a Google ID token.
+  // /
+  // / [idToken] must be the ID token obtained from `GoogleSignInAuthentication`
+  // / on the Flutter side. The backend verifies it directly with Google.
   Future<Map<String, dynamic>> loginWithGoogle({
     required String idToken,
   }) async {

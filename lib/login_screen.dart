@@ -7,8 +7,14 @@ import 'forgot_password_screen.dart';
 import 'services/api_service.dart';
 import 'google_auth_service.dart';
 
-// นำเข้าจาก web_only.dart สำหรับดึงวิดเจ็ตแสดงผลปุ่ม Google บนเว็บ
-import 'package:google_sign_in_web/web_only.dart' as gsi_web;
+// สำคัญ: ใช้ conditional import แทนการ import package:google_sign_in_web ตรงๆ
+// เพราะ import ปกติจะถูกคอมไพล์ทุกแพลตฟอร์มเสมอ (ไม่สนใจ kIsWeb ตอน runtime)
+// ทำให้ build Android พังเพราะ google_sign_in_web ใช้ dart:js_interop ที่มีเฉพาะบน Web
+// - บน Web: ใช้ google_signin_web_impl.dart (re-export ของ google_sign_in_web จริง)
+// - บนแพลตฟอร์มอื่น: ใช้ google_signin_web_stub.dart (stub เปล่าๆ ไม่แตะ dart:js_interop)
+import 'google_signin_web_stub.dart'
+    if (dart.library.js_interop) 'google_signin_web_impl.dart' as gsi_web;
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 class LoginScreen extends StatefulWidget {
@@ -32,11 +38,16 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
 
     // ขั้นตอนที่ 2.1: ดักฟังเหตุการณ์ Google Sign-In สำหรับการทำงานบน Web
+    // v7+: onCurrentUserChanged ถูกลบไปแล้ว ใช้ authenticationEvents แทน
+    // ต้องเรียก ensureInitialized() ให้เสร็จก่อนค่อย listen สตรีม
     if (kIsWeb) {
-      GoogleAuthService.instance.googleSignInEvents.listen((account) async {
-        if (account != null) {
-          final auth = await account.authentication;
-          final token = auth.idToken ?? auth.accessToken;
+      GoogleAuthService.instance.ensureInitialized().then((_) {
+        GoogleAuthService.instance.googleSignInEvents.listen((event) async {
+          if (event is! GoogleSignInAuthenticationEventSignIn) return;
+
+          final account = event.user;
+          // v7+: authentication เป็น synchronous getter และมีแค่ idToken เท่านั้น
+          final token = account.authentication.idToken;
 
           if (token != null) {
             setState(() => _isGoogleLoading = true);
@@ -65,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
               if (mounted) setState(() => _isGoogleLoading = false);
             }
           }
-        }
+        });
       });
     }
   }
