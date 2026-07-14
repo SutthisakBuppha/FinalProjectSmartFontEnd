@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'main_layout.dart';
@@ -23,40 +24,68 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
 
   List<Map<String, dynamic>> _deviceList = [];
   bool _isLoading = true;
+  Timer? _pollTimer;
+
+  // ระยะเวลาที่จะ auto-refresh สถานะอุปกรณ์ (ให้สอดคล้องกับรอบ heartbeat/timeout ฝั่ง backend)
+  static const Duration _pollInterval = Duration(seconds: 5);
 
   @override
   void initState() {
     super.initState();
     _loadDevices();
+    // เริ่ม polling อัตโนมัติ เพื่อให้สถานะออนไลน์/ออฟไลน์อัปเดตเองโดยไม่ต้องรอผู้ใช้ปัดหน้าจอ
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      _loadDevices(silent: true);
+    });
   }
 
-  Future<void> _loadDevices() async {
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  // silent = true ใช้ตอน poll พื้นหลัง จะไม่โชว์ loading spinner เต็มจอ และไม่ redirect ไปหน้าลงทะเบียนอัตโนมัติ
+  // (กันเคส network สะดุดชั่วคราวแล้วดันเด้งผู้ใช้ออกจากหน้าที่กำลังดูอยู่)
+  Future<void> _loadDevices({bool silent = false}) async {
     try {
       // แก้ไข: เรียกใช้งาน devices() แบบไม่มี arguments ตามความจริงในโปรเจกต์ของคุณ
       final list = await ApiService.instance.devices();
-      
-      if (mounted) {
-        // หากไม่มีการผูกอุปกรณ์ไว้เลยในระบบ ให้เด้งกลับไปหน้าลงทะเบียน
-        if (list.isEmpty) {
+
+      if (!mounted) return;
+
+      if (list.isEmpty) {
+        if (silent) {
+          // ตอน poll เงียบๆ ถ้าไม่มีอุปกรณ์เลย แค่เคลียร์ list ในจอ ไม่ redirect ระหว่างที่ผู้ใช้เปิดหน้าอยู่
+          setState(() {
+            _deviceList = [];
+            _isLoading = false;
+          });
+        } else {
+          // หากไม่มีการผูกอุปกรณ์ไว้เลยในระบบ ให้เด้งกลับไปหน้าลงทะเบียน (เฉพาะตอนโหลดครั้งแรก/ปัดรีเฟรชเอง)
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const DeviceRegistrationScreen()),
           );
-          return;
         }
+        return;
+      }
 
-        setState(() {
-          _deviceList = list;
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _deviceList = list;
+        _isLoading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("โหลดข้อมูลอุปกรณ์ล้มเหลว: $e")),
-        );
+      if (!mounted) return;
+      if (silent) {
+        // poll พื้นหลังล้มเหลว (เช่น เน็ตสะดุด) ไม่ต้องรบกวนผู้ใช้ด้วย SnackBar ทุกครั้ง แค่ log ไว้เฉยๆ
+        debugPrint("Silent poll โหลดข้อมูลอุปกรณ์ล้มเหลว: $e");
+        return;
       }
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("โหลดข้อมูลอุปกรณ์ล้มเหลว: $e")),
+      );
     }
   }
 

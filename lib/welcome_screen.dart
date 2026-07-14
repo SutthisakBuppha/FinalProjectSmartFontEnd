@@ -125,11 +125,16 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
             // Main Content
             SafeArea(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                child: Column(
-                  children: [
-                    SizedBox(height: isCompactHeight ? 12 : 24),
+              child: Center(
+                child: ConstrainedBox(
+                  // จำกัดความกว้างสูงสุดเหมือนหน้า login_screen
+                  // เพื่อไม่ให้เนื้อหากระจาย/เพี้ยนบนจอกว้าง (เว็บ/เดสก์ท็อป)
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                    child: Column(
+                      children: [
+                        SizedBox(height: isCompactHeight ? 12 : 24),
 
                     const Spacer(),
 
@@ -230,8 +235,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: (isCompactHeight ? 28 : 48) * scale),
-                  ],
+                        SizedBox(height: (isCompactHeight ? 28 : 48) * scale),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

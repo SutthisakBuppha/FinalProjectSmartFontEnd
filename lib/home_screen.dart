@@ -34,6 +34,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Map<String, dynamic>? _dashboardData;
   Timer? _autoCheckTimer; 
 
+  // Polling สถานะไฟเลี้ยงของอุปกรณ์ (ออนไลน์/ออฟไลน์) เพื่อเริ่ม/หยุดการตรวจจับอัตโนมัติ
+  Timer? _deviceStatusTimer;
+  bool _isCheckingDeviceStatus = false;
+  static const Duration _deviceStatusPollInterval = Duration(seconds: 5);
+
   static const Color primaryColor = Color(0xFF0F2557);
   static const Color primaryLight = Color(0xFF24469C);
   static const Color backgroundLight = Color(0xFFECF0F3);
@@ -47,11 +52,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       duration: const Duration(seconds: 2),
       vsync: this,
     );
+
+    // เริ่ม polling สถานะอุปกรณ์ทันที: พอจ่ายไฟ (ออนไลน์) ให้เริ่มตรวจจับเอง
+    // พอถอดไฟ/บอร์ดขาดการเชื่อมต่อ (ออฟไลน์) ให้หยุดตรวจจับเองเช่นกัน
+    _checkDeviceStatus();
+    _deviceStatusTimer = Timer.periodic(_deviceStatusPollInterval, (_) {
+      _checkDeviceStatus();
+    });
   }
 
   @override
   void dispose() {
     _autoCheckTimer?.cancel(); // ล้างหน่วยความจำ Timer ทั้งหมดออกเพื่อป้องกัน Memory Leak
+    _deviceStatusTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -89,7 +102,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           if (alertType == "ง่วงนอน" && secondsDiff <= 12 && _isMonitoring) {
             
             // 1. เคลียร์การนับ Polling เพื่อหยุดลูปชั่วคราว ไม่ให้เด้งทับหน้ากัน
-            _autoCheckTimer?.cancel(); 
+            _autoCheckTimer?.cancel();
+            _autoCheckTimer = null;
             setState(() {
               _isMonitoring = false;
               _controller.stop();
@@ -119,21 +133,55 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // 🎛️ ฟังก์ชันสำหรับเปิด-ปิดระบบสแกนความปลอดภัยด้วยผู้ใช้งานเอง
-  void _toggleMonitoring() {
+  // 🔌 ตรวจสอบสถานะไฟเลี้ยงของอุปกรณ์ (heartbeat จาก backend) แล้ว sync ปุ่มตรวจจับให้ตรงกันอัตโนมัติ
+  // - อุปกรณ์ "ออนไลน์" (มีไฟจ่ายเข้า/ส่ง heartbeat อยู่) → เริ่มตรวจจับให้เอง
+  // - อุปกรณ์ "ออฟไลน์" (ถอดไฟ/ถอดบอร์ดออก) → หยุดตรวจจับให้เอง
+  Future<void> _checkDeviceStatus() async {
+    if (_isCheckingDeviceStatus) return; // กันยิงซ้อนกันถ้า request ก่อนหน้ายังไม่จบ
+    _isCheckingDeviceStatus = true;
+
+    try {
+      final devices = await ApiService.instance.devices();
+      print("DEBUG DEVICES: $devices");
+      // ถือว่า "มีไฟจ่ายอยู่" ถ้ามีอุปกรณ์ตัวใดตัวหนึ่งของผู้ใช้สถานะเป็นออนไลน์
+      final bool isDeviceOnline = devices.any(
+        (d) => d['status'] == 'ออนไลน์' || d['status'] == 'online',
+      );
+
+      if (!mounted) return;
+
+      if (isDeviceOnline != _isMonitoring) {
+        _setMonitoring(isDeviceOnline);
+      }
+    } catch (e) {
+      // เน็ตสะดุด/เรียก API ไม่สำเร็จ ไม่ต้องรบกวนผู้ใช้ด้วย SnackBar แค่ log ไว้เฉยๆ แล้วรอ poll รอบถัดไป
+      debugPrint("Device status poll error: $e");
+    } finally {
+      _isCheckingDeviceStatus = false;
+    }
+  }
+
+  // ตั้งค่าสถานะการตรวจจับ (ใช้ร่วมกันทั้งตอน auto-sync จากอุปกรณ์ และตอนผู้ใช้กดปุ่มเอง)
+  void _setMonitoring(bool shouldMonitor) {
+    if (!mounted) return;
     setState(() {
-      _isMonitoring = !_isMonitoring;
+      _isMonitoring = shouldMonitor;
       if (_isMonitoring) {
         _controller.repeat();
-        // เปลี่ยนแก้ไขไวยากรณ์จาก :: ให้กลายเป็นเครื่องหมายจุด . เพื่อให้รันผ่านปกติ
-        _autoCheckTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+        _autoCheckTimer ??= Timer.periodic(const Duration(seconds: 3), (timer) {
           _checkLatestEmergencyAlerts();
         });
       } else {
         _controller.stop();
         _autoCheckTimer?.cancel();
+        _autoCheckTimer = null;
       }
     });
+  }
+
+  // 🎛️ ปุ่มกดด้วยมือ: ใช้เป็น manual override ชั่วคราว (โพลล์รอบถัดไปจะ sync กลับตามสถานะไฟจริงเสมอ)
+  void _toggleMonitoring() {
+    _setMonitoring(!_isMonitoring);
   }
 
   @override
@@ -239,7 +287,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 8),
           Text(
-            _isMonitoring ? "กำลังตรวจสอบพฤติกรรมการขับขี่แบบเรียลไทม์..." : "กดปุ่มด้านล่างเพื่อเริ่มระบบความปลอดภัย",
+            _isMonitoring
+                ? "กำลังตรวจสอบพฤติกรรมการขับขี่แบบเรียลไทม์..."
+                : "ระบบจะเริ่มทำงานอัตโนมัติเมื่อจ่ายไฟเข้าอุปกรณ์",
             textAlign: TextAlign.center,
             style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 14),
           ),
