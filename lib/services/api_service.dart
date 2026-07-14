@@ -246,7 +246,7 @@ class ApiService {
         'serial_number': serialNumber,
         'device_name': deviceName,
         'device_type': deviceType,
-        'status': 'ว่าง', 
+        'status': 'ออฟไลน์', 
         'is_active': true,
       },
     );

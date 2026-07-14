@@ -1,18 +1,38 @@
-import 'dart:ui'; // สำหรับ ImageFilter
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
-// Import หน้า MapScreen
-import 'map_screen.dart'; 
+// Import หน้า MapScreen (เก็บไว้ตามเดิมของคุณ)
+import 'map_screen.dart';
 
-class AlertScreen extends StatelessWidget {
+// เปลี่ยนเป็น StatefulWidget เพื่อรองรับการทำ Loading state ของ GPS
+class AlertScreen extends StatefulWidget {
   const AlertScreen({super.key});
 
   @override
+  State<AlertScreen> createState() => _AlertScreenState();
+}
+
+class _AlertScreenState extends State<AlertScreen> {
+  // สร้างตัวแปรเก็บสถานะการโหลด (คงไว้เผื่ออนาคตอยากเพิ่ม loading step ก่อนเข้า MapScreen)
+  bool _isLoading = false;
+
+  // 🔴 เปลี่ยนจากเดิม (เปิด Google Maps ภายนอกผ่าน Geolocator + url_launcher)
+  // เป็น: ปิดหน้า Alert แล้วพาเข้าไปหน้า MapScreen ในแอปแทน
+  // เพราะ MapScreen มี flow เช็ค GPS / permission / หาโลตี้ใกล้เคียงของตัวเองอยู่แล้ว
+  // ไม่ต้องทำ location logic ซ้ำสองที่
+  Future<void> _navigateToNearestRest() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (context) => const MapScreen()),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // กำหนดสีตาม Tailwind config
+    // กำหนดสีตาม Tailwind config ของคุณ
     const Color backgroundDark = Color(0xFF161022);
     const Color alertRed = Color(0xFFFF4D4D);
-    
+
     return Scaffold(
       backgroundColor: backgroundDark,
       body: Stack(
@@ -27,7 +47,6 @@ class AlertScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Row(
                     children: [
-                      // ส่วนข้อความ Header (ชื่อแอปมักทับศัพท์ แต่ถ้าอยากเปลี่ยนก็เปลี่ยนตรงนี้ได้ครับ)
                       const Expanded(
                         child: Text(
                           "SaveDriveAi",
@@ -40,12 +59,11 @@ class AlertScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // ปุ่มขวา (Profile)
                       _buildIconButton(Icons.account_circle),
                     ],
                   ),
                 ),
-                
+
                 // Map Placeholder Area
                 Expanded(
                   child: Padding(
@@ -69,10 +87,8 @@ class AlertScreen extends StatelessWidget {
                           right: 16,
                           child: Row(
                             children: [
-                              // แปล: ความเร็วปัจจุบัน
                               Expanded(child: _buildInfoCard("ความเร็ว", "65 กม./ชม.")),
                               const SizedBox(width: 16),
-                              // แปล: เวลาขับขี่
                               Expanded(child: _buildInfoCard("เวลาขับขี่", "2 ชม. 15 น.")),
                             ],
                           ),
@@ -130,25 +146,25 @@ class AlertScreen extends StatelessWidget {
                   children: [
                     // Warning Icon
                     const PulseWarningIcon(color: alertRed),
-                    
+
                     const SizedBox(height: 24),
-                    
-                    // Title (แปลไทย)
+
+                    // Title
                     const Text(
                       "ตรวจพบความเสี่ยงง่วงนอน",
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color(0xFF120D1B),
                         fontSize: 24,
-                        height: 1.2, // ปรับความสูงบรรทัดเล็กน้อยให้อ่านง่ายขึ้น
+                        height: 1.2,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 8),
-                    
-                    // Subtitle (แปลไทย)
+
+                    // Subtitle
                     const Text(
                       "ระบบแจ้งเตือนความปลอดภัยทำงาน โปรดหาที่จอดพักที่ปลอดภัยทันที",
                       textAlign: TextAlign.center,
@@ -162,7 +178,7 @@ class AlertScreen extends StatelessWidget {
 
                     const SizedBox(height: 24),
 
-                    // Status Icons (แปลไทย)
+                    // Status Icons
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -174,18 +190,12 @@ class AlertScreen extends StatelessWidget {
 
                     const SizedBox(height: 24),
 
-                    // ปุ่ม Navigate (แปลไทย)
+                    // 🔴 ปุ่มเรียกฟังก์ชันพาไปหน้า MapScreen ในแอป
                     _buildFilledButton(
-                      text: "นำทางไปจุดพักรถใกล้ฉัน", 
-                      icon: Icons.navigation, 
+                      text: _isLoading ? "กำลังเปิดแผนที่..." : "นำทางไปจุดพักรถใกล้ฉัน",
+                      icon: _isLoading ? Icons.refresh_rounded : Icons.navigation,
                       color: alertRed,
-                      onPressed: () {
-                        // สั่งให้เปลี่ยนหน้าไป MapScreen
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const MapScreen()),
-                        );
-                      },
+                      onPressed: _isLoading ? null : _navigateToNearestRest, // ถ้าโหลดอยู่จะกดซ้ำไม่ได้
                     ),
                   ],
                 ),
@@ -257,7 +267,7 @@ class AlertScreen extends StatelessWidget {
           label,
           style: const TextStyle(
             color: Color(0xFF60A5FA),
-            fontSize: 12, // เพิ่มขนาดเล็กน้อยให้อ่านภาษาไทยชัดขึ้น
+            fontSize: 12,
             fontWeight: FontWeight.bold,
             letterSpacing: 0.5,
           ),
@@ -267,33 +277,43 @@ class AlertScreen extends StatelessWidget {
   }
 
   Widget _buildFilledButton({
-    required String text, 
-    required IconData icon, 
-    required Color color, 
-    required VoidCallback onPressed
+    required String text,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onPressed // เปลี่ยนเป็น nullable เพื่อรองรับปุ่มปิดการทำงาน (Disabled)
   }) {
     return SizedBox(
       width: double.infinity,
       height: 56,
       child: ElevatedButton(
-        onPressed: onPressed, 
+        onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          elevation: 5,
+          disabledBackgroundColor: color.withOpacity(0.6), // สีปุ่มตอนที่โหลดอยู่
+          disabledForegroundColor: Colors.white70,
+          elevation: onPressed == null ? 0 : 5,
           shadowColor: Colors.red[200],
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 28),
+            // แสดง Spinner หรือ Icon ปกติตามสถานะ Loading
+            _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                  )
+                : Icon(icon, size: 24),
             const SizedBox(width: 8),
             Text(
               text,
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
+                fontFamily: 'Manrope',
               ),
             ),
           ],
@@ -303,6 +323,7 @@ class AlertScreen extends StatelessWidget {
   }
 }
 
+// คลาส PulseWarningIcon คงไว้ตามแบบเดิมของคุณ
 class PulseWarningIcon extends StatefulWidget {
   final Color color;
   const PulseWarningIcon({super.key, required this.color});

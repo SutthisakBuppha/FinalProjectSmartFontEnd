@@ -171,8 +171,19 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         _isResolvingLocation = false;
       });
 
-      // เลื่อนกล้องแผนที่ไปที่ตำแหน่งปัจจุบันทันที
-      _mapController.move(latLng, 15.0);
+      // 🔴 [แก้] เดิมเรียก _mapController.move(latLng, 15.0) ตรงนี้ทันทีหลัง setState()
+      // แต่ setState() แค่ "ขอให้ build ใหม่" เท่านั้น ไม่ได้ build แบบ synchronous
+      // ตอนที่โค้ดรันมาถึงบรรทัดนี้ FlutterMap widget (เจ้าของ MapController จริง)
+      // ยังไม่ทัน mount / attach controller เข้ากับ widget เลย
+      // ทำให้เกิด LateInitializationError: Field '_internalController' has not been initialized
+      //
+      // วิธีแก้: รอให้เฟรมปัจจุบัน build เสร็จสมบูรณ์ก่อน (post frame callback)
+      // ถึงจะเรียก .move() ได้อย่างปลอดภัย
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _mapController.move(latLng, 15.0);
+        }
+      });
 
       // ── ข้อ 7: ค้นหาปั๊ม/จุดพักรถใกล้เคียงจากตำแหน่งจริง ─────────────
       _fetchNearbyPlaces(latLng);
@@ -345,6 +356,8 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       });
 
       // ปรับกล้องให้เห็นทั้งเส้นทาง
+      // (จุดนี้ปลอดภัยอยู่แล้ว ไม่ต้องแก้ เพราะเรียกหลัง user กด marker/ปุ่มนำทาง
+      // ซึ่งแปลว่า FlutterMap widget build เสร็จสมบูรณ์แน่นอนแล้ว)
       if (points.isNotEmpty) {
         final bounds = LatLngBounds.fromPoints(points);
         _mapController.fitCamera(
@@ -373,6 +386,8 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
 
   Future<void> _recenterToCurrentLocation() async {
     if (_currentLatLng == null) return;
+    // จุดนี้ปลอดภัยอยู่แล้ว ไม่ต้องแก้ เพราะ user กดปุ่มนี้ได้ก็ต่อเมื่อ
+    // แผนที่ build เสร็จและแสดงผลอยู่แล้วเท่านั้น
     _mapController.move(_currentLatLng!, 16.0);
   }
 
