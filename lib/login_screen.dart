@@ -99,6 +99,21 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    // ✅ เพิ่ม: ตรวจรูปแบบเบื้องต้นก่อนยิง API (กันเคสพิมพ์ผิดชัดเจน เช่น
+    // มีช่องว่างปนอยู่ หรือสั้นเกินไปจนรู้ได้เลยว่าไม่ถูกต้อง)
+    if (username.contains(' ')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ชื่อผู้ใช้ต้องไม่มีช่องว่าง')),
+      );
+      return;
+    }
+    if (password.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -149,10 +164,20 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      // ✅ เพิ่ม: แยกข้อความตอน timeout (มาจาก GoogleAuthService.signInAndGetIdToken
+      // ที่ throw Exception('TIMEOUT: ...') เมื่อ authenticate ค้างเกิน 15 วิ)
+      // ให้ผู้ใช้รู้ว่าเป็นปัญหาการเชื่อมต่อ ไม่ใช่ล็อกอินผิด
+      final isTimeout = e.toString().contains('TIMEOUT');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่')),
+        SnackBar(
+          content: Text(
+            isTimeout
+                ? 'การเชื่อมต่อ Google ใช้เวลานานเกินไป กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'
+                : 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่',
+          ),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isGoogleLoading = false);

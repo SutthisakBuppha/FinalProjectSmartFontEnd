@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:async'; 
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:async';
 
 // Import ส่วนประกอบต่างๆ ของแอปพลิเคชันคุณ
 import '/services/api_service.dart';
-import 'profile_screen.dart'; 
-import 'alert_screen.dart'; // 👈 นำเข้าหน้า Alert เพื่อสลับไปแสดงผลอัตโนมัติ
+import 'profile_screen.dart';
+
+// ✅ แก้ไข: ลบ import 'alert_screen.dart', 'dart:convert', 'package:http/http.dart'
+// ออกจากไฟล์นี้ เพราะไม่ได้ใช้ในหน้านี้อีกต่อไป (ดูหมายเหตุด้านล่าง)
 
 void main() {
   runApp(const MaterialApp(
@@ -26,18 +26,26 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   bool _isMonitoring = false;
-  
-  // State สำหรับจัดการข้อมูล API และการทำ Background Polling
-  bool _isLoading = false;
-  bool _isSilentChecking = false; 
-  String? _errorMessage;
-  Map<String, dynamic>? _dashboardData;
-  Timer? _autoCheckTimer; 
 
   // Polling สถานะไฟเลี้ยงของอุปกรณ์ (ออนไลน์/ออฟไลน์) เพื่อเริ่ม/หยุดการตรวจจับอัตโนมัติ
   Timer? _deviceStatusTimer;
   bool _isCheckingDeviceStatus = false;
   static const Duration _deviceStatusPollInterval = Duration(seconds: 5);
+
+  // ---------------------------------------------------------------------
+  // ✅ แก้ไข (สำคัญ): ลบระบบ polling "_checkLatestEmergencyAlerts" +
+  // "_autoCheckTimer" ที่เคยอยู่ในไฟล์นี้ออกทั้งหมด
+  //
+  // เหตุผล: main_layout.dart มีระบบ polling แจ้งเตือน (ทุก 8 วิ) ที่ทำหน้าที่
+  // เดียวกันอยู่แล้ว คือตรวจสอบแจ้งเตือนใหม่แล้วเด้งเปิด AlertScreen
+  // การมี 2 ระบบ polling แยกกันเช็คสิ่งเดียวกัน (แจ้งเตือนล่าสุด) ทำให้เกิด
+  // ความเสี่ยงที่ทั้งสองจุดจะพยายามเปิด AlertScreen พร้อมกันหรือซ้อนกัน
+  // (race condition) จึงตัดออกจากหน้านี้ ให้ main_layout.dart เป็นเจ้าของ
+  // หน้าที่ "ตรวจจับแจ้งเตือนใหม่ -> เด้งเปิด AlertScreen" แต่เพียงจุดเดียว
+  //
+  // หน้านี้ (HomeScreen) รับผิดชอบแค่ "สถานะไฟเลี้ยงอุปกรณ์ -> เปิด/ปิดปุ่ม
+  // ตรวจจับ" เท่านั้น
+  // ---------------------------------------------------------------------
 
   static const Color primaryColor = Color(0xFF0F2557);
   static const Color primaryLight = Color(0xFF24469C);
@@ -63,74 +71,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
-    _autoCheckTimer?.cancel(); // ล้างหน่วยความจำ Timer ทั้งหมดออกเพื่อป้องกัน Memory Leak
     _deviceStatusTimer?.cancel();
     _controller.dispose();
     super.dispose();
-  }
-
-  // 🔄 ฟังก์ชันสืบค้นพฤติกรรมเสี่ยงล่าสุดจากฝั่งเบื้องหลัง (Background Polling)
-  Future<void> _checkLatestEmergencyAlerts() async {
-    if (_isSilentChecking) return; // ล็อคป้องกันไม่ให้เกิด Thread การยิงซ้ำซ้อนกัน
-    
-    setState(() {
-      _isSilentChecking = true;
-    });
-
-    try {
-      // ดึงเลขไอดีคนขับ จาก ApiService ตัวหลัก (หากทดสอบระบบแมนนวลให้ดักไว้เป็นเลข 1)
-      final int currentDriverId = ApiService.instance.driverId ?? 1;
-
-      final response = await http.get(
-        Uri.parse('${ApiService.instance.baseUrl}/driver-latest-alert?driver_id=$currentDriverId'),
-      );
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        
-        if (responseData['success'] == true && responseData['data'] != null) {
-          final Map<String, dynamic> latestAlert = responseData['data'];
-          final String alertType = latestAlert['type'] ?? '';
-          final String createdAtStr = latestAlert['created_at'] ?? '';
-
-          // ตรวจสอบระดับความสดใหม่ของชุดข้อมูล (เกิดขึ้นไม่เกิน 12 วินาทีก่อนหน้านี้หรือไม่)
-          final DateTime alertTime = DateTime.parse(createdAtStr).toLocal();
-          final DateTime now = DateTime.now();
-          final int secondsDiff = now.difference(alertTime).inSeconds.abs();
-
-          // 🚨 เงื่อนไขสำคัญ: ตรวจพบ "ง่วงนอน", สัญญาณใหม่ และหน้าจอหลักเปิดโหมดสแกนสแตนบายอยู่
-          if (alertType == "ง่วงนอน" && secondsDiff <= 12 && _isMonitoring) {
-            
-            // 1. เคลียร์การนับ Polling เพื่อหยุดลูปชั่วคราว ไม่ให้เด้งทับหน้ากัน
-            _autoCheckTimer?.cancel();
-            _autoCheckTimer = null;
-            setState(() {
-              _isMonitoring = false;
-              _controller.stop();
-            });
-
-            // 2. 🚀 AUTO-JUMP: สั่งเด้งเปิดหน้า AlertScreen ทันทีอย่างไร้รอยต่อ
-            if (mounted) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const AlertScreen()),
-              ).then((_) {
-                // หลังจากปิดหน้านำทางเสร็จสิ้นและกดย้อนกลับมา ให้เปิดลูประบบทำงานต่ออัตโนมัติ
-                _toggleMonitoring();
-              });
-            }
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint("Polling Error Log: $e");
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSilentChecking = false;
-        });
-      }
-    }
   }
 
   // 🔌 ตรวจสอบสถานะไฟเลี้ยงของอุปกรณ์ (heartbeat จาก backend) แล้ว sync ปุ่มตรวจจับให้ตรงกันอัตโนมัติ
@@ -142,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     try {
       final devices = await ApiService.instance.devices();
-      print("DEBUG DEVICES: $devices");
       // ถือว่า "มีไฟจ่ายอยู่" ถ้ามีอุปกรณ์ตัวใดตัวหนึ่งของผู้ใช้สถานะเป็นออนไลน์
       final bool isDeviceOnline = devices.any(
         (d) => d['status'] == 'ออนไลน์' || d['status'] == 'online',
@@ -161,20 +103,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  // ตั้งค่าสถานะการตรวจจับ (ใช้ร่วมกันทั้งตอน auto-sync จากอุปกรณ์ และตอนผู้ใช้กดปุ่มเอง)
+  // ตั้งค่าสถานะการตรวจจับ (ใช้ตอน auto-sync จากอุปกรณ์ และตอนผู้ใช้กดปุ่มเอง)
   void _setMonitoring(bool shouldMonitor) {
     if (!mounted) return;
     setState(() {
       _isMonitoring = shouldMonitor;
       if (_isMonitoring) {
         _controller.repeat();
-        _autoCheckTimer ??= Timer.periodic(const Duration(seconds: 3), (timer) {
-          _checkLatestEmergencyAlerts();
-        });
       } else {
         _controller.stop();
-        _autoCheckTimer?.cancel();
-        _autoCheckTimer = null;
       }
     });
   }
@@ -214,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildHeader() {
     return Row(
-      // แก้ไขจาก MainAxisAlignment.between มาเป็นคำสั่งเต็ม MainAxisAlignment.spaceBetween
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Column(
