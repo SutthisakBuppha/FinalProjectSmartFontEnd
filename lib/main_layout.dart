@@ -1,26 +1,14 @@
-import 'dart:async'; // 👈 1. Import สำหรับใช้งาน Timer
+import 'dart:async';
 import 'package:flutter/material.dart';
-
-// 👈 2. Import API Service และ AlertScreen
 import '/services/api_service.dart';
 import 'alert_screen.dart';
-
-// Import หน้าจอต่างๆ
 import 'home_screen.dart';
 import 'history_screen.dart';
 import '/notification_screen.dart';
 import 'profile_screen.dart';
 import 'device_registration_screen.dart';
 import 'risk_summary_screen.dart';
-// Import ไฟล์ Navbar ของคุณ
 import 'menu/custom_bottom_nav_bar.dart';
-
-// ---------------------------------------------------------------------
-// ✅ หมายเหตุ: ไฟล์นี้ "ไม่ต้องแก้ไข" เนื้อหา ยังคงทำหน้าที่เดิมทุกอย่าง
-// เพียงแต่ตอนนี้เป็น "จุดเดียว" ในทั้งแอปที่รับผิดชอบการ polling แจ้งเตือน
-// แล้วเด้งเปิด AlertScreen (เดิมมี home_screen.dart poll ซ้ำอีกจุดหนึ่ง
-// ซึ่งถูกตัดออกไปแล้ว ดูหมายเหตุใน home_screen.dart)
-// ---------------------------------------------------------------------
 
 class MainLayout extends StatefulWidget {
   final int initialIndex;
@@ -38,12 +26,12 @@ class _MainLayoutState extends State<MainLayout> {
   bool _isShowingAlert = false;
 
   final List<Widget> _screens = [
-    const HomeScreen(),               // Index 0
-    const HistoryScreen(),            // Index 1
-    const NotificationScreen(),       // Index 2
+    const HomeScreen(), // Index 0
+    const HistoryScreen(), // Index 1
+    const NotificationScreen(), // Index 2
     const DeviceRegistrationScreen(), // Index 3
-    const RiskTrendsScreen(),         // Index 4
-    const ProfileScreen(),            // Index 5
+    const RiskTrendsScreen(), // Index 4
+    const ProfileScreen(), // Index 5
   ];
 
   @override
@@ -55,24 +43,31 @@ class _MainLayoutState extends State<MainLayout> {
 
   // Polling Notification ทุกๆ 8 วินาที (จุดเดียวของทั้งแอปที่เด้ง AlertScreen)
   void _startNotificationPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       try {
         final noti = await ApiService.instance.notifications(isRead: false);
 
         if (mounted && noti.isNotEmpty && !_isShowingAlert) {
-          _isShowingAlert = true; // ล็อคไว้ไม่ให้เด้งซ้ำ
+          _isShowingAlert = true;
 
-          // 🔴 สำคัญ: mark ว่าอ่านแล้วทันทีก่อนเปิดหน้า Alert
-          // ป้องกันไม่ให้ polling รอบถัดไป (8 วิถัดมา) เจอ notification ตัวเดิม
           try {
             await ApiService.instance.markAllNotificationsRead();
           } catch (e) {
             debugPrint("Mark notification read error: $e");
           }
 
+          // 🔴 ใหม่: ดึง device_id จาก alert ล่าสุด เพื่อรู้ว่าต้องเล่นเสียงของอุปกรณ์ไหน
+          dynamic deviceId;
+          try {
+            final latest = await ApiService.instance.latestAlert();
+            deviceId = latest?['device_id'];
+          } catch (e) {
+            debugPrint("โหลด latest alert (device_id) ล้มเหลว: $e");
+          }
+
           await Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const AlertScreen()),
+            MaterialPageRoute(builder: (_) => AlertScreen(deviceId: deviceId)),
           );
 
           if (mounted) {

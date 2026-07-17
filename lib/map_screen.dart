@@ -1,22 +1,3 @@
-// map_screen.dart
-// ─────────────────────────────────────────────────────────────────────────
-// หน้า Map แบบเชื่อม GPS จริง (ต่อจากไฟล์คู่มือ gps_map_integration_guide.md
-// ทำต่อจากข้อ 3 เป็นต้นไป: เช็ค GPS -> ขอ permission -> ดึงตำแหน่งปัจจุบัน ->
-// ติดตามตำแหน่ง real-time -> หาปั๊ม/จุดพักรถใกล้เคียง (Overpass API) ->
-// คำนวณเส้นทางนำทาง (OSRM) -> เรียงตามระยะทางใกล้สุด
-//
-// ⚠️ ต้องติดตั้ง package เพิ่มจากเดิม (นอกจาก geolocator ที่ทำไปแล้วในข้อ 1-2):
-//   flutter pub add http
-//
-// และตรวจสอบว่าได้ตั้งค่า permission ตามข้อ 2 แล้ว:
-//   Android -> android/app/src/main/AndroidManifest.xml
-//     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-//     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-//   iOS -> ios/Runner/Info.plist
-//     <key>NSLocationWhenInUseUsageDescription</key>
-//     <string>แอปต้องใช้ตำแหน่งของคุณเพื่อค้นหาจุดพักรถที่ใกล้ที่สุด</string>
-// ─────────────────────────────────────────────────────────────────────────
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
@@ -29,7 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-// import 'package:url_launcher/url_launcher.dart'; // เปิดถ้าลง package แล้วเพื่อให้กดลิงก์เครดิตได้
+import 'package:url_launcher/url_launcher.dart'; // ใช้เปิดแอป Google Maps เพื่อนำทางจริง
 
 // --- Internal Imports ---
 import 'menu/custom_bottom_nav_bar.dart';
@@ -89,13 +70,6 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   List<NearbyPlace> _nearbyPlaces = [];
   bool _isLoadingPlaces = false;
   String? _placesError;
-
-  // ── เส้นทางนำทาง ─────────────────────────────────────────────────────
-  List<LatLng> _routePoints = [];
-  NearbyPlace? _selectedDestination;
-  bool _isLoadingRoute = false;
-  double? _routeDistanceMeters;
-  double? _routeDurationSeconds;
 
   @override
   void initState() {
@@ -303,85 +277,38 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // ข้อ 8: คำนวณเส้นทางนำทางด้วย OSRM (ฟรี) แล้ววาดเส้น Polyline บนแผนที่
+  // ข้อ 8: กดปุ่ม "นำทาง" -> เปิดแอป Google Maps จริงเพื่อนำทางแบบ
+  // turn-by-turn (ปลอดภัยกว่าการคำนวณ/วาดเส้นทางเองในแอป)
   // ═══════════════════════════════════════════════════════════════════════
 
   Future<void> _navigateTo(NearbyPlace place) async {
-    if (_currentLatLng == null) return;
+    final destination =
+        '${place.location.latitude},${place.location.longitude}';
 
-    setState(() {
-      _isLoadingRoute = true;
-      _selectedDestination = place;
-      _routePoints = [];
-      _routeDistanceMeters = null;
-      _routeDurationSeconds = null;
-    });
-
-    final start = _currentLatLng!;
-    final end = place.location;
-
-    final url = Uri.parse(
-      'https://router.project-osrm.org/route/v1/driving/'
-      '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
-      '?overview=full&geometries=geojson',
+    // ใช้ Google Maps URL scheme แบบเป็นทางการ (api=1) ซึ่งรองรับทั้ง Android/iOS
+    // ถ้าเครื่องมีแอป Google Maps ติดตั้งอยู่จะเปิดแอปโดยตรง
+    // ถ้าไม่มีจะ fallback ไปเปิดผ่านเบราว์เซอร์แทนโดยอัตโนมัติ
+    final googleMapsUrl = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=$destination'
+      '&travelmode=driving',
     );
 
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 20));
+      final launched = await launchUrl(
+        googleMapsUrl,
+        mode: LaunchMode.externalApplication,
+      );
 
-      if (response.statusCode != 200) {
-        throw Exception('คำนวณเส้นทางไม่สำเร็จ (${response.statusCode})');
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final routes = data['routes'] as List<dynamic>?;
-
-      if (routes == null || routes.isEmpty) {
-        throw Exception('ไม่พบเส้นทางไปยังจุดหมายนี้');
-      }
-
-      final route = routes.first as Map<String, dynamic>;
-      final coords = (route['geometry']['coordinates'] as List<dynamic>);
-
-      final points = coords
-          .map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
-          .toList();
-
-      if (!mounted) return;
-      setState(() {
-        _routePoints = points;
-        _routeDistanceMeters = (route['distance'] as num).toDouble();
-        _routeDurationSeconds = (route['duration'] as num).toDouble();
-        _isLoadingRoute = false;
-      });
-
-      // ปรับกล้องให้เห็นทั้งเส้นทาง
-      // (จุดนี้ปลอดภัยอยู่แล้ว ไม่ต้องแก้ เพราะเรียกหลัง user กด marker/ปุ่มนำทาง
-      // ซึ่งแปลว่า FlutterMap widget build เสร็จสมบูรณ์แน่นอนแล้ว)
-      if (points.isNotEmpty) {
-        final bounds = LatLngBounds.fromPoints(points);
-        _mapController.fitCamera(
-          CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(60)),
-        );
+      if (!launched) {
+        throw Exception('ไม่สามารถเปิด Google Maps ได้');
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isLoadingRoute = false;
-      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('นำทางไม่สำเร็จ: $e')),
+        SnackBar(content: Text('เปิด Google Maps ไม่สำเร็จ: $e')),
       );
     }
-  }
-
-  void _clearRoute() {
-    setState(() {
-      _routePoints = [];
-      _selectedDestination = null;
-      _routeDistanceMeters = null;
-      _routeDurationSeconds = null;
-    });
   }
 
   Future<void> _recenterToCurrentLocation() async {
@@ -474,19 +401,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 userAgentPackageName: 'com.savedriveai.app',
               ),
 
-              // 1.2 เส้นทางนำทาง (ถ้ามี)
-              if (_routePoints.isNotEmpty)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _routePoints,
-                      strokeWidth: 5,
-                      color: accent,
-                    ),
-                  ],
-                ),
-
-              // 1.3 Marker Layer
+              // 1.2 Marker Layer
               MarkerLayer(
                 markers: [
                   // ตำแหน่งปัจจุบัน (จาก GPS จริง)
@@ -536,7 +451,6 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             child: Column(
               children: [
                 _buildHeader(),
-                if (_selectedDestination != null) _buildActiveRouteBanner(),
               ],
             ),
           ),
@@ -627,61 +541,6 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.mic, color: Colors.white, size: 20),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// แถบแสดงเส้นทางที่กำลังนำทางอยู่ (แสดงเมื่อเลือกสถานที่แล้ว)
-  Widget _buildActiveRouteBanner() {
-    final dest = _selectedDestination!;
-    final distanceLabel = _routeDistanceMeters != null
-        ? (_routeDistanceMeters! < 1000
-            ? '${_routeDistanceMeters!.toStringAsFixed(0)} ม.'
-            : '${(_routeDistanceMeters! / 1000).toStringAsFixed(1)} กม.')
-        : '-';
-    final durationLabel = _routeDurationSeconds != null
-        ? '${(_routeDurationSeconds! / 60).ceil()} นาที'
-        : '-';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: primary,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: const [
-            BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 2)),
-          ],
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.directions_rounded, color: Colors.white),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'กำลังนำทางไป ${dest.name}',
-                    style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                  if (!_isLoadingRoute)
-                    Text(
-                      '$distanceLabel • $durationLabel',
-                      style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
-                    )
-                  else
-                    Text('กำลังคำนวณเส้นทาง...', style: GoogleFonts.inter(color: Colors.white70, fontSize: 12)),
-                ],
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, color: Colors.white),
-              onPressed: _clearRoute,
             ),
           ],
         ),

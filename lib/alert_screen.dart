@@ -1,27 +1,138 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 
-// Import หน้า MapScreen (เก็บไว้ตามเดิมของคุณ)
 import 'map_screen.dart';
+import '/services/api_service.dart';
+import '/services/media_upload_service.dart';
 
-// เปลี่ยนเป็น StatefulWidget เพื่อรองรับการทำ Loading state ของ GPS
 class AlertScreen extends StatefulWidget {
-  const AlertScreen({super.key});
+  final dynamic
+  deviceId; // 🔴 ใหม่: รับ device_id เพื่อดึงเสียงที่ตั้งค่าไว้ของอุปกรณ์นั้น
+  const AlertScreen({super.key, this.deviceId});
 
   @override
   State<AlertScreen> createState() => _AlertScreenState();
 }
 
 class _AlertScreenState extends State<AlertScreen> {
-  // สร้างตัวแปรเก็บสถานะการโหลด (คงไว้เผื่ออนาคตอยากเพิ่ม loading step ก่อนเข้า MapScreen)
   bool _isLoading = false;
 
-  // 🔴 เปลี่ยนจากเดิม (เปิด Google Maps ภายนอกผ่าน Geolocator + url_launcher)
-  // เป็น: ปิดหน้า Alert แล้วพาเข้าไปหน้า MapScreen ในแอปแทน
-  // เพราะ MapScreen มี flow เช็ค GPS / permission / หาโลตี้ใกล้เคียงของตัวเองอยู่แล้ว
-  // ไม่ต้องทำ location logic ซ้ำสองที่
+  // 🔴 ใหม่: ตัวเล่นเสียงแจ้งเตือน
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isSoundPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _playAlertSound();
+  }
+
+  // ดึง active_tone ของอุปกรณ์ -> หาไฟล์เสียงที่ตรงกันในรายการที่อัปโหลดไว้ -> เล่นวนลูป
+  // ถ้าไม่มี deviceId หรือไม่เจอไฟล์ที่ตรงกัน -> ไม่เล่นอะไรเลย (เงียบ)
+  Future<void> _playAlertSound() async {
+    final deviceId = widget.deviceId;
+    if (deviceId == null) {
+      debugPrint('ไม่มี deviceId ส่งมา -> ข้ามการเล่นเสียงแจ้งเตือน');
+      return;
+    }
+
+    try {
+      final setting = await ApiService.instance.deviceSetting(deviceId);
+      final activeTone = setting?['active_tone'];
+      final soundEnabled =
+          setting?['sound_enabled'] == 1 || setting?['sound_enabled'] == true;
+
+      if (!soundEnabled || activeTone == null) {
+        debugPrint('ปิดเสียงไว้ หรือไม่มี active_tone -> ไม่เล่นเสียง');
+        return;
+      }
+
+      final mediaList = await MediaUploadService.instance.fetchDeviceMedia(
+        deviceId.toString(),
+      );
+      final match = mediaList
+          .where((m) => m.type == 'audio' && m.fileName == activeTone)
+          .toList();
+
+      if (match.isEmpty) {
+        debugPrint(
+          'ไม่พบไฟล์เสียงที่ตรงกับ active_tone ("$activeTone") -> ไม่เล่นเสียง',
+        );
+        return;
+      }
+
+      final volumeLevel = setting?['volume_level'] ?? 100;
+      final volume =
+          (volumeLevel is int
+              ? volumeLevel
+              : int.tryParse(volumeLevel.toString()) ?? 100) /
+          100.0;
+
+      String rawUrl = match.first.url;
+
+      // ✅ แก้ไข: เดิมพยายาม replaceAll('localhost'/'127.0.0.1', currentHost) กับ
+      // URL ที่ backend ส่งมาตรงๆ ปัญหาคือถ้า backend (APP_URL) ไม่มีพอร์ตแนบมา
+      // ด้วย (เช่นเป็น http://127.0.0.1 เฉยๆ) พอแทนที่ host แล้ว "พอร์ตที่หายไป
+      // ก็ยังหายไปเหมือนเดิม" ทำให้ไปยิง default port 80 แทนที่จะเป็น :8000
+      // จริงๆ ที่เซิร์ฟเวอร์รันอยู่ -> เล่นเสียงไม่ได้
+      //
+      // แก้โดย "ตัดเอาเฉพาะ path หลัง /storage/" ออกมา แล้วประกอบ URL ใหม่ทั้งหมด
+      // จาก ApiService.instance.baseUrl ซึ่งมี scheme/host/port ที่ถูกต้องแน่นอน
+      // (ตัวเดียวกับที่ยิง API สำเร็จอยู่แล้วทุกจุดในแอป) แทนการเดา/แทนที่ string เดิม
+      final storageIndex = rawUrl.indexOf('/storage/');
+      final relativePath = storageIndex != -1
+          ? rawUrl.substring(storageIndex + '/storage/'.length)
+          : rawUrl.replaceFirst(RegExp(r'^/+'), '');
+
+      final apiUri = Uri.parse(
+        ApiService.instance.baseUrl,
+      ); // เช่น http://10.170.65.154:8000/api
+      final audioUrl = Uri(
+        scheme: apiUri.scheme,
+        host: apiUri.host,
+        port: apiUri.port,
+        path: '/storage/$relativePath',
+      ).toString();
+
+      debugPrint('=========================================');
+      debugPrint('👉 URL ที่กำลังจะเล่นจริงบนมือถือ: $audioUrl');
+      debugPrint('=========================================');
+
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+
+      // บังคับเสียงดัง 100%
+      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.play(UrlSource(audioUrl));
+
+      if (mounted) {
+        setState(() => _isSoundPlaying = true);
+      }
+    } catch (e) {
+      debugPrint('เล่นเสียงแจ้งเตือนไม่สำเร็จ: $e');
+    }
+  }
+
+  Future<void> _stopAlertSound() async {
+    if (!_isSoundPlaying) return;
+    try {
+      await _audioPlayer.stop();
+    } catch (e) {
+      debugPrint('หยุดเสียงแจ้งเตือนไม่สำเร็จ: $e');
+    } finally {
+      if (mounted) setState(() => _isSoundPlaying = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
   Future<void> _navigateToNearestRest() async {
     if (!mounted) return;
+    await _stopAlertSound();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const MapScreen()),
     );
@@ -44,7 +155,10 @@ class _AlertScreenState extends State<AlertScreen> {
               children: [
                 // Header
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
                       const Expanded(
@@ -76,7 +190,9 @@ class _AlertScreenState extends State<AlertScreen> {
                             color: Colors.grey[800],
                             borderRadius: BorderRadius.circular(12),
                             image: const DecorationImage(
-                              image: NetworkImage("https://via.placeholder.com/400x700/333333/666666?text=Map+View"),
+                              image: NetworkImage(
+                                "https://via.placeholder.com/400x700/333333/666666?text=Map+View",
+                              ),
                               fit: BoxFit.cover,
                             ),
                           ),
@@ -87,12 +203,19 @@ class _AlertScreenState extends State<AlertScreen> {
                           right: 16,
                           child: Row(
                             children: [
-                              Expanded(child: _buildInfoCard("ความเร็ว", "65 กม./ชม.")),
+                              Expanded(
+                                child: _buildInfoCard("ความเร็ว", "65 กม./ชม."),
+                              ),
                               const SizedBox(width: 16),
-                              Expanded(child: _buildInfoCard("เวลาขับขี่", "2 ชม. 15 น.")),
+                              Expanded(
+                                child: _buildInfoCard(
+                                  "เวลาขับขี่",
+                                  "2 ชม. 15 น.",
+                                ),
+                              ),
                             ],
                           ),
-                        )
+                        ),
                       ],
                     ),
                   ),
@@ -117,9 +240,7 @@ class _AlertScreenState extends State<AlertScreen> {
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: Container(
-                color: backgroundDark.withOpacity(0.6),
-              ),
+              child: Container(color: backgroundDark.withOpacity(0.6)),
             ),
           ),
 
@@ -138,7 +259,7 @@ class _AlertScreenState extends State<AlertScreen> {
                       color: Colors.black.withOpacity(0.25),
                       blurRadius: 25,
                       offset: const Offset(0, 10),
-                    )
+                    ),
                   ],
                 ),
                 child: Column(
@@ -192,10 +313,16 @@ class _AlertScreenState extends State<AlertScreen> {
 
                     // 🔴 ปุ่มเรียกฟังก์ชันพาไปหน้า MapScreen ในแอป
                     _buildFilledButton(
-                      text: _isLoading ? "กำลังเปิดแผนที่..." : "นำทางไปจุดพักรถใกล้ฉัน",
-                      icon: _isLoading ? Icons.refresh_rounded : Icons.navigation,
+                      text: _isLoading
+                          ? "กำลังเปิดแผนที่..."
+                          : "นำทางไปจุดพักรถใกล้ฉัน",
+                      icon: _isLoading
+                          ? Icons.refresh_rounded
+                          : Icons.navigation,
                       color: alertRed,
-                      onPressed: _isLoading ? null : _navigateToNearestRest, // ถ้าโหลดอยู่จะกดซ้ำไม่ได้
+                      onPressed: _isLoading
+                          ? null
+                          : _navigateToNearestRest, // ถ้าโหลดอยู่จะกดซ้ำไม่ได้
                     ),
                   ],
                 ),
@@ -280,7 +407,8 @@ class _AlertScreenState extends State<AlertScreen> {
     required String text,
     required IconData icon,
     required Color color,
-    required VoidCallback? onPressed // เปลี่ยนเป็น nullable เพื่อรองรับปุ่มปิดการทำงาน (Disabled)
+    required VoidCallback?
+    onPressed, // เปลี่ยนเป็น nullable เพื่อรองรับปุ่มปิดการทำงาน (Disabled)
   }) {
     return SizedBox(
       width: double.infinity,
@@ -290,11 +418,18 @@ class _AlertScreenState extends State<AlertScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: color.withOpacity(0.6), // สีปุ่มตอนที่โหลดอยู่
+          disabledBackgroundColor: color.withOpacity(
+            0.6,
+          ), // สีปุ่มตอนที่โหลดอยู่
           disabledForegroundColor: Colors.white70,
           elevation: onPressed == null ? 0 : 5,
           shadowColor: Colors.red[200],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(100),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+          ), // 🔴 แก้ไข: กันข้อความชนขอบซ้ายขวา
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -304,16 +439,29 @@ class _AlertScreenState extends State<AlertScreen> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
                   )
                 : Icon(icon, size: 24),
             const SizedBox(width: 8),
-            Text(
-              text,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'Manrope',
+            // 🔴 แก้ไข: ห่อ Text ด้วย Flexible กัน RenderFlex overflow
+            // เดิม Text ถูกวางตรงๆ ใน Row ทำให้เวลาข้อความยาว (เช่นตอน
+            // loading เปลี่ยนเป็น "กำลังเปิดแผนที่...") หรือจอแคบ จะดันล้น
+            // ออกนอกปุ่ม (RIGHT OVERFLOWED BY x PIXELS) ห่อด้วย Flexible +
+            // ellipsis ให้มันตัดคำแทนที่จะล้นออกไป
+            Flexible(
+              child: Text(
+                text,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Manrope',
+                ),
               ),
             ),
           ],
@@ -321,7 +469,10 @@ class _AlertScreenState extends State<AlertScreen> {
       ),
     );
   }
-}
+} // 🔴 แก้ไข: ปิด class _AlertScreenState ตรงนี้ (เดิมวงเล็บนี้หายไปจากตำแหน่งนี้
+   // แล้วไปโผล่เกินที่ท้ายไฟล์แทน ทำให้ PulseWarningIcon กลายเป็น class
+   // ที่ซ้อนอยู่ข้างใน _AlertScreenState แทนที่จะเป็น top-level class
+   // เป็นสาเหตุของ error "The name 'PulseWarningIcon' isn't a class")
 
 // คลาส PulseWarningIcon คงไว้ตามแบบเดิมของคุณ
 class PulseWarningIcon extends StatefulWidget {
@@ -332,7 +483,8 @@ class PulseWarningIcon extends StatefulWidget {
   State<PulseWarningIcon> createState() => _PulseWarningIconState();
 }
 
-class _PulseWarningIconState extends State<PulseWarningIcon> with SingleTickerProviderStateMixin {
+class _PulseWarningIconState extends State<PulseWarningIcon>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -365,11 +517,7 @@ class _PulseWarningIconState extends State<PulseWarningIcon> with SingleTickerPr
       child: Center(
         child: FadeTransition(
           opacity: _animation,
-          child: Icon(
-            Icons.warning_rounded,
-            color: widget.color,
-            size: 60,
-          ),
+          child: Icon(Icons.warning_rounded, color: widget.color, size: 60),
         ),
       ),
     );

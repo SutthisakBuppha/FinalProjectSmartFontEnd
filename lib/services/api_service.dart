@@ -91,30 +91,30 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> registerDriver({
-  required String name,
-  required String username, // เพิ่มใหม่
-  required String email,
-  required String password,
-  required String passwordConfirmation,
-}) async {
-  final response = await _request(
-    'POST',
-    'driver/register',
-    body: {
-      'name': name,
-      'username': username, // เพิ่มใหม่
-      'email': email,
-      'password': password,
-      'password_confirmation': passwordConfirmation,
-    },
-    requireAuth: false,
-  );
+    required String name,
+    required String username, // เพิ่มใหม่
+    required String email,
+    required String password,
+    required String passwordConfirmation,
+  }) async {
+    final response = await _request(
+      'POST',
+      'driver/register',
+      body: {
+        'name': name,
+        'username': username, // เพิ่มใหม่
+        'email': email,
+        'password': password,
+        'password_confirmation': passwordConfirmation,
+      },
+      requireAuth: false,
+    );
 
-  return _applyAuthResponse(
-    response,
-    'Register response does not include driver token.',
-  );
-}
+    return _applyAuthResponse(
+      response,
+      'Register response does not include driver token.',
+    );
+  }
 
   Future<void> forgotPasswordDriver({required String email}) async {
     await _request(
@@ -246,26 +246,28 @@ class ApiService {
         'serial_number': serialNumber,
         'device_name': deviceName,
         'device_type': deviceType,
-        'status': 'ออฟไลน์', 
+        'status': 'ออฟไลน์',
         'is_active': true,
       },
     );
     return _dataMap(response);
   }
-/// ลงทะเบียนอุปกรณ์ใหม่ด้วย Serial Number อย่างเดียว
-/// (ตั้งชื่อ/ประเภทเริ่มต้นให้อัตโนมัติ เพราะหน้าจอมีแค่ช่อง S/N)
-Future<bool> registerDevice(String serialNumber) async {
-  try {
-    await createDevice(
-      serialNumber: serialNumber,
-      deviceName: 'อุปกรณ์ใหม่ #$serialNumber',
-      deviceType: 'ESP32-CAM',
-    );
-    return true;
-  } on ApiException {
-    return false;
+
+  /// ลงทะเบียนอุปกรณ์ใหม่ด้วย Serial Number อย่างเดียว
+  /// (ตั้งชื่อ/ประเภทเริ่มต้นให้อัตโนมัติ เพราะหน้าจอมีแค่ช่อง S/N)
+  Future<bool> registerDevice(String serialNumber) async {
+    try {
+      await createDevice(
+        serialNumber: serialNumber,
+        deviceName: 'อุปกรณ์ใหม่ #$serialNumber',
+        deviceType: 'ESP32-CAM',
+      );
+      return true;
+    } on ApiException {
+      return false;
+    }
   }
-}
+
   Future<Map<String, dynamic>> updateDevice({
     required dynamic deviceId,
     String? serialNumber,
@@ -655,5 +657,16 @@ Future<bool> registerDevice(String serialNumber) async {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value);
     return null;
+  }
+
+  /// ดึง Alert ล่าสุดของ driver คนนี้ (ใช้เอา device_id ตอนเด้ง AlertScreen)
+  Future<Map<String, dynamic>?> latestAlert() async {
+    final response = await _request(
+      'GET',
+      'driver-latest-alert',
+      query: {'driver_id': _requireDriverId().toString()},
+      requireAuth: false,
+    );
+    return _nullableDataMap(response);
   }
 }
