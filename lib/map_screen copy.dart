@@ -80,8 +80,6 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     )..repeat();
 
     _initLocationFlow(); // ← เริ่ม flow ทั้งหมดตั้งแต่เช็ค GPS จนถึงหาสถานที่ใกล้เคียง
-    // 🔴 หมายเหตุ: ระบบ polling alert ถูกย้ายไปไว้ที่ main_layout.dart แล้ว
-    // (ให้ทำงานได้ทุกหน้าในแอป ไม่ใช่แค่ตอนอยู่หน้า MapScreen เท่านั้น)
   }
 
   @override

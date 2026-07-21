@@ -24,6 +24,7 @@ class _MainLayoutState extends State<MainLayout> {
 
   Timer? _pollingTimer;
   bool _isShowingAlert = false;
+  dynamic _lastSeenAlertId; // เก็บ id ของ alert ล่าสุดที่เคยเห็นแล้ว (กันเด้งซ้ำ/เด้งของเก่า)
 
   final List<Widget> _screens = [
     const HomeScreen(), // Index 0
@@ -41,41 +42,59 @@ class _MainLayoutState extends State<MainLayout> {
     _startNotificationPolling();
   }
 
-  // Polling Notification ทุกๆ 8 วินาที (จุดเดียวของทั้งแอปที่เด้ง AlertScreen)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Polling: เช็คทุก 3 วิว่ามี Alert ใหม่จาก AI Guard (ผ่าน Laravel) หรือยัง
+  // เช็คจาก alert_id ตรงๆ (ไม่ใช่ผ่าน Notification) เพราะ Notification จะถูก
+  // สร้างก็ต่อเมื่อ Laravel นับได้ว่า Alert ประเภทเดียวกันซ้ำครบ 3 ครั้งใน 10
+  // นาทีอีกชั้นหนึ่ง ซึ่งเป็นคนละตัวนับกับที่ฝั่ง AI (python) นับไว้แล้วก่อนยิง
+  // เข้ามา ทำให้กว่าจะเด้งจอต้องรอ Alert ซ้อนกันหลายรอบโดยไม่จำเป็น
+  //
+  // จุดเดียวของทั้งแอปที่เด้ง AlertScreen (ย้ายมาจาก map_screen.dart เดิม
+  // เพื่อให้ทำงานได้ไม่ว่าผู้ใช้จะอยู่หน้าไหนใน MainLayout ก็ตาม)
+  // ═══════════════════════════════════════════════════════════════════════
   void _startNotificationPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted || _isShowingAlert) return;
+      if (!ApiService.instance.isLoggedIn) return;
+
       try {
-        final noti = await ApiService.instance.notifications(isRead: false);
+        final alert = await ApiService.instance.latestAlert();
+        if (alert == null) return;
 
-        if (mounted && noti.isNotEmpty && !_isShowingAlert) {
-          _isShowingAlert = true;
+        final alertId = alert['alert_id'];
+        if (alertId == null) return;
 
-          try {
-            await ApiService.instance.markAllNotificationsRead();
-          } catch (e) {
-            debugPrint("Mark notification read error: $e");
-          }
+        if (_lastSeenAlertId == null) {
+          // ดึงมาเป็นครั้งแรก -> แค่จำ id ไว้เฉยๆ ยังไม่เด้งจอ
+          // (กันไม่ให้ alert เก่าที่เคยเกิดไปแล้วก่อนเปิดแอปมาเด้งซ้ำ)
+          _lastSeenAlertId = alertId;
+          return;
+        }
 
-          // 🔴 ใหม่: ดึง device_id จาก alert ล่าสุด เพื่อรู้ว่าต้องเล่นเสียงของอุปกรณ์ไหน
-          dynamic deviceId;
-          try {
-            final latest = await ApiService.instance.latestAlert();
-            deviceId = latest?['device_id'];
-          } catch (e) {
-            debugPrint("โหลด latest alert (device_id) ล้มเหลว: $e");
-          }
+        if (alertId == _lastSeenAlertId) return;
 
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AlertScreen(deviceId: deviceId)),
-          );
+        _lastSeenAlertId = alertId;
+        _isShowingAlert = true;
 
-          if (mounted) {
-            _isShowingAlert = false;
-          }
+        try {
+          await ApiService.instance.markAllNotificationsRead();
+        } catch (e) {
+          debugPrint("Mark notification read error: $e");
+        }
+
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AlertScreen(deviceId: alert['device_id']),
+          ),
+        );
+
+        if (mounted) {
+          _isShowingAlert = false;
         }
       } catch (e) {
-        debugPrint("Polling Notification Error: $e");
+        debugPrint("Polling Alert Error: $e");
       }
     });
   }

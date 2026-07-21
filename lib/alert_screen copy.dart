@@ -144,11 +144,7 @@ class _AlertScreenState extends State<AlertScreen> {
     const Color backgroundDark = Color(0xFF161022);
     const Color alertRed = Color(0xFFFF4D4D);
 
-    // 🔴 ใหม่: บังคับให้ปิดหน้านี้ได้ทางเดียวคือกดปุ่ม "นำทางไปจุดพักรถใกล้ฉัน"
-    // เท่านั้น กันคนขับกดปุ่ม back ของมือถือหนีหน้าแจ้งเตือนไปเฉยๆ
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
+    return Scaffold(
       backgroundColor: backgroundDark,
       body: Stack(
         fit: StackFit.expand,
@@ -334,7 +330,6 @@ class _AlertScreenState extends State<AlertScreen> {
             ),
           ),
         ],
-      ),
       ),
     );
   }

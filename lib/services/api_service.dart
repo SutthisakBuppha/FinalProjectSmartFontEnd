@@ -22,12 +22,12 @@ class ApiService {
   final http.Client _client = http.Client();
 
   String? _token;
-  int? _driverId;
+  String? _driverId;  // เปลี่ยนจาก int? เป็น String? เนื่องจาก ID เป็น CHAR แล้ว
   Map<String, dynamic>? _driver;
 
   String get baseUrl => _baseUrl;
   bool get isLoggedIn => _token != null && _driverId != null;
-  int? get driverId => _driverId;
+  String? get driverId => _driverId;  // เปลี่ยน return type จาก int? เป็น String?
   Map<String, dynamic>? get currentDriver => _driver;
 
   static final String _baseUrl = _resolveBaseUrl();
@@ -176,7 +176,8 @@ class ApiService {
   Future<bool> restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_kTokenKey);
-    final driverId = prefs.getInt(_kDriverIdKey);
+    // เปลี่ยนจาก getInt เป็น getString เนื่องจาก driverId เป็น String แล้ว
+    final driverId = prefs.getString(_kDriverIdKey);
 
     if (token == null || driverId == null) return false;
 
@@ -185,10 +186,12 @@ class ApiService {
     return true;
   }
 
-  Future<void> _persistSession(String token, int driverId) async {
+  // เปลี่ยน driverId parameter จาก int เป็น String
+  Future<void> _persistSession(String token, String driverId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kTokenKey, token);
-    await prefs.setInt(_kDriverIdKey, driverId);
+    // เปลี่ยนจาก setInt เป็น setString
+    await prefs.setString(_kDriverIdKey, driverId);
   }
 
   Future<Map<String, dynamic>> dashboard() async {
@@ -299,14 +302,14 @@ class ApiService {
     return _nullableDataMap(response);
   }
 
-  Future<Map<String, dynamic>> saveDeviceSetting({
+  Future<void> upsertDeviceSetting({
     required dynamic deviceId,
     required int volumeLevel,
     required bool soundEnabled,
     required String activeTone,
   }) async {
-    final response = await _request(
-      'PATCH',
+    await _request(
+      'PUT',
       'app/drivers/${_requireDriverId()}/devices/$deviceId/setting',
       body: {
         'volume_level': volumeLevel,
@@ -314,63 +317,28 @@ class ApiService {
         'active_tone': activeTone,
       },
     );
-    return _dataMap(response);
   }
 
-  Future<List<Map<String, dynamic>>> trips({String? status}) async {
+  Future<void> removeDevice(dynamic deviceId) async {
+    await _request(
+      'DELETE',
+      'app/drivers/${_requireDriverId()}/devices/$deviceId',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> trips({dynamic deviceId}) async {
     final response = await _request(
       'GET',
       'app/drivers/${_requireDriverId()}/trips',
-      query: {if (status != null) 'status': status},
+      query: {if (deviceId != null) 'device_id': deviceId.toString()},
     );
     return _dataList(response);
   }
 
-  Future<Map<String, dynamic>> createTrip({dynamic deviceId}) async {
-    final response = await _request(
-      'POST',
-      'app/drivers/${_requireDriverId()}/trips',
-      body: {
-        if (deviceId != null) 'device_id': deviceId,
-        'start_time': DateTime.now().toIso8601String(),
-        'status': 'active',
-      },
-    );
-    return _dataMap(response);
-  }
-
-  Future<Map<String, dynamic>> updateTrip(
-    dynamic tripId, {
-    DateTime? endTime,
-    String? status,
-    num? distance,
-    String? duration,
-  }) async {
-    final response = await _request(
-      'PATCH',
-      'app/drivers/${_requireDriverId()}/trips/$tripId',
-      body: {
-        if (endTime != null) 'end_time': endTime.toIso8601String(),
-        if (status != null) 'status': status,
-        if (distance != null) 'distance': distance,
-        if (duration != null) 'duration': duration,
-      },
-    );
-    return _dataMap(response);
-  }
-
-  Future<Map<String, dynamic>> trip(dynamic tripId) async {
+  Future<Map<String, dynamic>> tripDetail(dynamic tripId) async {
     final response = await _request(
       'GET',
       'app/drivers/${_requireDriverId()}/trips/$tripId',
-    );
-    return _dataMap(response);
-  }
-
-  Future<Map<String, dynamic>> tripSummary(dynamic tripId) async {
-    final response = await _request(
-      'GET',
-      'drivers/${_requireDriverId()}/trips/$tripId/summary',
     );
     return _dataMap(response);
   }
@@ -478,7 +446,8 @@ class ApiService {
     return _dataMap(response);
   }
 
-  int _requireDriverId() {
+  // เปลี่ยน return type จาก int เป็น String
+  String _requireDriverId() {
     final id = _driverId;
     if (_token == null || id == null) {
       throw const ApiException('Please log in before using this feature.');
@@ -493,7 +462,8 @@ class ApiService {
     String errorMessage,
   ) {
     final token = response['token']?.toString();
-    final driverId = _toInt(response['driver_id']);
+    // เปลี่ยนจาก _toInt เป็น _toString เพราะ driverId เป็น String
+    final driverId = _toString(response['driver_id']);
 
     if (token == null || token.isEmpty || driverId == null) {
       throw ApiException(errorMessage);
@@ -652,10 +622,11 @@ class ApiService {
     return <Map<String, dynamic>>[];
   }
 
-  int? _toInt(dynamic value) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    if (value is String) return int.tryParse(value);
+  // เปลี่ยนเป็น _toString ที่ convert ค่าเป็น String แทน int
+  String? _toString(dynamic value) {
+    if (value is String) return value;
+    if (value is int) return value.toString();
+    if (value is num) return value.toInt().toString();
     return null;
   }
 
@@ -664,7 +635,7 @@ class ApiService {
     final response = await _request(
       'GET',
       'driver-latest-alert',
-      query: {'driver_id': _requireDriverId().toString()},
+      query: {'driver_id': _requireDriverId()},  // ส่งเป็น String แล้ว
       requireAuth: false,
     );
     return _nullableDataMap(response);

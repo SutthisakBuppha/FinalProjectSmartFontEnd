@@ -79,7 +79,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   Future<void> _saveAllSettings() async {
     setState(() => _isSavingSetting = true);
     try {
-      await ApiService.instance.saveDeviceSetting(
+      await ApiService.instance.updateDeviceSettings(
         deviceId: widget.deviceData['device_id'],
         volumeLevel: _volumeLevel.toInt(),
         soundEnabled: _soundEnabled,
