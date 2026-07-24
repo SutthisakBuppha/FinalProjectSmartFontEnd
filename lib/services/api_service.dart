@@ -22,12 +22,12 @@ class ApiService {
   final http.Client _client = http.Client();
 
   String? _token;
-  String? _driverId;  // เปลี่ยนจาก int? เป็น String? เนื่องจาก ID เป็น CHAR แล้ว
+  String? _driverId;  
   Map<String, dynamic>? _driver;
 
   String get baseUrl => _baseUrl;
   bool get isLoggedIn => _token != null && _driverId != null;
-  String? get driverId => _driverId;  // เปลี่ยน return type จาก int? เป็น String?
+  String? get driverId => _driverId;  
   Map<String, dynamic>? get currentDriver => _driver;
 
   static final String _baseUrl = _resolveBaseUrl();
