@@ -523,7 +523,35 @@ class ApiService {
         throw ApiException('Unsupported request method: $method');
     }
 
-    final decoded = _decodeResponse(response);
+  //   final decoded = _decodeResponse(response);
+
+  //   if (response.statusCode < 200 || response.statusCode >= 300) {
+  //     throw ApiException(
+  //       _messageFrom(decoded) ?? 'Request failed (${response.statusCode}).',
+  //       statusCode: response.statusCode,
+  //     );
+  //   }
+
+  //   if (decoded is Map<String, dynamic> && decoded['success'] == false) {
+  //     throw ApiException(_messageFrom(decoded) ?? 'Request failed.');
+  //   }
+
+  //   if (decoded is Map<String, dynamic>) {
+  //     return decoded;
+  //   }
+
+  //   return {'data': decoded};
+  // }
+  final decoded = _decodeResponse(response);
+
+    // 🔴 เพิ่มส่วนนี้: ล้าง Session ทันทีเมื่อเซิร์ฟเวอร์ตอบกลับว่า Unauthenticated / Token หมดอายุ (401)
+    if (response.statusCode == 401) {
+      clearSession();
+      throw ApiException(
+        _messageFrom(decoded) ?? 'Session expired. Please log in again.',
+        statusCode: 401,
+      );
+    }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(
@@ -542,7 +570,6 @@ class ApiService {
 
     return {'data': decoded};
   }
-
   Uri _uri(String path, Map<String, dynamic>? query) {
     final cleanPath = path.startsWith('/') ? path.substring(1) : path;
     final uri = Uri.parse('$_baseUrl/$cleanPath');
