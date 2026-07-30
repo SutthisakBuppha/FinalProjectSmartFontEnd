@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'devices_screen.dart';
@@ -10,15 +9,19 @@ class DeviceCustomizationScreen extends StatefulWidget {
   const DeviceCustomizationScreen({super.key, required this.deviceData});
 
   @override
-  State<DeviceCustomizationScreen> createState() => _DeviceCustomizationScreenState();
+  State<DeviceCustomizationScreen> createState() =>
+      _DeviceCustomizationScreenState();
 }
 
 class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
+  // ── Theme (คงชุดสีเดิมของแอปไว้ทั้งหมด) ─────────────────────────────
   static const Color primaryColor = Color(0xFF0F2557);
+  static const Color primarySoft = Color(0xFF3B5998);
   static const Color bgLight = Color(0xFFFFFFFF);
   static const Color bgOffwhite = Color(0xFFF6F8FA);
   static const Color accentBlue = Color(0xFFE8EFFD);
-  static const Color accentBlueDark = Color(0xFF1A3A75);
+  static const Color successGreen = Color(0xFF10B981);
+  static const Color offlineGrey = Color(0xFF9CA3AF);
 
   bool _soundEnabled = true;
   double _volumeLevel = 75.0;
@@ -26,12 +29,15 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   bool _isLoadingSetting = true;
   bool _isSavingSetting = false;
 
-  // ---- ส่วนอัปโหลดไฟล์เสียง (เสียงที่ผู้ใช้อัปโหลดเอง เพิ่มเป็นตัวเลือกควบคู่กับเสียงสำเร็จรูป) ----
   List<UploadedMedia> _audioTones = [];
   bool _isLoadingAudio = true;
   bool _isUploadingAudio = false;
 
   String get _deviceId => widget.deviceData['device_id'].toString();
+
+  bool get _isOnline =>
+      widget.deviceData['status'] == 'ออนไลน์' ||
+      widget.deviceData['status'] == 'online';
 
   @override
   void initState() {
@@ -42,11 +48,17 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
 
   Future<void> _fetchDeviceConfig() async {
     try {
-      final config = await ApiService.instance.deviceSetting(widget.deviceData['device_id']);
+      final config = await ApiService.instance.deviceSetting(
+        widget.deviceData['device_id'],
+      );
       if (config != null) {
         setState(() {
-          _soundEnabled = config['sound_enabled'] == 1 || config['sound_enabled'] == true;
-          _volumeLevel = (config['volume_level'] ?? 75).toDouble();
+          _soundEnabled =
+              config['sound_enabled'] == 1 || config['sound_enabled'] == true;
+          final rawVolume = config['volume_level'];
+          _volumeLevel = rawVolume is num
+              ? rawVolume.toDouble()
+              : double.tryParse(rawVolume?.toString() ?? '75') ?? 75.0;
           _activeTone = config['active_tone'] ?? 'เสียงคลาสสิก (Classic)';
         });
       }
@@ -63,13 +75,15 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   Future<void> _fetchAudioTones() async {
     setState(() => _isLoadingAudio = true);
     try {
-      final list = await MediaUploadService.instance.fetchDeviceMedia(_deviceId);
-      // กรองเอาเฉพาะไฟล์เสียงจากรายการสื่อทั้งหมดของอุปกรณ์
+      final list = await MediaUploadService.instance.fetchDeviceMedia(
+        _deviceId,
+      );
       if (mounted) {
-        setState(() => _audioTones = list.where((m) => m.type == 'audio').toList());
+        setState(
+          () => _audioTones = list.where((m) => m.type == 'audio').toList(),
+        );
       }
     } catch (e) {
-      // ไม่ต้องโชว์ error รบกวนผู้ใช้ตอนโหลดครั้งแรก แค่ log ไว้พอ
       debugPrint('โหลดรายการไฟล์เสียงไม่สำเร็จ: $e');
     } finally {
       if (mounted) setState(() => _isLoadingAudio = false);
@@ -91,24 +105,20 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         );
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
+          MaterialPageRoute(
+            builder: (context) => const DeviceManagementScreen(),
+          ),
         );
       }
     } catch (e) {
       setState(() => _isSavingSetting = false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ไม่สามารถบันทึกได้: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ไม่สามารถบันทึกได้: $e')));
     }
   }
 
-  // ---------------------------------------------------------------------
-  // เลือกไฟล์เสียงจากเครื่อง -> อัปโหลด -> เพิ่มเป็นตัวเลือกเสียงเพิ่มเติม
-  // หมายเหตุ: ปรับชื่อเมธอด pickAndUploadAudio ให้ตรงกับที่มีจริงใน
-  // MediaUploadService ของโปรเจกต์คุณ (ยังไม่เห็นไฟล์ media_upload_service.dart
-  // ตอนแก้ไขนี้ จึงอ้างอิงชื่อเมธอดตามรูปแบบเดียวกับ pickCompressAndUploadImage/Video เดิม)
-  // ---------------------------------------------------------------------
   Future<void> _handleUploadAudio() async {
     setState(() => _isUploadingAudio = true);
     try {
@@ -116,10 +126,23 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         deviceId: _deviceId,
       );
       if (result != null) {
-        setState(() => _audioTones.insert(0, result));
+        setState(() {
+          _audioTones.insert(0, result);
+          _activeTone = result.fileName;
+        });
+        try {
+          await MediaUploadService.instance.selectMedia(result.mediaId);
+        } catch (e) {
+          debugPrint('ตั้งเสียงที่เพิ่งอัปโหลดเป็นเสียงใช้งานไม่สำเร็จ: $e');
+        }
+
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('อัปโหลดไฟล์เสียงสำเร็จแล้ว')),
+          const SnackBar(
+            content: Text(
+              'อัปโหลดไฟล์เสียงสำเร็จแล้ว และตั้งเป็นเสียงที่ใช้งานให้อัตโนมัติ',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -141,160 +164,482 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: primaryColor, size: 22),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: primaryColor,
+            size: 22,
+          ),
           onPressed: () {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
+              MaterialPageRoute(
+                builder: (context) => const DeviceManagementScreen(),
+              ),
             );
           },
         ),
         title: Text(
           "การตั้งค่าอุปกรณ์",
-          style: GoogleFonts.notoSansThai(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor),
+          style: GoogleFonts.notoSansThai(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: primaryColor,
+          ),
         ),
       ),
       body: _isLoadingSetting
           ? const Center(child: CircularProgressIndicator(color: primaryColor))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildActiveDeviceHeader(),
-                  const SizedBox(height: 32),
-                  _buildSoundPreferences(),
-                  const SizedBox(height: 40),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isSavingSetting ? null : _saveAllSettings,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
-                      child: _isSavingSetting
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : Text("บันทึกการตั้งค่าทั้งหมด", style: GoogleFonts.notoSansThai(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          : RefreshIndicator(
+              color: primaryColor,
+              onRefresh: () async {
+                await _fetchDeviceConfig();
+                await _fetchAudioTones();
+              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildActiveDeviceHeader(),
+                    const SizedBox(height: 24),
+                    _buildSectionTitle(
+                      icon: Icons.graphic_eq_rounded,
+                      title: "เสียงสัญญาณอินเตอร์คอม",
+                      subtitle: "เลือกเสียงที่จะใช้แจ้งเตือนเมื่อระบบตรวจพบความเสี่ยง",
                     ),
-                  )
-                ],
+                    const SizedBox(height: 12),
+                    _buildSoundPreferences(),
+                    const SizedBox(height: 20),
+                    _buildUploadCard(),
+                    // const SizedBox(height: 20),
+                    // _buildInfoNoteCard(),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: ElevatedButton(
+                        onPressed: _isSavingSetting ? null : _saveAllSettings,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          elevation: 3,
+                          shadowColor: primaryColor.withOpacity(0.4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: _isSavingSetting
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.save_rounded,
+                                      color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "บันทึกการตั้งค่าทั้งหมด",
+                                    style: GoogleFonts.notoSansThai(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
             ),
     );
   }
 
+  // ── ส่วนหัว: การ์ดแสดงข้อมูลอุปกรณ์ + สถานะออนไลน์/ออฟไลน์ ─────────────
   Widget _buildActiveDeviceHeader() {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [primaryColor, primarySoft],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withOpacity(0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          const Icon(Icons.developer_board, color: primaryColor, size: 36),
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.developer_board_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.deviceData['device_name'] ?? 'ไม่ระบุชื่อ', style: GoogleFonts.notoSansThai(fontWeight: FontWeight.bold, fontSize: 16, color: primaryColor)),
-                Text('S/N: ${widget.deviceData['serial_number'] ?? '-'}', style: GoogleFonts.notoSansThai(color: Colors.grey, fontSize: 13)),
+                Text(
+                  widget.deviceData['device_name'] ?? 'ไม่ระบุชื่อ',
+                  style: GoogleFonts.notoSansThai(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'S/N: ${widget.deviceData['serial_number'] ?? '-'}',
+                  style: GoogleFonts.notoSansThai(
+                    color: Colors.white.withOpacity(0.75),
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
-          )
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: (_isOnline ? successGreen : offlineGrey).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: (_isOnline ? successGreen : offlineGrey)
+                    .withOpacity(0.5),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _isOnline ? successGreen : offlineGrey,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _isOnline ? "ออนไลน์" : "ออฟไลน์",
+                  style: GoogleFonts.notoSansThai(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSoundPreferences() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildSectionTitle({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: accentBlue,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: primaryColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("เปิดใช้งานเสียงระบบ", style: GoogleFonts.notoSansThai(fontSize: 16, fontWeight: FontWeight.bold)),
-              CupertinoSwitch(
-                value: _soundEnabled,
-                onChanged: (val) => setState(() => _soundEnabled = val),
-              )
+              Text(
+                title,
+                style: GoogleFonts.notoSansThai(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: primaryColor,
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.notoSansThai(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
             ],
           ),
-          if (_soundEnabled) ...[
-            const Divider(height: 32),
-            Text("ระดับเสียงแจ้งเตือน (${_volumeLevel.toInt()}%)", style: GoogleFonts.notoSansThai(fontSize: 14)),
-            Slider(
-              value: _volumeLevel,
-              min: 0,
-              max: 100,
-              activeColor: primaryColor,
-              onChanged: (val) => setState(() => _volumeLevel = val),
-            ),
-            const Divider(height: 32),
-            Text("เลือกเสียงสัญญาณอินเตอร์คอม", style: GoogleFonts.notoSansThai(fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            _buildToneOption('เสียงคลาสสิก (Classic)'),
-            _buildToneOption('เสียงสัญญาณสั้น (Beep)'),
-            _buildToneOption('เสียงแจ้งเตือนไซเรน (Siren)'),
+        ),
+      ],
+    );
+  }
 
-            // ── เสียงที่ผู้ใช้อัปโหลดเอง (เพิ่มเติมจากเสียงสำเร็จรูปด้านบน) ──
-            if (_isLoadingAudio) ...[
-              const SizedBox(height: 12),
-              const Center(
-                child: SizedBox(
-                  width: 20, height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
+  // ── รายการเสียง: การ์ดเลือกได้ พร้อมไฮไลต์ตัวที่ถูกเลือก ──────────────
+  Widget _buildSoundPreferences() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          _buildToneOption(
+            'เสียงคลาสสิก (Classic)',
+            icon: Icons.music_note_rounded,
+          ),
+          const SizedBox(height: 10),
+          _buildToneOption(
+            'เสียงสัญญาณสั้น (Beep)',
+            icon: Icons.notifications_active_rounded,
+          ),
+          const SizedBox(height: 10),
+          _buildToneOption(
+            'เสียงแจ้งเตือนไซเรน (Siren)',
+            icon: Icons.warning_amber_rounded,
+          ),
+
+          if (_isLoadingAudio) ...[
+            const SizedBox(height: 16),
+            const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: primaryColor,
                 ),
               ),
-            ] else
-              ..._audioTones.map((audio) => _buildToneOption(audio.fileName)),
-
+            ),
             const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _isUploadingAudio ? null : _handleUploadAudio,
-                icon: _isUploadingAudio
-                    ? const SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor),
-                      )
-                    : const Icon(Icons.audiotrack_outlined, color: primaryColor, size: 20),
-                label: Text(
-                  "อัปโหลดไฟล์เสียงใหม่",
-                  style: GoogleFonts.notoSansThai(color: primaryColor, fontWeight: FontWeight.w600, fontSize: 13),
+          ] else if (_audioTones.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(child: Divider(color: Colors.grey.shade200)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(
+                      "เสียงที่คุณอัปโหลดเอง",
+                      style: GoogleFonts.notoSansThai(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: Colors.grey.shade200)),
+                ],
+              ),
+            ),
+            ..._audioTones.map(
+              (audio) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _buildToneOption(
+                  audio.fileName,
+                  icon: Icons.audiotrack_rounded,
+                  mediaId: audio.mediaId,
                 ),
               ),
             ),
-          ]
+          ],
         ],
       ),
     );
   }
 
-  // แก้ไข: ห่อ RadioListTile ด้วย Material(color: Colors.transparent, ...)
-  // เพื่อให้พื้นหลัง/ink splash ของ RadioListTile วาดผลได้ถูกต้อง
-  // ไม่ถูก DecoratedBox (Container สีขาวใน _buildSoundPreferences) บังไว้
-  // แก้ปัญหา Flutter assertion: "ListTile background color or ink splashes may be invisible."
-  Widget _buildToneOption(String title) {
+  Widget _buildToneOption(String title, {required IconData icon, String? mediaId}) {
     final isSelected = _activeTone == title;
-    return Material(
-      color: Colors.transparent,
-      child: RadioListTile<String>(
-        title: Text(title, style: GoogleFonts.notoSansThai(fontSize: 14)),
-        value: title,
-        groupValue: _activeTone,
-        activeColor: primaryColor,
-        contentPadding: EdgeInsets.zero,
-        onChanged: (val) {
-          if (val != null) setState(() => _activeTone = val);
-        },
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () async {
+        setState(() => _activeTone = title);
+        if (mediaId != null) {
+          try {
+            await MediaUploadService.instance.selectMedia(mediaId);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('เลือกไฟล์เสียงไม่สำเร็จ: $e')),
+              );
+            }
+          }
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? accentBlue : bgOffwhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? primaryColor : Colors.transparent,
+            width: 1.4,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: isSelected ? primaryColor : Colors.white,
+                shape: BoxShape.circle,
+                border: isSelected
+                    ? null
+                    : Border.all(color: Colors.grey.shade300),
+              ),
+              child: Icon(
+                icon,
+                size: 18,
+                color: isSelected ? Colors.white : Colors.grey.shade500,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.notoSansThai(
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? primaryColor : Colors.grey.shade800,
+                ),
+              ),
+            ),
+            if (isSelected)
+              const Icon(Icons.check_circle_rounded,
+                  color: primaryColor, size: 20)
+            else
+              Icon(Icons.circle_outlined,
+                  color: Colors.grey.shade300, size: 20),
+          ],
+        ),
       ),
     );
   }
 
+  // ── การ์ดอัปโหลดเสียงใหม่ ──────────────────────────────────────────────
+  Widget _buildUploadCard() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: _isUploadingAudio ? null : _handleUploadAudio,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: primaryColor.withOpacity(0.3),
+            width: 1.4,
+            style: BorderStyle.solid,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _isUploadingAudio
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: primaryColor,
+                    ),
+                  )
+                : Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: accentBlue,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.upload_file_rounded,
+                      color: primaryColor,
+                      size: 20,
+                    ),
+                  ),
+            const SizedBox(width: 12),
+            Text(
+              _isUploadingAudio ? "กำลังอัปโหลด..." : "อัปโหลดไฟล์เสียงใหม่",
+              style: GoogleFonts.notoSansThai(
+                color: primaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── การ์ดคำแนะนำ เติมพื้นที่ว่าง + ให้ข้อมูลที่เป็นประโยชน์กับผู้ใช้ ─────
+  // Widget _buildInfoNoteCard() {
+  //   return Container(
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       color: accentBlue.withOpacity(0.6),
+  //       borderRadius: BorderRadius.circular(16),
+  //     ),
+  //     // child: Row(
+  //     //   crossAxisAlignment: CrossAxisAlignment.start,
+  //     //   children: [
+  //     //     const Icon(Icons.info_outline_rounded, color: primaryColor, size: 20),
+  //     //     const SizedBox(width: 12),
+  //     //     Expanded(
+  //     //       child: Text(
+  //     //         "เสียงที่เลือกไว้จะถูกเล่นจากตัวอุปกรณ์โดยตรงเมื่อระบบตรวจพบความเสี่ยงขณะขับขี่ "
+  //     //         "คุณสามารถอัปโหลดเสียงของตัวเองหรือเลือกจากเสียงสำเร็จรูปด้านบนได้ตลอดเวลา",
+  //     //         style: GoogleFonts.notoSansThai(
+  //     //           fontSize: 12.5,
+  //     //           color: primaryColor.withOpacity(0.85),
+  //     //           height: 1.5,
+  //     //         ),
+  //     //       ),
+  //     //     ),
+  //     //   ],
+  //     // ),
+  //   );
+  // }
 }

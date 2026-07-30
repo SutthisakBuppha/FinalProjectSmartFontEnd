@@ -52,13 +52,11 @@ class _AlertScreenState extends State<AlertScreen> {
         deviceId.toString(),
       );
       final match = mediaList
-          .where((m) => m.type == 'audio' && m.fileName == activeTone)
+          .where((m) => m.type == 'audio' && m.isActive)
           .toList();
 
       if (match.isEmpty) {
-        debugPrint(
-          'ไม่พบไฟล์เสียงที่ตรงกับ active_tone ("$activeTone") -> ไม่เล่นเสียง',
-        );
+        debugPrint('ไม่มีไฟล์เสียงที่ถูกเลือก (is_active) -> ไม่เล่นเสียง');
         return;
       }
 
@@ -70,16 +68,6 @@ class _AlertScreenState extends State<AlertScreen> {
           100.0;
 
       String rawUrl = match.first.url;
-
-      // ✅ แก้ไข: เดิมพยายาม replaceAll('localhost'/'127.0.0.1', currentHost) กับ
-      // URL ที่ backend ส่งมาตรงๆ ปัญหาคือถ้า backend (APP_URL) ไม่มีพอร์ตแนบมา
-      // ด้วย (เช่นเป็น http://127.0.0.1 เฉยๆ) พอแทนที่ host แล้ว "พอร์ตที่หายไป
-      // ก็ยังหายไปเหมือนเดิม" ทำให้ไปยิง default port 80 แทนที่จะเป็น :8000
-      // จริงๆ ที่เซิร์ฟเวอร์รันอยู่ -> เล่นเสียงไม่ได้
-      //
-      // แก้โดย "ตัดเอาเฉพาะ path หลัง /storage/" ออกมา แล้วประกอบ URL ใหม่ทั้งหมด
-      // จาก ApiService.instance.baseUrl ซึ่งมี scheme/host/port ที่ถูกต้องแน่นอน
-      // (ตัวเดียวกับที่ยิง API สำเร็จอยู่แล้วทุกจุดในแอป) แทนการเดา/แทนที่ string เดิม
       final storageIndex = rawUrl.indexOf('/storage/');
       final relativePath = storageIndex != -1
           ? rawUrl.substring(storageIndex + '/storage/'.length)
@@ -87,7 +75,7 @@ class _AlertScreenState extends State<AlertScreen> {
 
       final apiUri = Uri.parse(
         ApiService.instance.baseUrl,
-      ); // เช่น http://10.170.65.154:8000/api
+      ); 
       final audioUrl = Uri(
         scheme: apiUri.scheme,
         host: apiUri.host,
@@ -149,192 +137,195 @@ class _AlertScreenState extends State<AlertScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
-      backgroundColor: backgroundDark,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // --- Layer 1: Background UI (Map & Dashboard) ---
-          SafeArea(
-            child: Column(
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          "SaveDriveAi",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'Manrope',
-                          ),
-                        ),
-                      ),
-                      _buildIconButton(Icons.account_circle),
-                    ],
-                  ),
-                ),
-
-                // Map Placeholder Area
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Stack(
+        backgroundColor: backgroundDark,
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // --- Layer 1: Background UI (Map & Dashboard) ---
+            SafeArea(
+              child: Column(
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Row(
                       children: [
-                        Container(
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[800],
-                            borderRadius: BorderRadius.circular(12),
-                            image: const DecorationImage(
-                              image: NetworkImage(
-                                "https://via.placeholder.com/400x700/333333/666666?text=Map+View",
-                              ),
-                              fit: BoxFit.cover,
+                        const Expanded(
+                          child: Text(
+                            "SaveDriveAi",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Manrope',
                             ),
                           ),
                         ),
-                        Positioned(
-                          bottom: 24,
-                          left: 16,
-                          right: 16,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: _buildInfoCard("ความเร็ว", "65 กม./ชม."),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _buildInfoCard(
-                                  "เวลาขับขี่",
-                                  "2 ชม. 15 น.",
+                        _buildIconButton(Icons.account_circle),
+                      ],
+                    ),
+                  ),
+
+                  // Map Placeholder Area
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[800],
+                              borderRadius: BorderRadius.circular(12),
+                              image: const DecorationImage(
+                                image: NetworkImage(
+                                  "https://via.placeholder.com/400x700/333333/666666?text=Map+View",
                                 ),
+                                fit: BoxFit.cover,
                               ),
-                            ],
+                            ),
                           ),
+                          Positioned(
+                            bottom: 24,
+                            left: 16,
+                            right: 16,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: _buildInfoCard(
+                                    "ความเร็ว",
+                                    "65 กม./ชม.",
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildInfoCard(
+                                    "เวลาขับขี่",
+                                    "2 ชม. 15 น.",
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Bottom Indicator
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      height: 6,
+                      width: 128,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // --- Layer 2: Blur Overlay ---
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                child: Container(color: backgroundDark.withOpacity(0.6)),
+              ),
+            ),
+
+            // --- Layer 3: Modal Alert ---
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.25),
+                        blurRadius: 25,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Warning Icon
+                      const PulseWarningIcon(color: alertRed),
+
+                      const SizedBox(height: 24),
+
+                      // Title
+                      const Text(
+                        "ตรวจพบความเสี่ยงง่วงนอน",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF120D1B),
+                          fontSize: 24,
+                          height: 1.2,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                // Bottom Indicator
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    height: 6,
-                    width: 128,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // --- Layer 2: Blur Overlay ---
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-              child: Container(color: backgroundDark.withOpacity(0.6)),
-            ),
-          ),
-
-          // --- Layer 3: Modal Alert ---
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 340),
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.25),
-                      blurRadius: 25,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Warning Icon
-                    const PulseWarningIcon(color: alertRed),
-
-                    const SizedBox(height: 24),
-
-                    // Title
-                    const Text(
-                      "ตรวจพบความเสี่ยงง่วงนอน",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF120D1B),
-                        fontSize: 24,
-                        height: 1.2,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
                       ),
-                    ),
 
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-                    // Subtitle
-                    const Text(
-                      "ระบบแจ้งเตือนความปลอดภัยทำงาน โปรดหาที่จอดพักที่ปลอดภัยทันที",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        height: 1.5,
+                      // Subtitle
+                      const Text(
+                        "ระบบแจ้งเตือนความปลอดภัยทำงาน โปรดหาที่จอดพักที่ปลอดภัยทันที",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF6B7280),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          height: 1.5,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // Status Icons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _buildStatusIndicator(Icons.volume_up, "เสียงเตือน"),
-                        const SizedBox(width: 16),
-                        _buildStatusIndicator(Icons.vibration, "ระบบสั่น"),
-                      ],
-                    ),
+                      // Status Icons
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildStatusIndicator(Icons.volume_up, "เสียงเตือน"),
+                          const SizedBox(width: 16),
+                          _buildStatusIndicator(Icons.vibration, "ระบบสั่น"),
+                        ],
+                      ),
 
-                    const SizedBox(height: 24),
+                      const SizedBox(height: 24),
 
-                    // 🔴 ปุ่มเรียกฟังก์ชันพาไปหน้า MapScreen ในแอป
-                    _buildFilledButton(
-                      text: _isLoading
-                          ? "กำลังเปิดแผนที่..."
-                          : "นำทางไปจุดพักรถใกล้ฉัน",
-                      icon: _isLoading
-                          ? Icons.refresh_rounded
-                          : Icons.navigation,
-                      color: alertRed,
-                      onPressed: _isLoading
-                          ? null
-                          : _navigateToNearestRest, // ถ้าโหลดอยู่จะกดซ้ำไม่ได้
-                    ),
-                  ],
+                      // 🔴 ปุ่มเรียกฟังก์ชันพาไปหน้า MapScreen ในแอป
+                      _buildFilledButton(
+                        text: _isLoading
+                            ? "กำลังเปิดแผนที่..."
+                            : "นำทางไปจุดพักรถใกล้ฉัน",
+                        icon: _isLoading
+                            ? Icons.refresh_rounded
+                            : Icons.navigation,
+                        color: alertRed,
+                        onPressed: _isLoading
+                            ? null
+                            : _navigateToNearestRest, // ถ้าโหลดอยู่จะกดซ้ำไม่ได้
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -475,9 +466,9 @@ class _AlertScreenState extends State<AlertScreen> {
     );
   }
 } // 🔴 แก้ไข: ปิด class _AlertScreenState ตรงนี้ (เดิมวงเล็บนี้หายไปจากตำแหน่งนี้
-   // แล้วไปโผล่เกินที่ท้ายไฟล์แทน ทำให้ PulseWarningIcon กลายเป็น class
-   // ที่ซ้อนอยู่ข้างใน _AlertScreenState แทนที่จะเป็น top-level class
-   // เป็นสาเหตุของ error "The name 'PulseWarningIcon' isn't a class")
+// แล้วไปโผล่เกินที่ท้ายไฟล์แทน ทำให้ PulseWarningIcon กลายเป็น class
+// ที่ซ้อนอยู่ข้างใน _AlertScreenState แทนที่จะเป็น top-level class
+// เป็นสาเหตุของ error "The name 'PulseWarningIcon' isn't a class")
 
 // คลาส PulseWarningIcon คงไว้ตามแบบเดิมของคุณ
 class PulseWarningIcon extends StatefulWidget {

@@ -14,26 +14,32 @@ import 'api_service.dart'; // ใช้ baseUrl เดียวกับ ApiServ
 /// ผลลัพธ์ที่ได้กลับมาหลังอัปโหลดไฟล์สำเร็จ
 /// ตรงกับ response ของ endpoint POST /api/device-media/upload
 class UploadedMedia {
+  final String mediaId; // ✅ เพิ่ม: จำเป็นต้องใช้เรียก selectMedia() เพื่อตั้งเป็นไฟล์ active จริงในฐานข้อมูล
   final String fileName;
   final String url;
   final int fileSizeBytes;
   final String type; // 'image', 'video' หรือ 'audio'
+  final bool isActive; // ✅ เพิ่ม: ใช้เช็คว่าไฟล์นี้ active อยู่ในฐานข้อมูลจริงหรือไม่
 
   UploadedMedia({
+    required this.mediaId,
     required this.fileName,
     required this.url,
     required this.fileSizeBytes,
     required this.type,
+    this.isActive = false,
   });
 
   factory UploadedMedia.fromJson(Map<String, dynamic> json) {
     return UploadedMedia(
+      mediaId: json['media_id']?.toString() ?? '',
       fileName: json['file_name'] ?? '',
       url: json['url'] ?? '',
       fileSizeBytes: (json['file_size'] ?? 0) is int
           ? json['file_size']
           : int.tryParse(json['file_size'].toString()) ?? 0,
       type: json['type'] ?? '',
+      isActive: json['is_active'] == true || json['is_active'] == 1,
     );
   }
 }
@@ -203,6 +209,19 @@ class MediaUploadService {
       return UploadedMedia.fromJson(data['data'] ?? data);
     }
     throw Exception('อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode}): ${response.body}');
+  }
+
+  /// ✅ เพิ่ม: ตั้งไฟล์สื่อ (media) ที่ระบุให้เป็น is_active = true ที่ backend
+  /// (รีเซ็ตไฟล์อื่นที่ type เดียวกันของ device เดียวกันเป็น false ให้อัตโนมัติ)
+  /// เดิมฟังก์ชันนี้หายไปจากไฟล์ ทำให้การเลือก/อัปโหลดเสียงใหม่ไม่ถูกบันทึกจริง
+  /// ลง backend เลย (ตั้งแค่ local state ในแอป) เสียงที่เล่นจริงเลยยังเป็นเสียงเก่า
+  Future<void> selectMedia(String mediaId) async {
+    final uri = Uri.parse('$_baseUrl/device-media/$mediaId/select');
+    final response = await http.patch(uri);
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('ตั้งเสียงที่ใช้งานไม่สำเร็จ (${response.statusCode}): ${response.body}');
+    }
   }
 
   /// ดึงรายการไฟล์สื่อทั้งหมดที่เคยอัปโหลดของอุปกรณ์นี้
