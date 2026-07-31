@@ -31,7 +31,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   String _errorMessage = '';
 
   // --- Summary Variables ---
-  int _safetyScore = 100;
   int _totalAlerts = 0;
   double _totalDistance = 0.0;
 
@@ -62,14 +61,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         distanceSum += distance;
       }
 
-      int calculatedScore = 100 - (alertsSum * 5);
-      if (calculatedScore < 0) calculatedScore = 0;
-
       setState(() {
         _trips = fetchedTrips;
         _totalAlerts = alertsSum;
         _totalDistance = distanceSum;
-        _safetyScore = fetchedTrips.isEmpty ? 100 : calculatedScore;
         _isLoading = false;
       });
     } catch (e) {
@@ -180,22 +175,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       children: [
                                         Expanded(
                                           child: _buildSummaryCard(
-                                            title: "คะแนนขับขี่",
-                                            value: "$_safetyScore",
-                                            suffix: "/100",
-                                            icon: Icons.shield_outlined,
-                                            iconColor: primaryColor,
+                                            title: "แจ้งเตือนทั้งหมด",
+                                            value: "$_totalAlerts",
+                                            suffix: " ครั้ง",
+                                            icon: Icons.warning_amber_rounded,
+                                            iconColor: warningColor,
                                             scale: scale,
                                           ),
                                         ),
                                         SizedBox(width: 16 * scale),
                                         Expanded(
                                           child: _buildSummaryCard(
-                                            title: "แจ้งเตือนทั้งหมด",
-                                            value: "$_totalAlerts",
-                                            suffix: " ครั้ง",
-                                            icon: Icons.warning_amber_rounded,
-                                            iconColor: warningColor,
+                                            title: "ระยะทางรวม",
+                                            value: _totalDistance.toStringAsFixed(1),
+                                            suffix: " กม.",
+                                            icon: Icons.route_rounded,
+                                            iconColor: accentColor,
                                             scale: scale,
                                           ),
                                         ),

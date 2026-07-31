@@ -4,8 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 // --- Import ไฟล์ที่เกี่ยวข้อง ---
 import 'devices_screen.dart';
 import 'menu/custom_bottom_nav_bar.dart';
-import 'WifiProvisioningScreen.dart'; // ไปหน้าต่อ Wi-Fi (BLE)
-import '/services/api_service.dart'; // ดึง ApiService มาใช้งาน
+import 'WifiProvisioningScreen.dart'; 
+import '/services/api_service.dart'; 
+import 'qr_scanner_screen.dart';
 
 class DeviceRegistrationScreen extends StatefulWidget {
   const DeviceRegistrationScreen({super.key});
@@ -112,9 +113,26 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     }
   }
 
+  // เปิดกล้องสแกน QR แล้วนำค่าที่ได้มาใส่ในช่อง Serial Number อัตโนมัติ
+  Future<void> _scanQRCode() async {
+    final result = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (context) => const QRScannerScreen()),
+    );
+
+    if (result != null && result.isNotEmpty && mounted) {
+      setState(() {
+        _serialController.text = result;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("สแกนสำเร็จ: $result")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // หากระบบกำลังเรียกเช็กประวัติอุปกรณ์เดิมจาก API ให้แสดงวงกลมโหลดข้อมูลสั้นๆ
     if (_isCheckingDevice) {
       return const Scaffold(
         backgroundColor: backgroundColor,
@@ -145,7 +163,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
               children: [
                 const SizedBox(height: 32),
                 
-                // 1. Welcome Header
                 Text(
                   "ยินดีต้อนรับ!",
                   style: GoogleFonts.plusJakartaSans(
@@ -165,7 +182,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // 2. Warning Box
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -193,7 +209,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // 3. Form Input Field
                 Text(
                   "หมายเลข Serial Number อุปกรณ์",
                   style: GoogleFonts.notoSansThai(
@@ -209,6 +224,11 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     hintText: "เช่น SD-AI-2024XXXX",
                     hintStyle: GoogleFonts.plusJakartaSans(color: Colors.grey[400]),
                     prefixIcon: const Icon(Icons.qr_code_scanner_rounded, color: primaryColor),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.camera_alt_rounded, color: primaryColor),
+                      tooltip: "สแกน QR Code",
+                      onPressed: _scanQRCode,
+                    ),
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -237,7 +257,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // 4. Shortcut link to Wi-Fi Provisioning
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton.icon(
@@ -266,7 +285,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 ),
                 const SizedBox(height: 40),
 
-                // 5. Submit Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,

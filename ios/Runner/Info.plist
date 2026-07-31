@@ -52,5 +52,7 @@
     	<string>comgooglemaps</string>
     	<string>google.navigation</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>แอปต้องการใช้กล้องเพื่อสแกน QR Code ของอุปกรณ์</string>
 </dict>
 </plist>

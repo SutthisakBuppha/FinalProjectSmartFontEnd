@@ -376,10 +376,6 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
 
   // --- Stats Card ---
   Widget _buildStatsCard() {
-    int currentAlertCount = isLoadingAlerts ? (int.tryParse(widget.alerts) ?? 0) : alertsList.length;
-    int score = 100 - (currentAlertCount * 5);
-    if (score < 0) score = 0;
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -401,8 +397,6 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
             VerticalDivider(color: Colors.grey.shade200, width: 1, thickness: 1),
             _buildStatItem(
                 "ระยะเวลา", widget.duration.replaceAll(" min", ""), "นาที", HistoryDetailScreen.textLight),
-            VerticalDivider(color: Colors.grey.shade200, width: 1, thickness: 1),
-            _buildStatItem("คะแนนขับขี่", "$score", "/100", widget.statusColor),
           ],
         ),
       ),

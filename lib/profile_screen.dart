@@ -38,9 +38,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('โหลดข้อมูลโปรไฟล์ล้มเหลว: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('โหลดข้อมูลโปรไฟล์ล้มเหลว: $e')));
     }
   }
 
@@ -76,8 +76,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("ยืนยันการออกจากระบบ", style: GoogleFonts.inter(fontWeight: FontWeight.bold)),
-        content: Text("คุณต้องการออกจากระบบใช่หรือไม่?", style: GoogleFonts.inter()),
+        title: Text(
+          "ยืนยันการออกจากระบบ",
+          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          "คุณต้องการออกจากระบบใช่หรือไม่?",
+          style: GoogleFonts.inter(),
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(
@@ -85,18 +91,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Text("ยกเลิก", style: GoogleFonts.inter(color: Colors.grey)),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await ApiService.instance.logoutDriver();
-              if (mounted) {
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (route) => false,
-                );
-              }
+            onPressed: () {
+              Navigator.pop(context); 
+
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+
+              ApiService.instance.logoutDriver().catchError((e) {
+                debugPrint("Logout API error (ไม่กระทบผู้ใช้): $e");
+              });
             },
-            child: Text("ออกจากระบบ", style: GoogleFonts.inter(color: Colors.red)),
+            child: Text(
+              "ออกจากระบบ",
+              style: GoogleFonts.inter(color: Colors.red),
+            ),
           ),
         ],
       ),
@@ -123,7 +134,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Column(
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     "ประวัติการขับขี่ล่าสุด",
@@ -174,7 +186,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     backgroundColor: Colors.white,
                                     foregroundColor: Colors.red.shade600,
                                     elevation: 0,
-                                    side: BorderSide(color: Colors.red.shade100),
+                                    side: BorderSide(
+                                      color: Colors.red.shade100,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
@@ -188,7 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         "ออกจากระบบ",
                                         style: GoogleFonts.inter(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 16
+                                          fontSize: 16,
                                         ),
                                       ),
                                     ],
@@ -224,7 +238,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(40)),
         boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
         ],
       ),
       child: SafeArea(
@@ -239,14 +257,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(width: 40),
                   Text(
                     "โปรไฟล์",
-                    style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.inter(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.edit_note_rounded, color: Colors.white, size: 28),
+                    icon: const Icon(
+                      Icons.edit_note_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => ProfileEditScreen(currentData: _profileData ?? {})),
+                        MaterialPageRoute(
+                          builder: (context) => ProfileEditScreen(
+                            currentData: _profileData ?? {},
+                          ),
+                        ),
                       ).then((_) => _fetchProfile());
                     },
                   ),
@@ -257,17 +287,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
             CircleAvatar(
               radius: 50,
               backgroundColor: Colors.white24,
-              backgroundImage: avatarUrl != null && avatarUrl.toString().isNotEmpty
+              backgroundImage:
+                  avatarUrl != null && avatarUrl.toString().isNotEmpty
                   ? NetworkImage(avatarUrl)
                   : null,
               child: avatarUrl == null || avatarUrl.toString().isEmpty
-                  ? const Icon(Icons.person_rounded, size: 50, color: Colors.white)
+                  ? const Icon(
+                      Icons.person_rounded,
+                      size: 50,
+                      color: Colors.white,
+                    )
                   : null,
             ),
             const SizedBox(height: 12),
             Text(
               name,
-              style: GoogleFonts.inter(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             Text(
               "@$username",
@@ -282,7 +321,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: Text(
                 status,
-                style: GoogleFonts.inter(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                style: GoogleFonts.inter(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -311,9 +354,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatItem(String label, String value) {
     return Column(
       children: [
-        Text(value, style: GoogleFonts.inter(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: GoogleFonts.inter(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(label, style: GoogleFonts.inter(color: Colors.white70, fontSize: 12)),
+        Text(
+          label,
+          style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+        ),
       ],
     );
   }
@@ -331,7 +384,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Row(
         children: [
           Container(
@@ -347,16 +403,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: GoogleFonts.inter(color: textDark, fontSize: 14, fontWeight: FontWeight.w600)),
+                    Text(
+                      title,
+                      style: GoogleFonts.inter(
+                        color: textDark,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: tagBg, borderRadius: BorderRadius.circular(12)),
-                      child: Text(tag, style: GoogleFonts.inter(color: tagColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tagBg,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        tag,
+                        style: GoogleFonts.inter(
+                          color: tagColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text(subtitle, style: GoogleFonts.inter(color: const Color(0xFF64748B), fontSize: 12)),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(
+                    color: const Color(0xFF64748B),
+                    fontSize: 12,
+                  ),
+                ),
               ],
             ),
           ),

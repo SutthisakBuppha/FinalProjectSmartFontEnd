@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '/services/api_service.dart';
+import '/services/media_upload_service.dart';
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> currentData;
@@ -18,31 +19,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   static const Color textGrey = Color(0xFF64748B);
   static const Color borderColor = Color(0xFFE2E8F0);
 
-  // Backend (`drivers.status`) is a tinyint that only accepts 0 or 1
-  // (see AppController::updateDriver → 'status' => 'sometimes|integer|in:0,1').
-  static const Map<int, String> _statusOptions = {
-    1: 'ปฏิบัติงานปกติ',
-    0: 'ระงับการขับขี่',
-  };
-
   late TextEditingController _nameController;
-  late int _selectedStatus;
   bool _isSaving = false;
+  String? _avatarUrl;
+  bool _isUploadingAvatar = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.currentData['name'] ?? '');
-    _selectedStatus = _parseStatus(widget.currentData['status']);
-  }
-
-  int _parseStatus(dynamic value) {
-    if (value is int) return _statusOptions.containsKey(value) ? value : 1;
-    if (value is String) {
-      final parsed = int.tryParse(value);
-      if (parsed != null && _statusOptions.containsKey(parsed)) return parsed;
-    }
-    return 1; // default: ปฏิบัติงานปกติ
+    _avatarUrl = widget.currentData['avatar_url']?.toString();
   }
 
   @override
@@ -56,7 +42,6 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     try {
       await ApiService.instance.updateDriverProfile(
         name: _nameController.text.trim(),
-        status: _selectedStatus.toString(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -87,9 +72,9 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _buildAvatarPicker(),
+                    const SizedBox(height: 24),
                     _buildInputField("ชื่อ-นามสกุลคนขับ", _nameController, Icons.person_outline_rounded),
-                    const SizedBox(height: 16),
-                    _buildStatusDropdown(),
                     const SizedBox(height: 36),
                     SizedBox(
                       width: double.infinity,
@@ -145,6 +130,90 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
+  Widget _buildAvatarPicker() {
+    final hasAvatar = _avatarUrl != null && _avatarUrl!.isNotEmpty;
+    return Center(
+      child: Column(
+        children: [
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 52,
+                backgroundColor: primaryLight.withOpacity(0.12),
+                backgroundImage: hasAvatar ? NetworkImage(_avatarUrl!) : null,
+                child: hasAvatar
+                    ? null
+                    : const Icon(Icons.person_rounded, size: 52, color: primaryLight),
+              ),
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Material(
+                  color: primaryLight,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: _isUploadingAvatar ? null : _showAvatarSourceSheet,
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: _isUploadingAvatar
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            )
+                          : const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text('แตะเพื่อเปลี่ยนรูปโปรไฟล์', style: GoogleFonts.inter(color: textGrey, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAvatarSourceSheet() async {
+    final fromCamera = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('เลือกรูปจากคลังภาพ'),
+              onTap: () => Navigator.pop(sheetContext, false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('ถ่ายรูปใหม่'),
+              onTap: () => Navigator.pop(sheetContext, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (fromCamera == null || !mounted) return;
+
+    setState(() => _isUploadingAvatar = true);
+    try {
+      final url = await MediaUploadService.instance
+          .pickCropCompressAndUploadProfileImage(fromCamera: fromCamera);
+      if (url != null && mounted) setState(() => _avatarUrl = url);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('อัปโหลดรูปภาพไม่สำเร็จ: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingAvatar = false);
+    }
+  }
+
   Widget _buildInputField(String label, TextEditingController controller, IconData icon) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -165,38 +234,4 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
-  Widget _buildStatusDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text("สถานะการทำงาน", style: GoogleFonts.inter(color: textDark, fontSize: 14, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: borderColor),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<int>(
-              value: _selectedStatus,
-              isExpanded: true,
-              icon: Icon(Icons.keyboard_arrow_down_rounded, color: textGrey),
-              items: _statusOptions.entries
-                  .map((entry) => DropdownMenuItem<int>(
-                        value: entry.key,
-                        child: Text(entry.value, style: GoogleFonts.inter(color: textDark)),
-                      ))
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => _selectedStatus = value);
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

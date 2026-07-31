@@ -6,16 +6,13 @@ class GoogleAuthService {
   static final GoogleAuthService instance = GoogleAuthService._();
 
   static const String _webClientId =
-      '813400070963-t55qlrbag595qe51rmrq95m5k2sbn1om.apps.googleusercontent.com'; //web app
-      // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com'; // MobileApp
+      '813400070963-t55qlrbag595qe51rmrq95m5k2sbn1om.apps.googleusercontent.com';
+      // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com';
 
-  // google_sign_in v7+: ไม่มี constructor ตรงๆ แล้ว ต้องใช้ instance แบบ singleton
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   Future<void>? _initFuture;
 
-  /// v7+: ต้องเรียกและ await ครั้งเดียวก่อนใช้เมธอดอื่นของ GoogleSignIn
-  /// เรียกซ้ำได้อย่างปลอดภัย เพราะเก็บ Future เดิมไว้ใช้ซ้ำ
   Future<void> ensureInitialized() {
     return _initFuture ??= _googleSignIn.initialize(
       clientId: kIsWeb ? _webClientId : null,
@@ -23,13 +20,22 @@ class GoogleAuthService {
     );
   }
 
-  /// ✨ แทนที่ onCurrentUserChanged เดิม (ถูกลบใน v7)
-  /// ใช้สำหรับดักฟังการเปลี่ยนแปลงสิทธิ์ (เช่น เมื่อกดปุ่ม Sign-In บน Web สำเร็จ)
+  /// ดักฟังการเปลี่ยนแปลงสิทธิ์ (เช่น เมื่อกดปุ่ม Sign-In บน Web สำเร็จ)
   Stream<GoogleSignInAuthenticationEvent> get googleSignInEvents =>
       _googleSignIn.authenticationEvents;
 
-  /// ฟังก์ชันสำหรับ Mobile (ดั้งเดิม) หรือการล็อกอินเบื้องหลัง
-  /// คืนค่า null ถ้าผู้ใช้กดยกเลิกการล็อกอิน
+  /// ✨ เพิ่ม Getter นี้เพื่อแปลง Event จาก GoogleSignInAuthenticationEventSignIn
+  /// แล้วคัดแยกส่งเฉพาะ idToken (String) ออกไปให้ UI
+  Stream<String> get onIdTokenReceived => googleSignInEvents
+      .map((event) {
+        if (event is GoogleSignInAuthenticationEventSignIn) {
+          return event.user.authentication.idToken;
+        }
+        return null;
+      })
+      .where((token) => token != null)
+      .cast<String>();
+
   Future<String?> signInAndGetIdToken() async {
     await ensureInitialized();
 
@@ -46,8 +52,6 @@ class GoogleAuthService {
       rethrow;
     }
 
-    // v7+: authentication เป็น synchronous getter และมีแค่ idToken เท่านั้น
-    // (accessToken ต้องขอแยกผ่าน account.authorizationClient แทน)
     final idToken = account.authentication.idToken;
     if (idToken == null) throw Exception('ไม่สามารถรับ Token ได้');
     return idToken;

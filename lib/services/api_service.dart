@@ -229,6 +229,44 @@ class ApiService {
     return profile;
   }
 
+  /// Uploads an avatar file and returns the URL stored in drivers.avatar_url.
+  Future<String> uploadDriverAvatar({
+    required List<int> bytes,
+    required String fileName,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_baseUrl/app/drivers/${_requireDriverId()}/avatar'),
+    );
+    request.headers['Authorization'] = 'Bearer $_token';
+    request.files.add(http.MultipartFile.fromBytes(
+      'avatar',
+      bytes,
+      filename: fileName,
+    ));
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    final decoded = _decodeResponse(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        _messageFrom(decoded) ?? 'Avatar upload failed (${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    }
+    final profile = _dataMap(
+      decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{'data': decoded},
+    );
+    _driver = profile;
+    final avatarUrl = profile['avatar_url']?.toString();
+    if (avatarUrl == null || avatarUrl.isEmpty) {
+      throw const ApiException('Avatar upload succeeded but no URL was returned.');
+    }
+    return avatarUrl;
+  }
+
   Future<List<Map<String, dynamic>>> devices() async {
     final response = await _request(
       'GET',

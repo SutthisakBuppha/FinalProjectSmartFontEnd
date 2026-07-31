@@ -1,8 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:file_picker/file_picker.dart';
@@ -14,12 +16,14 @@ import 'api_service.dart'; // ใช้ baseUrl เดียวกับ ApiServ
 /// ผลลัพธ์ที่ได้กลับมาหลังอัปโหลดไฟล์สำเร็จ
 /// ตรงกับ response ของ endpoint POST /api/device-media/upload
 class UploadedMedia {
-  final String mediaId; // ✅ เพิ่ม: จำเป็นต้องใช้เรียก selectMedia() เพื่อตั้งเป็นไฟล์ active จริงในฐานข้อมูล
+  final String
+  mediaId; // ✅ เพิ่ม: จำเป็นต้องใช้เรียก selectMedia() เพื่อตั้งเป็นไฟล์ active จริงในฐานข้อมูล
   final String fileName;
   final String url;
   final int fileSizeBytes;
   final String type; // 'image', 'video' หรือ 'audio'
-  final bool isActive; // ✅ เพิ่ม: ใช้เช็คว่าไฟล์นี้ active อยู่ในฐานข้อมูลจริงหรือไม่
+  final bool
+  isActive; // ✅ เพิ่ม: ใช้เช็คว่าไฟล์นี้ active อยู่ในฐานข้อมูลจริงหรือไม่
 
   UploadedMedia({
     required this.mediaId,
@@ -71,22 +75,94 @@ class MediaUploadService {
   // =====================================================================
 
   /// เปิดกล้อง หรือ คลังรูปภาพ เพื่อเลือกรูป
-  Future<File?> pickImage({bool fromCamera = false}) async {
+  Future<XFile?> pickImage({bool fromCamera = false}) async {
     final XFile? picked = await _picker.pickImage(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
       imageQuality: 100, // ดึงต้นฉบับมาก่อน แล้วค่อยไปบีบเองอีกที
     );
     if (picked == null) return null;
-    return File(picked.path);
+    return picked;
+  }
+
+  /// Lets the user crop an avatar to a square before it is compressed.
+  /// The cropper works on Android, iOS, desktop and Flutter Web.
+  Future<XFile?> cropProfileImage(XFile source) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: source.path,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 96,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop profile photo',
+          lockAspectRatio: true,
+          aspectRatioPresets: const [
+            CropAspectRatioPreset.square,
+          ], // moved here
+        ),
+        IOSUiSettings(
+          title: 'Crop profile photo',
+          aspectRatioLockEnabled: true,
+        ),
+      ],
+    );
+    if (cropped == null) return null;
+    return XFile(cropped.path);
+  }
+
+  /// Compresses in memory, so it also works in Chrome where no local File
+  /// path is available. 1600px and JPEG quality 88 retain visual sharpness
+  /// while substantially reducing typical camera image sizes.
+  Future<Uint8List> compressImageBytes(
+    XFile image, {
+    int quality = 88,
+    int minWidth = 1600,
+    int minHeight = 1600,
+  }) async {
+    final bytes = await image.readAsBytes();
+    return FlutterImageCompress.compressWithList(
+      bytes,
+      quality: quality,
+      minWidth: minWidth,
+      minHeight: minHeight,
+      keepExif: false,
+      format: CompressFormat.jpeg,
+    );
+  }
+
+  /// Complete avatar workflow: pick/capture -> crop -> compress -> upload.
+  /// Returns the URL persisted in drivers.avatar_url, or null when cancelled.
+  Future<String?> pickCropCompressAndUploadProfileImage({
+    bool fromCamera = false,
+  }) async {
+    final original = await pickImage(fromCamera: fromCamera);
+    if (original == null) return null;
+
+    // image_cropper's native/IO path throws "Unsupported operation:
+    // _Namespace" on Flutter Web (dart:io File/Directory aren't available
+    // there). Skip cropping on web and just compress+upload the picked
+    // image as-is; keep cropping on mobile/desktop where it works fine.
+    XFile toUpload = original;
+    if (!kIsWeb) {
+      final cropped = await cropProfileImage(original);
+      if (cropped == null) return null;
+      toUpload = cropped;
+    }
+
+    final bytes = await compressImageBytes(toUpload);
+    return ApiService.instance.uploadDriverAvatar(
+      bytes: bytes,
+      fileName: 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
   }
 
   /// เปิดกล้อง หรือ คลังวิดีโอ เพื่อเลือกวิดีโอ
-  Future<File?> pickVideo({bool fromCamera = false}) async {
+  Future<XFile?> pickVideo({bool fromCamera = false}) async {
     final XFile? picked = await _picker.pickVideo(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
     );
     if (picked == null) return null;
-    return File(picked.path);
+    return picked;
   }
 
   /// เปิดตัวเลือกไฟล์ของเครื่อง เพื่อเลือกไฟล์เสียง (mp3, wav, m4a, aac ฯลฯ)
@@ -116,8 +192,8 @@ class MediaUploadService {
   /// บีบอัดรูปภาพ
   /// - quality 70-85 คือช่วงที่คมชัดพอ แต่ไฟล์เล็กลงมาก (แนะนำ 80)
   /// - minWidth/minHeight ควบคุมความละเอียดสูงสุดที่จะย่อลงมา
-  Future<File> compressImage(
-    File file, {
+  Future<XFile> compressImage(
+    XFile file, {
     int quality = 80,
     int minWidth = 1280,
     int minHeight = 1280,
@@ -129,7 +205,7 @@ class MediaUploadService {
     );
 
     final XFile? result = await FlutterImageCompress.compressAndGetFile(
-      file.absolute.path,
+      file.path,
       targetPath,
       quality: quality,
       minWidth: minWidth,
@@ -138,14 +214,14 @@ class MediaUploadService {
     );
 
     if (result == null) return file; // บีบไม่สำเร็จ ใช้ไฟล์เดิมแทน
-    return File(result.path);
+    return result;
   }
 
   /// บีบอัดวิดีโอ
   /// VideoQuality.LowQuality / MediumQuality / HighQuality
   /// MediumQuality คือจุดสมดุลที่ดีระหว่างขนาดไฟล์กับความคมชัด
-  Future<File> compressVideo(
-    File file, {
+  Future<XFile> compressVideo(
+    XFile file, {
     VideoQuality quality = VideoQuality.MediumQuality,
   }) async {
     final info = await VideoCompress.compressVideo(
@@ -156,7 +232,7 @@ class MediaUploadService {
     );
 
     if (info == null || info.file == null) return file;
-    return info.file!;
+    return XFile(info.file!.path);
   }
 
   // =====================================================================
@@ -167,11 +243,11 @@ class MediaUploadService {
   /// ใช้ได้เฉพาะแพลตฟอร์มที่มี filesystem path จริง (Android/iOS/Desktop)
   /// ห้ามใช้กับ Flutter Web เพราะ File ต้องการ path ซึ่งบนเว็บไม่มี
   Future<UploadedMedia> uploadFile({
-    required File file,
+    required XFile file,
     required String deviceId,
     required String type, // 'image', 'video' หรือ 'audio'
   }) async {
-    final fileName = p.basename(file.path);
+    final fileName = file.name.isNotEmpty ? file.name : p.basename(file.path);
     final bytes = await file.readAsBytes();
     return uploadBytes(
       bytes: bytes,
@@ -208,7 +284,9 @@ class MediaUploadService {
       final data = jsonDecode(response.body);
       return UploadedMedia.fromJson(data['data'] ?? data);
     }
-    throw Exception('อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode}): ${response.body}');
+    throw Exception(
+      'อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode}): ${response.body}',
+    );
   }
 
   /// ✅ เพิ่ม: ตั้งไฟล์สื่อ (media) ที่ระบุให้เป็น is_active = true ที่ backend
@@ -220,7 +298,9 @@ class MediaUploadService {
     final response = await http.patch(uri);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception('ตั้งเสียงที่ใช้งานไม่สำเร็จ (${response.statusCode}): ${response.body}');
+      throw Exception(
+        'ตั้งเสียงที่ใช้งานไม่สำเร็จ (${response.statusCode}): ${response.body}',
+      );
     }
   }
 
@@ -269,15 +349,15 @@ class MediaUploadService {
   /// แก้บั๊กเว็บ: ใช้ PlatformFile.bytes แทน File(path) เพราะบน Flutter Web
   /// ไม่มี filesystem path ให้เข้าถึง (path จะเป็น null เสมอ) การอัปโหลดจึง
   /// ใช้ uploadBytes() ซึ่งทำงานได้ทั้งบนเว็บและมือถือ
-  Future<UploadedMedia?> pickAndUploadAudio({
-    required String deviceId,
-  }) async {
+  Future<UploadedMedia?> pickAndUploadAudio({required String deviceId}) async {
     final platformFile = await pickAudio();
     if (platformFile == null) return null;
 
     final bytes = platformFile.bytes;
     if (bytes == null) {
-      throw Exception('ไม่พบข้อมูลไฟล์เสียง (bytes เป็น null) กรุณาลองเลือกไฟล์ใหม่อีกครั้ง');
+      throw Exception(
+        'ไม่พบข้อมูลไฟล์เสียง (bytes เป็น null) กรุณาลองเลือกไฟล์ใหม่อีกครั้ง',
+      );
     }
 
     return uploadBytes(
