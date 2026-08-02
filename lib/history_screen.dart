@@ -27,6 +27,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // --- API State Variables ---
   List<Map<String, dynamic>> _trips = [];
+  List<Map<String, dynamic>> _alerts = [];
   bool _isLoading = true;
   String _errorMessage = '';
 
@@ -47,24 +48,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
     });
 
     try {
-      final fetchedTrips = await ApiService.instance.trips();
+      final results = await Future.wait([
+        ApiService.instance.trips(),
+        ApiService.instance.alerts(),
+      ]);
+      final fetchedTrips = results[0] as List<Map<String, dynamic>>;
+      final fetchedAlerts = results[1] as List<Map<String, dynamic>>;
       
-      int alertsSum = 0;
       double distanceSum = 0.0;
 
       for (var trip in fetchedTrips) {
         // แก้ไขจุดนี้: ใช้ num.tryParse เพื่อป้องกัน Error ในกรณีที่ API คืนค่าเป็น String
-        final alertsCount = num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ?? 0;
         final distance = num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
 
-        alertsSum += alertsCount;
         distanceSum += distance;
       }
 
       setState(() {
         _trips = fetchedTrips;
-        _totalAlerts = alertsSum;
+        _totalAlerts = fetchedAlerts.length;
         _totalDistance = distanceSum;
+        _alerts = fetchedAlerts;
         _isLoading = false;
       });
     } catch (e) {
@@ -73,6 +77,52 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  List<Map<String, dynamic>> _alertsOfType(String type) {
+    final result = _alerts.where((alert) => alert['type']?.toString() == type).toList();
+    result.sort((a, b) {
+      final aTime = DateTime.tryParse((a['timestamp'] ?? a['created_at'] ?? '').toString()) ?? DateTime(0);
+      final bTime = DateTime.tryParse((b['timestamp'] ?? b['created_at'] ?? '').toString()) ?? DateTime(0);
+      return bTime.compareTo(aTime);
+    });
+    return result;
+  }
+
+  Widget _buildDetectionHistory(double scale) {
+    const detectionTypes = [
+      ('ง่วงนอน', Icons.bedtime_rounded, dangerColor),
+      ('เหม่อลอย', Icons.blur_on_rounded, warningColor),
+      ('ไม่มองถนน', Icons.visibility_off_rounded, dangerColor),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'ประวัติการตรวจจับจาก AI',
+          style: GoogleFonts.kanit(fontSize: 18 * scale, fontWeight: FontWeight.bold, color: primaryColor),
+        ),
+        SizedBox(height: 12 * scale),
+        ...detectionTypes.map((item) {
+          final alerts = _alertsOfType(item.$1);
+          final latest = alerts.isEmpty ? null : alerts.first['timestamp'] ?? alerts.first['created_at'];
+          return Container(
+            margin: EdgeInsets.only(bottom: 10 * scale),
+            padding: EdgeInsets.all(14 * scale),
+            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14 * scale)),
+            child: Row(children: [
+              CircleAvatar(backgroundColor: item.$3.withOpacity(.12), child: Icon(item.$2, color: item.$3)),
+              SizedBox(width: 12 * scale),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(item.$1, style: GoogleFonts.kanit(fontSize: 15 * scale, fontWeight: FontWeight.w600, color: textLight)),
+                Text(latest == null ? 'ยังไม่พบการตรวจจับ' : _formatDateTime(latest.toString()), style: GoogleFonts.kanit(fontSize: 12 * scale, color: subTextLight)),
+              ])),
+              Text('${alerts.length} ครั้ง', style: GoogleFonts.kanit(fontSize: 14 * scale, fontWeight: FontWeight.bold, color: item.$3)),
+            ]),
+          );
+        }),
+      ],
+    );
   }
 
   String _formatDateTime(String? dateStr) {
@@ -198,6 +248,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     ),
 
                                     SizedBox(height: 24 * scale),
+                                    _buildDetectionHistory(scale),
+                                    SizedBox(height: 24 * scale),
 
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -248,8 +300,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                           final alertsCount = num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ?? 0;
                                           final statusData = _getSafetyStatus(alertsCount);
 
-                                          final int tripIdInt = num.tryParse(trip['trip_id']?.toString() ?? '')?.toInt() ?? 
-                                                                num.tryParse(trip['id']?.toString() ?? '')?.toInt() ?? 0;
+                                          final tripId = (trip['trip_id'] ?? trip['id'] ?? '').toString();
+                                          final tripIdInt = tripId;
 
                                           final startLoc = trip['start_location']?.toString() ?? '';
                                           final endLoc = trip['end_location']?.toString() ?? '';
@@ -278,7 +330,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                           }
 
                                           return _buildTripCard(
-                                            tripId: tripIdInt,
+                                            tripId: tripId,
                                             title: tripTitle,
                                             date: _formatDateTime(trip['start_time']),
                                             status: statusData['text'],
@@ -474,7 +526,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildTripCard({
-    required int tripId,
+    required String tripId,
     required String title,
     required String date,
     required String status,

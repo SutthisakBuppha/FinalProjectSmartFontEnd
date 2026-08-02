@@ -12,7 +12,7 @@ import '/services/api_service.dart';
 
 class HistoryDetailScreen extends StatefulWidget {
   // 1. รับข้อมูลจากหน้า List (เพิ่ม tripId เข้ามาเพื่อดึงข้อมูลจุดพิกัดและการแจ้งเตือนเฉพาะของทริปนี้)
-  final int tripId; 
+  final String tripId;
   final String title;
   final String date;
   final String distance;
@@ -66,6 +66,19 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   // 1. ดึงพิกัดเส้นทางการเดินทางจาก TripLocationController
   Future<void> _fetchRoutePoints() async {
     try {
+      final locations = await ApiService.instance.tripLocations(widget.tripId);
+      if (!mounted) return;
+      setState(() {
+        routePoints = locations
+            .where((item) => item['latitude'] != null && item['longitude'] != null)
+            .map((item) => LatLng(
+                  double.parse(item['latitude'].toString()),
+                  double.parse(item['longitude'].toString()),
+                ))
+            .toList();
+        isLoadingMap = false;
+      });
+      return;
       final baseUrl = ApiService.instance.baseUrl; 
       final response = await http.get(
         Uri.parse('$baseUrl/trips/${widget.tripId}/locations'),
@@ -104,6 +117,13 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   // 2. ดึงรายการแจ้งเตือนความเสี่ยงเฉพาะของทริปนี้
   Future<void> _fetchTripAlerts() async {
     try {
+      final alerts = await ApiService.instance.alerts(tripId: widget.tripId);
+      if (!mounted) return;
+      setState(() {
+        alertsList = alerts;
+        isLoadingAlerts = false;
+      });
+      return;
       final baseUrl = ApiService.instance.baseUrl;
       // เรียกจุดเชื่อมต่อ API ที่กรองตาม trip_id หรือจุดที่ระบุไว้ของหลังบ้านคุณ
       final response = await http.get(

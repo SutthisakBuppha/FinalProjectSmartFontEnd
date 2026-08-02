@@ -21,6 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static const Color textDark = Color(0xFF0F172A);
 
   Map<String, dynamic>? _profileData;
+  List<Map<String, dynamic>> _alerts = [];
   bool _isLoading = true;
 
   @override
@@ -31,12 +32,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _fetchProfile() async {
     try {
-      final data = await ApiService.instance.driverProfile();
+      final results = await Future.wait([
+        ApiService.instance.driverProfile(),
+        ApiService.instance.alerts(),
+      ]);
+      if (!mounted) return;
       setState(() {
-        _profileData = data;
+        _profileData = results[0] as Map<String, dynamic>;
+        _alerts = results[1] as List<Map<String, dynamic>>;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(
         context,
@@ -157,7 +164,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               const SizedBox(height: 12),
                               _buildLogCard(
-                                icon: Icons.commute_rounded,
+                                icon: Icons.bedtime_rounded,
                                 iconColor: const Color(0xFF60A5FA),
                                 iconBg: const Color(0xFFEFF6FF),
                                 title: "เดินทางไปทำงาน",
@@ -167,7 +174,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 subtitle: "วันนี้ • 20 กม. • 28 นาที",
                               ),
                               _buildLogCard(
-                                icon: Icons.shopping_bag_rounded,
+                                icon: Icons.blur_on_rounded,
                                 iconColor: const Color(0xFF818CF8),
                                 iconBg: const Color(0xFFEEF2FF),
                                 title: "ซื้อของเข้าบ้าน",
@@ -175,6 +182,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 tagColor: const Color(0xFF1D4ED8),
                                 tagBg: const Color(0xFFDBEAFE),
                                 subtitle: "เมื่อวาน • 6.7 กม. • 15 นาที",
+                              ),
+                              _buildLogCard(
+                                icon: Icons.visibility_off_rounded,
+                                iconColor: const Color(0xFFEA580C),
+                                iconBg: const Color(0xFFFFEDD5),
+                                title: '',
+                                tag: '',
+                                tagColor: const Color(0xFFEA580C),
+                                tagBg: const Color(0xFFFFEDD5),
+                                subtitle: '',
                               ),
                               const SizedBox(height: 30),
                               SizedBox(
@@ -371,6 +388,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  String _alertTypeForIcon(IconData icon) {
+    if (icon == Icons.bedtime_rounded) return 'ง่วงนอน';
+    if (icon == Icons.blur_on_rounded) return 'เหม่อลอย';
+    return 'ไม่มองถนน';
+  }
+
+  List<Map<String, dynamic>> _alertsForType(String type) {
+    final matches = _alerts.where((alert) => alert['type']?.toString() == type).toList();
+    matches.sort((a, b) {
+      final aTime = DateTime.tryParse((a['timestamp'] ?? a['created_at'] ?? '').toString()) ?? DateTime(0);
+      final bTime = DateTime.tryParse((b['timestamp'] ?? b['created_at'] ?? '').toString()) ?? DateTime(0);
+      return bTime.compareTo(aTime);
+    });
+    return matches;
+  }
+
+  String _latestAlertText(List<Map<String, dynamic>> alerts) {
+    if (alerts.isEmpty) return 'ยังไม่พบประวัติการแจ้งเตือน';
+    final rawTime = alerts.first['timestamp'] ?? alerts.first['created_at'];
+    final time = DateTime.tryParse(rawTime?.toString() ?? '')?.toLocal();
+    if (time == null) return 'พบการแจ้งเตือนล่าสุด';
+    return 'ล่าสุด ${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year + 543} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} น.';
+  }
+
   Widget _buildLogCard({
     required IconData icon,
     required Color iconColor,
@@ -381,6 +422,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required Color tagBg,
     required String subtitle,
   }) {
+    final alertType = _alertTypeForIcon(icon);
+    final alerts = _alertsForType(alertType);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -404,7 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      title,
+                      alertType,
                       style: GoogleFonts.inter(
                         color: textDark,
                         fontSize: 14,
@@ -421,7 +464,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        tag,
+                        '${alerts.length} ครั้ง',
                         style: GoogleFonts.inter(
                           color: tagColor,
                           fontSize: 10,
@@ -433,7 +476,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  subtitle,
+                  _latestAlertText(alerts),
                   style: GoogleFonts.inter(
                     color: const Color(0xFF64748B),
                     fontSize: 12,
