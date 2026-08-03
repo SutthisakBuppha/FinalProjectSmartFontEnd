@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:async';
 
 // Import ส่วนประกอบต่างๆ ของแอปพลิเคชันคุณ
 import '/services/api_service.dart';
 import 'profile_screen.dart';
-
-// ✅ แก้ไข: ลบ import 'alert_screen.dart', 'dart:convert', 'package:http/http.dart'
-// ออกจากไฟล์นี้ เพราะไม่ได้ใช้ในหน้านี้อีกต่อไป (ดูหมายเหตุด้านล่าง)
 
 void main() {
   runApp(const MaterialApp(
@@ -33,26 +31,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   static const Duration _deviceStatusPollInterval = Duration(seconds: 5);
 
   // ---------------------------------------------------------------------
-  // ✅ แก้ไข (สำคัญ): ลบระบบ polling "_checkLatestEmergencyAlerts" +
-  // "_autoCheckTimer" ที่เคยอยู่ในไฟล์นี้ออกทั้งหมด
-  //
-  // เหตุผล: main_layout.dart มีระบบ polling แจ้งเตือน (ทุก 8 วิ) ที่ทำหน้าที่
-  // เดียวกันอยู่แล้ว คือตรวจสอบแจ้งเตือนใหม่แล้วเด้งเปิด AlertScreen
-  // การมี 2 ระบบ polling แยกกันเช็คสิ่งเดียวกัน (แจ้งเตือนล่าสุด) ทำให้เกิด
-  // ความเสี่ยงที่ทั้งสองจุดจะพยายามเปิด AlertScreen พร้อมกันหรือซ้อนกัน
-  // (race condition) จึงตัดออกจากหน้านี้ ให้ main_layout.dart เป็นเจ้าของ
-  // หน้าที่ "ตรวจจับแจ้งเตือนใหม่ -> เด้งเปิด AlertScreen" แต่เพียงจุดเดียว
-  //
-  // หน้านี้ (HomeScreen) รับผิดชอบแค่ "สถานะไฟเลี้ยงอุปกรณ์ -> เปิด/ปิดปุ่ม
-  // ตรวจจับ" เท่านั้น
+  // หมายเหตุ: ลอจิกทั้งหมดด้านล่างนี้ "ไม่ถูกแก้ไข" ตามที่ขอ (คงความสามารถเดิม)
+  // ที่เปลี่ยนคือเฉพาะส่วน UI (build methods) เท่านั้น โดยยังใช้ชุดสี
+  // จาก AppColors เดิมทั้งหมด
   // ---------------------------------------------------------------------
-
-  static const Color primaryColor = Color(0xFF0F2557);
-  static const Color primaryLight = Color(0xFF24469C);
-  static const Color backgroundLight = Color(0xFFECF0F3);
-  static const Color accentSuccess = Color(0xFF059669);
-  static const Color textDark = Color(0xFF1E293B);
-
   @override
   void initState() {
     super.initState();
@@ -77,15 +59,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   // 🔌 ตรวจสอบสถานะไฟเลี้ยงของอุปกรณ์ (heartbeat จาก backend) แล้ว sync ปุ่มตรวจจับให้ตรงกันอัตโนมัติ
-  // - อุปกรณ์ "ออนไลน์" (มีไฟจ่ายเข้า/ส่ง heartbeat อยู่) → เริ่มตรวจจับให้เอง
-  // - อุปกรณ์ "ออฟไลน์" (ถอดไฟ/ถอดบอร์ดออก) → หยุดตรวจจับให้เอง
   Future<void> _checkDeviceStatus() async {
-    if (_isCheckingDeviceStatus) return; // กันยิงซ้อนกันถ้า request ก่อนหน้ายังไม่จบ
+    if (_isCheckingDeviceStatus) return;
     _isCheckingDeviceStatus = true;
 
     try {
       final devices = await ApiService.instance.devices();
-      // ถือว่า "มีไฟจ่ายอยู่" ถ้ามีอุปกรณ์ตัวใดตัวหนึ่งของผู้ใช้สถานะเป็นออนไลน์
       final bool isDeviceOnline = devices.any(
         (d) => d['status'] == 'ออนไลน์' || d['status'] == 'online',
       );
@@ -96,14 +75,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         _setMonitoring(isDeviceOnline);
       }
     } catch (e) {
-      // เน็ตสะดุด/เรียก API ไม่สำเร็จ ไม่ต้องรบกวนผู้ใช้ด้วย SnackBar แค่ log ไว้เฉยๆ แล้วรอ poll รอบถัดไป
       debugPrint("Device status poll error: $e");
     } finally {
       _isCheckingDeviceStatus = false;
     }
   }
 
-  // ตั้งค่าสถานะการตรวจจับ (ใช้ตอน auto-sync จากอุปกรณ์ และตอนผู้ใช้กดปุ่มเอง)
   void _setMonitoring(bool shouldMonitor) {
     if (!mounted) return;
     setState(() {
@@ -116,39 +93,63 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
   }
 
-  // 🎛️ ปุ่มกดด้วยมือ: ใช้เป็น manual override ชั่วคราว (โพลล์รอบถัดไปจะ sync กลับตามสถานะไฟจริงเสมอ)
   void _toggleMonitoring() {
     _setMonitoring(!_isMonitoring);
   }
+
+  // =======================================================================
+  // UI ด้านล่างนี้คือส่วนที่ออกแบบใหม่ทั้งหมด — ใช้เฉพาะสีจาก AppColors เดิม
+  // =======================================================================
 
   @override
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final isLandscape = mediaQuery.orientation == Orientation.landscape;
-    final scale = isLandscape ? 0.8 : 1.0;
+    final scale = isLandscape ? 0.85 : 1.0;
+    final statusColor = _isMonitoring ? AppColors.cFF059669 : Colors.grey;
 
     return Scaffold(
-      backgroundColor: backgroundLight,
+      backgroundColor: AppColors.cFFECF0F3,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 24),
-                _buildStatusSection(scale),
-                const SizedBox(height: 32),
-                _buildControlButton(scale),
-              ],
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: _buildHeader(),
+              ),
             ),
-          ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                child: _buildStatusCard(scale, statusColor),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: _buildInfoRow(statusColor),
+              ),
+            ),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _buildControlButton(scale),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
+  // ---------- Header ----------
   Widget _buildHeader() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -157,66 +158,115 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "ยินดีต้อนรับ",
-              style: GoogleFonts.kanit(color: textDark.withOpacity(0.6), fontSize: 16),
+              "ยินดีต้อนรับกลับมา",
+              style: GoogleFonts.kanit(
+                color: AppColors.cFF1E293B.withOpacity(0.55),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
+            const SizedBox(height: 2),
             Text(
               "ผู้ขับขี่ปลอดภัย",
-              style: GoogleFonts.kanit(color: textDark, fontSize: 24, fontWeight: FontWeight.bold),
+              style: GoogleFonts.kanit(
+                color: AppColors.cFF1E293B,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
-        IconButton(
-          icon: const Icon(Icons.person_pin, size: 36, color: primaryColor),
-          onPressed: () {
+        InkWell(
+          borderRadius: BorderRadius.circular(50),
+          onTap: () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
           },
-        )
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.person_pin, size: 28, color: AppColors.cFF0F2557),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildStatusSection(double scale) {
+  // ---------- Status Card ----------
+  Widget _buildStatusCard(double scale, Color statusColor) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.symmetric(vertical: 36 * scale, horizontal: 24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: _isMonitoring
+              ? [AppColors.cFF0F2557, AppColors.cFF0F2557.withOpacity(0.85)]
+              : [Colors.white, Colors.white],
+        ),
+        borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          )
+            color: (_isMonitoring ? AppColors.cFF0F2557 : Colors.black).withOpacity(0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
         ],
       ),
       child: Column(
         children: [
-          AnimatedBuilder(
-            animation: _controller,
-            builder: (context, child) {
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isMonitoring 
-                      ? primaryColor.withOpacity(0.1 * (1 - _controller.value))
-                      : Colors.grey.withOpacity(0.1),
-                ),
-                child: Icon(
-                  _isMonitoring ? Icons.security_rounded : Icons.shield_moon_rounded,
-                  size: 72 * scale,
-                  color: _isMonitoring ? primaryColor : Colors.grey,
-                ),
-              );
-            },
+          SizedBox(
+            width: 140 * scale,
+            height: 140 * scale,
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (_isMonitoring)
+                      Container(
+                        width: (140 * scale) * (0.75 + 0.25 * _controller.value),
+                        height: (140 * scale) * (0.75 + 0.25 * _controller.value),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withOpacity(0.15 * (1 - _controller.value)),
+                        ),
+                      ),
+                    Container(
+                      width: 96 * scale,
+                      height: 96 * scale,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _isMonitoring ? Colors.white.withOpacity(0.15) : AppColors.cFFECF0F3,
+                      ),
+                      child: Icon(
+                        _isMonitoring ? Icons.security_rounded : Icons.shield_moon_rounded,
+                        size: 48 * scale,
+                        color: _isMonitoring ? Colors.white : Colors.grey,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 20 * scale),
           Text(
             _isMonitoring ? "ระบบ AI กำลังคุ้มครองคุณ" : "ระบบปิดการทำงานอยู่",
+            textAlign: TextAlign.center,
             style: GoogleFonts.kanit(
-              color: _isMonitoring ? primaryLight : textDark,
+              color: _isMonitoring ? Colors.white : AppColors.cFF1E293B,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
@@ -227,24 +277,107 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ? "กำลังตรวจสอบพฤติกรรมการขับขี่แบบเรียลไทม์..."
                 : "ระบบจะเริ่มทำงานอัตโนมัติเมื่อจ่ายไฟเข้าอุปกรณ์",
             textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 14),
+            style: GoogleFonts.kanit(
+              color: _isMonitoring ? Colors.white.withOpacity(0.8) : Colors.grey[600],
+              fontSize: 13,
+            ),
           ),
         ],
       ),
     );
   }
 
+  // ---------- Info Row (สถานะย่อย) ----------
+  Widget _buildInfoRow(Color statusColor) {
+    return Row(
+      children: [
+        Expanded(
+          child: _infoChip(
+            icon: Icons.bolt_rounded,
+            label: "สถานะไฟเลี้ยง",
+            value: _isMonitoring ? "ออนไลน์" : "ออฟไลน์",
+            color: statusColor,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _infoChip(
+            icon: Icons.wifi_tethering_rounded,
+            label: "การเชื่อมต่อ",
+            value: _isCheckingDeviceStatus ? "กำลังตรวจสอบ" : "ปกติ",
+            color: AppColors.cFF0F2557,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _infoChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.kanit(fontSize: 11, color: Colors.grey[500]),
+                ),
+                Text(
+                  value,
+                  style: GoogleFonts.kanit(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.cFF1E293B,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Control Button ----------
   Widget _buildControlButton(double scale) {
     return Container(
       width: double.infinity,
-      height: (68 * scale).clamp(56.0, 76.0),
+      height: (64 * scale).clamp(56.0, 72.0),
       decoration: BoxDecoration(
-        color: _isMonitoring ? const Color(0xFFFF4D4D) : accentSuccess,
-        borderRadius: BorderRadius.circular(20),
+        color: _isMonitoring ? AppColors.cFFFF4D4D : AppColors.cFF059669,
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: _isMonitoring ? Colors.red.withOpacity(0.3) : accentSuccess.withOpacity(0.3),
-            blurRadius: 20,
+            color: (_isMonitoring ? Colors.red : AppColors.cFF059669).withOpacity(0.28),
+            blurRadius: 18,
             offset: const Offset(0, 8),
           ),
         ],
@@ -252,20 +385,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _toggleMonitoring, 
-          borderRadius: BorderRadius.circular(20),
+          onTap: _toggleMonitoring,
+          borderRadius: BorderRadius.circular(22),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 _isMonitoring ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded,
                 color: Colors.white,
-                size: 32 * scale,
+                size: 28 * scale,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Text(
                 _isMonitoring ? "หยุดการตรวจจับ" : "เริ่มตรวจจับ",
-                style: GoogleFonts.kanit(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                style: GoogleFonts.kanit(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),

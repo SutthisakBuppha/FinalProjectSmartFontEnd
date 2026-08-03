@@ -1,25 +1,22 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // --- Import ไฟล์ที่เกี่ยวข้อง ---
-import 'devices_screen.dart';
-import 'menu/custom_bottom_nav_bar.dart';
 import 'WifiProvisioningScreen.dart'; 
 import '/services/api_service.dart'; 
 import 'qr_scanner_screen.dart';
 
 class DeviceRegistrationScreen extends StatefulWidget {
-  const DeviceRegistrationScreen({super.key});
+  const DeviceRegistrationScreen({super.key, this.onRegistered});
+
+  final VoidCallback? onRegistered;
 
   @override
   State<DeviceRegistrationScreen> createState() => _DeviceRegistrationScreenState();
 }
 
 class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
-  static const Color primaryColor = Color(0xFF0F2557);
-  static const Color backgroundColor = Color(0xFFF3F4F6);
-  static const Color warningBgColor = Color(0xFFFFF7ED);
-  static const Color warningTextColor = Color(0xFF9A3412);
 
   final TextEditingController _serialController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -40,18 +37,12 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     super.dispose();
   }
 
-  // ฟังก์ชันตรวจสอบ: ถ้ามีอุปกรณ์ที่เคยลงทะเบียนอยู่แล้ว ให้เปิดหน้ารายการอุปกรณ์ทันที
   Future<void> _checkExistingDevices() async {
     try {
-      // เรียกใช้ devices() แบบไม่มี arguments ตามที่ ApiService ของคุณกำหนดไว้
       final devices = await ApiService.instance.devices();
       
-      // ถ้าพบข้อมูลอุปกรณ์ในฐานข้อมูลแล้ว ให้ย้ายข้ามหน้านี้ไปหน้ารายการเลยครับ
       if (devices.isNotEmpty && mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
-        );
+        widget.onRegistered?.call();
         return;
       }
     } catch (e) {
@@ -93,10 +84,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
         );
 
         // เมื่อลงทะเบียนเสร็จสำเร็จ ส่งไปยังหน้ารายการอุปกรณ์
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
-        );
+        widget.onRegistered?.call();
 
       } catch (e) {
         if (!mounted) return;
@@ -133,23 +121,14 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isCheckingDevice) {
-      return const Scaffold(
-        backgroundColor: backgroundColor,
-        body: Center(
-          child: CircularProgressIndicator(color: primaryColor),
-        ),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       appBar: AppBar(
         title: Text(
           "ตั้งค่าอุปกรณ์",
           style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: primaryColor,
+        backgroundColor: AppColors.cFF0F2557,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -168,7 +147,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: primaryColor,
+                    color: AppColors.cFF0F2557,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -185,21 +164,21 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: warningBgColor,
+                    color: AppColors.cFFFFF7ED,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: warningTextColor.withOpacity(0.2)),
+                    border: Border.all(color: AppColors.cFF9A3412.withOpacity(0.2)),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: warningTextColor),
+                      const Icon(Icons.warning_amber_rounded, color: AppColors.cFF9A3412),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           "คำแนะนำ: หมายเลข Serial Number จะอยู่บนสติกเกอร์ที่ติดอยู่กับตัวเครื่องโปรดตรวจสอบให้ถูกต้อง",
                           style: GoogleFonts.notoSansThai(
                             fontSize: 13,
-                            color: warningTextColor,
+                            color: AppColors.cFF9A3412,
                             height: 1.5,
                           ),
                         ),
@@ -223,9 +202,9 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   decoration: InputDecoration(
                     hintText: "เช่น SD-AI-2024XXXX",
                     hintStyle: GoogleFonts.plusJakartaSans(color: Colors.grey[400]),
-                    prefixIcon: const Icon(Icons.qr_code_scanner_rounded, color: primaryColor),
+                    prefixIcon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.cFF0F2557),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.camera_alt_rounded, color: primaryColor),
+                      icon: const Icon(Icons.camera_alt_rounded, color: AppColors.cFF0F2557),
                       tooltip: "สแกน QR Code",
                       onPressed: _scanQRCode,
                     ),
@@ -241,7 +220,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: primaryColor, width: 2),
+                      borderSide: const BorderSide(color: AppColors.cFF0F2557, width: 2),
                     ),
                     errorBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -280,7 +259,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                       "เชื่อมต่อไวไฟให้อุปกรณ์",
                       style: GoogleFonts.notoSansThai(fontWeight: FontWeight.bold),
                     ),
-                    style: TextButton.styleFrom(foregroundColor: primaryColor),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.cFF0F2557),
                   ),
                 ),
                 const SizedBox(height: 40),
@@ -291,10 +270,10 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _handleRegistration,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
+                      backgroundColor: AppColors.cFF0F2557,
                       foregroundColor: Colors.white,
                       elevation: 4,
-                      shadowColor: primaryColor.withOpacity(0.4),
+                      shadowColor: AppColors.cFF0F2557.withOpacity(0.4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -315,12 +294,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() => _currentIndex = index);
-        },
       ),
     );
   }

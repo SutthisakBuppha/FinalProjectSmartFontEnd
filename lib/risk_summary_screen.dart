@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'menu/custom_bottom_nav_bar.dart';
@@ -12,9 +13,9 @@ class RiskTrendsScreen extends StatefulWidget {
 }
 
 class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
-  static const primary = Color(0xFF0F2557);
+  static const primary = AppColors.cFF0F2557;
   static const backgroundLight = Colors.white;
-  static const backgroundOffwhite = Color(0xFFF6F8FA);
+  static const backgroundOffwhite = AppColors.cFFF6F8FA;
 
   int _currentIndex = 1;
   String _selectedFilter = 'รายเดือน';

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
@@ -12,13 +13,6 @@ class ProfileEditScreen extends StatefulWidget {
 }
 
 class _ProfileEditScreenState extends State<ProfileEditScreen> {
-  static const Color primaryDark = Color(0xFF0D2140);
-  static const Color primaryLight = Color(0xFF1E3A8A);
-  static const Color backgroundLight = Color(0xFFF8FAFC);
-  static const Color textDark = Color(0xFF0F172A);
-  static const Color textGrey = Color(0xFF64748B);
-  static const Color borderColor = Color(0xFFE2E8F0);
-
   late TextEditingController _nameController;
   bool _isSaving = false;
   String? _avatarUrl;
@@ -60,7 +54,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundLight,
+      backgroundColor: AppColors.background,
       body: Column(
         children: [
           _buildHeader(),
@@ -82,7 +76,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                       child: ElevatedButton(
                         onPressed: _isSaving ? null : _saveChanges,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryLight,
+                          backgroundColor: AppColors.primaryLight,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                         child: _isSaving
@@ -107,7 +101,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 60, 24, 30),
       decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [primaryDark, primaryLight]),
+        gradient: LinearGradient(colors: [AppColors.primaryDark, AppColors.primaryLight]),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
       ),
       child: Row(
@@ -139,17 +133,17 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             children: [
               CircleAvatar(
                 radius: 52,
-                backgroundColor: primaryLight.withOpacity(0.12),
+                backgroundColor: AppColors.primaryLight.withOpacity(0.12),
                 backgroundImage: hasAvatar ? NetworkImage(_avatarUrl!) : null,
                 child: hasAvatar
                     ? null
-                    : const Icon(Icons.person_rounded, size: 52, color: primaryLight),
+                    : const Icon(Icons.person_rounded, size: 52, color: AppColors.primaryLight),
               ),
               Positioned(
                 right: 0,
                 bottom: 0,
                 child: Material(
-                  color: primaryLight,
+                  color: AppColors.primaryLight,
                   shape: const CircleBorder(),
                   child: InkWell(
                     customBorder: const CircleBorder(),
@@ -170,7 +164,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Text('แตะเพื่อเปลี่ยนรูปโปรไฟล์', style: GoogleFonts.inter(color: textGrey, fontSize: 13)),
+          Text('แตะเพื่อเปลี่ยนรูปโปรไฟล์', style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13)),
         ],
       ),
     );
@@ -218,16 +212,16 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(color: textDark, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(label, style: GoogleFonts.inter(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
           decoration: InputDecoration(
-            prefixIcon: Icon(icon, color: textGrey),
+            prefixIcon: Icon(icon, color: AppColors.textMuted),
             filled: true,
             fillColor: Colors.white,
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: borderColor)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: primaryLight, width: 2)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppColors.primaryLight, width: 2)),
           ),
         ),
       ],

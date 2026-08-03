@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
@@ -13,8 +14,6 @@ class CustomBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // กำหนดสี Primary
-    const Color primaryColor = Color(0xFF0F2557); 
 
     return Container(
       height: 80,
@@ -34,12 +33,12 @@ class CustomBottomNavBar extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          _buildNavItem(Icons.home_rounded, "Home", 0, primaryColor),
-          _buildNavItem(Icons.history_rounded, "History", 1, primaryColor),          
-          _buildNavItem(Icons.notifications_rounded, "Notification", 2, primaryColor),  
-          _buildNavItem(Icons.devices_rounded, "Device", 3, primaryColor),
-          _buildNavItem(Icons.report_rounded, "Report", 4, primaryColor),        
-          _buildNavItem(Icons.person_rounded, "Profile", 5, primaryColor),        
+          _buildNavItem(Icons.home_rounded, "Home", 0, AppColors.cFF0F2557),
+          _buildNavItem(Icons.history_rounded, "History", 1, AppColors.cFF0F2557),          
+          _buildNavItem(Icons.notifications_rounded, "Notification", 2, AppColors.cFF0F2557),  
+          _buildNavItem(Icons.devices_rounded, "Device", 3, AppColors.cFF0F2557),
+          _buildNavItem(Icons.report_rounded, "Report", 4, AppColors.cFF0F2557),        
+          _buildNavItem(Icons.person_rounded, "Profile", 5, AppColors.cFF0F2557),        
         ],
       ),
     );

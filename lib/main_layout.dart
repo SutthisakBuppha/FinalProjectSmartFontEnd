@@ -7,6 +7,7 @@ import 'history_screen.dart';
 import '/notification_screen.dart';
 import 'profile_screen.dart';
 import 'device_registration_screen.dart';
+import 'devices_screen.dart';
 import 'risk_summary_screen.dart';
 import 'menu/custom_bottom_nav_bar.dart';
 
@@ -30,7 +31,7 @@ class _MainLayoutState extends State<MainLayout> {
     const HomeScreen(), // Index 0
     const HistoryScreen(), // Index 1
     const NotificationScreen(), // Index 2
-    const DeviceRegistrationScreen(), // Index 3
+    const DeviceSection(), // Index 3
     const RiskTrendsScreen(), // Index 4
     const ProfileScreen(), // Index 5
   ];
@@ -120,6 +121,43 @@ class _MainLayoutState extends State<MainLayout> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
       ),
+    );
+  }
+}
+
+class DeviceSection extends StatefulWidget {
+  const DeviceSection({super.key});
+
+  @override
+  State<DeviceSection> createState() => _DeviceSectionState();
+}
+
+class _DeviceSectionState extends State<DeviceSection> {
+  bool? _hasDevices;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDeviceState();
+  }
+
+  Future<void> _loadDeviceState() async {
+    try {
+      final devices = await ApiService.instance.devices();
+      if (mounted) setState(() => _hasDevices = devices.isNotEmpty);
+    } catch (_) {
+      if (mounted) setState(() => _hasDevices = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasDevices == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_hasDevices!) return const DeviceManagementScreen();
+    return DeviceRegistrationScreen(
+      onRegistered: () => setState(() => _hasDevices = true),
     );
   }
 }

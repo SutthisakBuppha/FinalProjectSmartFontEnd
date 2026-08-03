@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'devices_screen.dart';
+import 'main_layout.dart';
 import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
 
@@ -15,14 +16,6 @@ class DeviceCustomizationScreen extends StatefulWidget {
 
 class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   // ── Theme (คงชุดสีเดิมของแอปไว้ทั้งหมด) ─────────────────────────────
-  static const Color primaryColor = Color(0xFF0F2557);
-  static const Color primarySoft = Color(0xFF3B5998);
-  static const Color bgLight = Color(0xFFFFFFFF);
-  static const Color bgOffwhite = Color(0xFFF6F8FA);
-  static const Color accentBlue = Color(0xFFE8EFFD);
-  static const Color successGreen = Color(0xFF10B981);
-  static const Color offlineGrey = Color(0xFF9CA3AF);
-
   bool _soundEnabled = true;
   double _volumeLevel = 75.0;
   String _activeTone = 'เสียงคลาสสิก (Classic)';
@@ -38,6 +31,20 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   bool get _isOnline =>
       widget.deviceData['status'] == 'ออนไลน์' ||
       widget.deviceData['status'] == 'online';
+
+  void _returnToDeviceList() {
+    // The settings page was pushed from the device tab. Pop to preserve the
+    // MainLayout and its bottom navigation instead of creating a bare screen.
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const MainLayout(initialIndex: 3)),
+      (route) => false,
+    );
+  }
 
   @override
   void initState() {
@@ -103,12 +110,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('บันทึกปรับแต่งฮาร์ดแวร์สำเร็จแล้ว')),
         );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const DeviceManagementScreen(),
-          ),
-        );
+        _returnToDeviceList();
       }
     } catch (e) {
       setState(() => _isSavingSetting = false);
@@ -158,24 +160,19 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgOffwhite,
+      backgroundColor: AppColors.cFFF6F8FA,
       appBar: AppBar(
-        backgroundColor: bgLight,
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new_rounded,
-            color: primaryColor,
+            color: AppColors.cFF0F2557,
             size: 22,
           ),
           onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const DeviceManagementScreen(),
-              ),
-            );
+            _returnToDeviceList();
           },
         ),
         title: Text(
@@ -183,14 +180,14 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           style: GoogleFonts.notoSansThai(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: primaryColor,
+            color: AppColors.cFF0F2557,
           ),
         ),
       ),
       body: _isLoadingSetting
-          ? const Center(child: CircularProgressIndicator(color: primaryColor))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.cFF0F2557))
           : RefreshIndicator(
-              color: primaryColor,
+              color: AppColors.cFF0F2557,
               onRefresh: () async {
                 await _fetchDeviceConfig();
                 await _fetchAudioTones();
@@ -221,9 +218,9 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                       child: ElevatedButton(
                         onPressed: _isSavingSetting ? null : _saveAllSettings,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
+                          backgroundColor: AppColors.cFF0F2557,
                           elevation: 3,
-                          shadowColor: primaryColor.withOpacity(0.4),
+                          shadowColor: AppColors.cFF0F2557.withOpacity(0.4),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
@@ -271,12 +268,12 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryColor, primarySoft],
+          colors: [AppColors.cFF0F2557, AppColors.cFF3B5998],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withOpacity(0.25),
+            color: AppColors.cFF0F2557.withOpacity(0.25),
             blurRadius: 16,
             offset: const Offset(0, 8),
           ),
@@ -324,10 +321,10 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: (_isOnline ? successGreen : offlineGrey).withOpacity(0.2),
+              color: (_isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF).withOpacity(0.2),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: (_isOnline ? successGreen : offlineGrey)
+                color: (_isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF)
                     .withOpacity(0.5),
               ),
             ),
@@ -338,7 +335,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: _isOnline ? successGreen : offlineGrey,
+                    color: _isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -370,10 +367,10 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: accentBlue,
+            color: AppColors.cFFE8EFFD,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: primaryColor, size: 20),
+          child: Icon(icon, color: AppColors.cFF0F2557, size: 20),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -385,7 +382,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                 style: GoogleFonts.notoSansThai(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: primaryColor,
+                  color: AppColors.cFF0F2557,
                 ),
               ),
               if (subtitle != null) ...[
@@ -445,7 +442,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: primaryColor,
+                  color: AppColors.cFF0F2557,
                 ),
               ),
             ),
@@ -510,10 +507,10 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? accentBlue : bgOffwhite,
+          color: isSelected ? AppColors.cFFE8EFFD : AppColors.cFFF6F8FA,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? primaryColor : Colors.transparent,
+            color: isSelected ? AppColors.cFF0F2557 : Colors.transparent,
             width: 1.4,
           ),
         ),
@@ -523,7 +520,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: isSelected ? primaryColor : Colors.white,
+                color: isSelected ? AppColors.cFF0F2557 : Colors.white,
                 shape: BoxShape.circle,
                 border: isSelected
                     ? null
@@ -542,13 +539,13 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                 style: GoogleFonts.notoSansThai(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? primaryColor : Colors.grey.shade800,
+                  color: isSelected ? AppColors.cFF0F2557 : Colors.grey.shade800,
                 ),
               ),
             ),
             if (isSelected)
               const Icon(Icons.check_circle_rounded,
-                  color: primaryColor, size: 20)
+                  color: AppColors.cFF0F2557, size: 20)
             else
               Icon(Icons.circle_outlined,
                   color: Colors.grey.shade300, size: 20),
@@ -570,7 +567,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: primaryColor.withOpacity(0.3),
+            color: AppColors.cFF0F2557.withOpacity(0.3),
             width: 1.4,
             style: BorderStyle.solid,
           ),
@@ -584,18 +581,18 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: primaryColor,
+                      color: AppColors.cFF0F2557,
                     ),
                   )
                 : Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: accentBlue,
+                      color: AppColors.cFFE8EFFD,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Icon(
                       Icons.upload_file_rounded,
-                      color: primaryColor,
+                      color: AppColors.cFF0F2557,
                       size: 20,
                     ),
                   ),
@@ -603,7 +600,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
             Text(
               _isUploadingAudio ? "กำลังอัปโหลด..." : "อัปโหลดไฟล์เสียงใหม่",
               style: GoogleFonts.notoSansThai(
-                color: primaryColor,
+                color: AppColors.cFF0F2557,
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
               ),
@@ -619,13 +616,13 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   //   return Container(
   //     padding: const EdgeInsets.all(16),
   //     decoration: BoxDecoration(
-  //       color: accentBlue.withOpacity(0.6),
+  //       color: AppColors.cFFE8EFFD.withOpacity(0.6),
   //       borderRadius: BorderRadius.circular(16),
   //     ),
   //     // child: Row(
   //     //   crossAxisAlignment: CrossAxisAlignment.start,
   //     //   children: [
-  //     //     const Icon(Icons.info_outline_rounded, color: primaryColor, size: 20),
+  //     //     const Icon(Icons.info_outline_rounded, color: AppColors.cFF0F2557, size: 20),
   //     //     const SizedBox(width: 12),
   //     //     Expanded(
   //     //       child: Text(
@@ -633,7 +630,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   //     //         "คุณสามารถอัปโหลดเสียงของตัวเองหรือเลือกจากเสียงสำเร็จรูปด้านบนได้ตลอดเวลา",
   //     //         style: GoogleFonts.notoSansThai(
   //     //           fontSize: 12.5,
-  //     //           color: primaryColor.withOpacity(0.85),
+  //     //           color: AppColors.cFF0F2557.withOpacity(0.85),
   //     //           height: 1.5,
   //     //         ),
   //     //       ),

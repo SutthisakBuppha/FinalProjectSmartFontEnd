@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'menu/custom_bottom_nav_bar.dart';
@@ -14,17 +15,6 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   // --- Theme Colors (ตรงตาม Tailwind Config) ---
-  static const Color primaryColor = Color(0xFF0F2647);
-  static const Color secondaryColor = Color(0xFF1E3A66);
-  static const Color accentColor = Color(0xFF3B82F6);
-  static const Color backgroundColor = Color(0xFFF3F4F6);
-  static const Color cardColor = Color(0xFFFFFFFF);
-  static const Color dangerColor = Color(0xFFEF4444);
-  static const Color successColor = Color(0xFF10B981);
-  static const Color warningColor = Color(0xFFF59E0B);
-  static const Color textLight = Color(0xFF1F2937);
-  static const Color subTextLight = Color(0xFF6B7280);
-
   // --- API State Variables ---
   List<Map<String, dynamic>> _trips = [];
   List<Map<String, dynamic>> _alerts = [];
@@ -91,16 +81,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildDetectionHistory(double scale) {
     const detectionTypes = [
-      ('ง่วงนอน', Icons.bedtime_rounded, dangerColor),
-      ('เหม่อลอย', Icons.blur_on_rounded, warningColor),
-      ('ไม่มองถนน', Icons.visibility_off_rounded, dangerColor),
+      ('ง่วงนอน', Icons.bedtime_rounded, AppColors.danger),
+      ('เหม่อลอย', Icons.blur_on_rounded, AppColors.warning),
+      ('ไม่มองถนน', Icons.visibility_off_rounded, AppColors.danger),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'ประวัติการตรวจจับจาก AI',
-          style: GoogleFonts.kanit(fontSize: 18 * scale, fontWeight: FontWeight.bold, color: primaryColor),
+          style: GoogleFonts.kanit(fontSize: 18 * scale, fontWeight: FontWeight.bold, color: AppColors.cFF0F2647),
         ),
         SizedBox(height: 12 * scale),
         ...detectionTypes.map((item) {
@@ -109,13 +99,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
           return Container(
             margin: EdgeInsets.only(bottom: 10 * scale),
             padding: EdgeInsets.all(14 * scale),
-            decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(14 * scale)),
+            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14 * scale)),
             child: Row(children: [
               CircleAvatar(backgroundColor: item.$3.withOpacity(.12), child: Icon(item.$2, color: item.$3)),
               SizedBox(width: 12 * scale),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item.$1, style: GoogleFonts.kanit(fontSize: 15 * scale, fontWeight: FontWeight.w600, color: textLight)),
-                Text(latest == null ? 'ยังไม่พบการตรวจจับ' : _formatDateTime(latest.toString()), style: GoogleFonts.kanit(fontSize: 12 * scale, color: subTextLight)),
+                Text(item.$1, style: GoogleFonts.kanit(fontSize: 15 * scale, fontWeight: FontWeight.w600, color: AppColors.cFF1F2937)),
+                Text(latest == null ? 'ยังไม่พบการตรวจจับ' : _formatDateTime(latest.toString()), style: GoogleFonts.kanit(fontSize: 12 * scale, color: AppColors.cFF6B7280)),
               ])),
               Text('${alerts.length} ครั้ง', style: GoogleFonts.kanit(fontSize: 14 * scale, fontWeight: FontWeight.bold, color: item.$3)),
             ]),
@@ -148,19 +138,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (alertsCount == 0) {
       return {
         'text': 'ปลอดภัย',
-        'color': successColor,
+        'color': AppColors.success,
         'icon': Icons.verified_user_outlined,
       };
     } else if (alertsCount <= 3) {
       return {
         'text': 'ปานกลาง',
-        'color': warningColor,
+        'color': AppColors.warning,
         'icon': Icons.error_outline_rounded,
       };
     } else {
       return {
         'text': 'ความเสี่ยงสูง',
-        'color': dangerColor,
+        'color': AppColors.danger,
         'icon': Icons.warning_amber_rounded,
       };
     }
@@ -174,7 +164,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 32.0);
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       extendBody: true,
       body: Stack(
         children: [
@@ -185,7 +175,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: _isLoading
                     ? const Center(
                         child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.cFF0F2647),
                         ),
                       )
                     : _errorMessage.isNotEmpty
@@ -195,17 +185,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.error_outline, color: dangerColor, size: 48 * scale),
+                                  Icon(Icons.error_outline, color: AppColors.danger, size: 48 * scale),
                                   SizedBox(height: 16 * scale),
                                   Text(
                                     _errorMessage,
-                                    style: GoogleFonts.kanit(color: textLight, fontSize: 14 * scale),
+                                    style: GoogleFonts.kanit(color: AppColors.cFF1F2937, fontSize: 14 * scale),
                                     textAlign: TextAlign.center,
                                   ),
                                   SizedBox(height: 16 * scale),
                                   ElevatedButton(
                                     onPressed: _fetchHistoryData,
-                                    style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+                                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.cFF0F2647),
                                     child: Text("ลองใหม่อีกครั้ง", style: GoogleFonts.kanit(color: Colors.white, fontSize: 14 * scale)),
                                   )
                                 ],
@@ -214,7 +204,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           )
                         : RefreshIndicator(
                             onRefresh: _fetchHistoryData,
-                            color: primaryColor,
+                            color: AppColors.cFF0F2647,
                             child: SingleChildScrollView(
                               physics: const BouncingScrollPhysics(),
                               child: Padding(
@@ -229,7 +219,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             value: "$_totalAlerts",
                                             suffix: " ครั้ง",
                                             icon: Icons.warning_amber_rounded,
-                                            iconColor: warningColor,
+                                            iconColor: AppColors.warning,
                                             scale: scale,
                                           ),
                                         ),
@@ -240,7 +230,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                             value: _totalDistance.toStringAsFixed(1),
                                             suffix: " กม.",
                                             icon: Icons.route_rounded,
-                                            iconColor: accentColor,
+                                            iconColor: AppColors.secondary,
                                             scale: scale,
                                           ),
                                         ),
@@ -260,7 +250,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                           style: GoogleFonts.kanit(
                                             fontSize: 18 * scale,
                                             fontWeight: FontWeight.bold,
-                                            color: primaryColor,
+                                            color: AppColors.cFF0F2647,
                                           ),
                                         ),
                                         Text(
@@ -268,9 +258,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                           style: GoogleFonts.kanit(
                                             fontSize: 14 * scale,
                                             fontWeight: FontWeight.w500,
-                                            color: accentColor,
+                                            color: AppColors.secondary,
                                             decoration: TextDecoration.underline,
-                                            decorationColor: accentColor,
+                                            decorationColor: AppColors.secondary,
                                           ),
                                         ),
                                       ],
@@ -284,7 +274,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         child: Center(
                                           child: Text(
                                             "ไม่พบประวัติการเดินทางของท่าน",
-                                            style: GoogleFonts.kanit(color: subTextLight, fontSize: 16 * scale),
+                                            style: GoogleFonts.kanit(color: AppColors.cFF6B7280, fontSize: 16 * scale),
                                           ),
                                         ),
                                       )
@@ -363,7 +353,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [primaryColor, secondaryColor],
+          colors: [AppColors.cFF0F2647, AppColors.cFF1E3A66],
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
         boxShadow: [
@@ -468,7 +458,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Container(
       padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
@@ -503,7 +493,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 TextSpan(
                   text: value,
                   style: GoogleFonts.kanit(
-                    color: textLight,
+                    color: AppColors.cFF1F2937,
                     fontSize: 24 * scale,
                     fontWeight: FontWeight.bold,
                   ),
@@ -512,7 +502,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   TextSpan(
                     text: suffix,
                     style: GoogleFonts.kanit(
-                      color: subTextLight,
+                      color: AppColors.cFF6B7280,
                       fontSize: 14 * scale,
                       fontWeight: FontWeight.normal,
                     ),
@@ -541,7 +531,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Container(
       margin: EdgeInsets.only(bottom: 16 * scale),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: statusColor, width: 4 * scale)),
         boxShadow: [
@@ -586,7 +576,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               color: Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(icon, color: subTextLight, size: 24 * scale),
+                            child: Icon(icon, color: AppColors.cFF6B7280, size: 24 * scale),
                           ),
                           SizedBox(width: 12 * scale),
                           Expanded(
@@ -596,7 +586,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 Text(
                                   title,
                                   style: GoogleFonts.kanit(
-                                    color: textLight,
+                                    color: AppColors.cFF1F2937,
                                     fontSize: 16 * scale,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -605,7 +595,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 Text(
                                   date,
                                   style: GoogleFonts.kanit(
-                                    color: subTextLight,
+                                    color: AppColors.cFF6B7280,
                                     fontSize: 12 * scale,
                                   ),
                                 ),
@@ -667,7 +657,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Text(
             label,
             style: GoogleFonts.kanit(
-              color: isAlert && valueColor != null ? valueColor : subTextLight,
+              color: isAlert && valueColor != null ? valueColor : AppColors.cFF6B7280,
               fontSize: 12 * scale,
               fontWeight: isAlert ? FontWeight.w500 : FontWeight.normal,
             ),
@@ -676,7 +666,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Text(
             value,
             style: GoogleFonts.kanit(
-              color: isAlert && valueColor != null ? valueColor : textLight,
+              color: isAlert && valueColor != null ? valueColor : AppColors.cFF1F2937,
               fontSize: 14 * scale,
               fontWeight: FontWeight.bold,
             ),

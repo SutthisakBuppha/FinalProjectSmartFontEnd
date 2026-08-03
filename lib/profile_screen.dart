@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '/theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'profile_edit_screen.dart';
 import 'login_screen.dart';
@@ -12,16 +13,10 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const Color primaryDark = Color(0xFF0D2140);
-  static const Color primaryLight = Color(0xFF1E3A8A);
-  static const Color backgroundLight = Color(0xFFF8FAFC);
-  static const Color accentBlue = Color(0xFF3B82F6);
-  static const Color successGreen = Color(0xFF10B981);
-  static const Color dangerRed = Color(0xFFDC2626);
-  static const Color textDark = Color(0xFF0F172A);
-
   Map<String, dynamic>? _profileData;
   List<Map<String, dynamic>> _alerts = [];
+  double _totalDistance = 0;
+  int _totalDrivingMinutes = 0;
   bool _isLoading = true;
 
   @override
@@ -35,11 +30,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final results = await Future.wait([
         ApiService.instance.driverProfile(),
         ApiService.instance.alerts(),
+        ApiService.instance.trips(),
       ]);
       if (!mounted) return;
       setState(() {
         _profileData = results[0] as Map<String, dynamic>;
         _alerts = results[1] as List<Map<String, dynamic>>;
+        final trips = results[2] as List<Map<String, dynamic>>;
+        _totalDistance = trips.fold<double>(0, (sum, trip) {
+          return sum + (double.tryParse(trip['distance']?.toString() ?? '') ?? 0);
+        });
+        _totalDrivingMinutes = trips.fold<int>(0, (sum, trip) {
+          final start = DateTime.tryParse(trip['start_time']?.toString() ?? '');
+          final end = DateTime.tryParse(trip['end_time']?.toString() ?? '');
+          return sum + (start != null && end != null ? end.difference(start).inMinutes : 0);
+        });
         _isLoading = false;
       });
     } catch (e) {
@@ -124,10 +129,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundLight,
+      backgroundColor: AppColors.background,
       extendBody: true,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: primaryLight))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryLight))
           : Stack(
               children: [
                 Column(
@@ -149,7 +154,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     style: GoogleFonts.inter(
                                       fontSize: 17,
                                       fontWeight: FontWeight.bold,
-                                      color: textDark,
+                                      color: AppColors.text,
                                     ),
                                   ),
                                   Text(
@@ -157,7 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     style: GoogleFonts.inter(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: accentBlue,
+                                      color: AppColors.secondary,
                                     ),
                                   ),
                                 ],
@@ -165,32 +170,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               const SizedBox(height: 12),
                               _buildLogCard(
                                 icon: Icons.bedtime_rounded,
-                                iconColor: const Color(0xFF60A5FA),
-                                iconBg: const Color(0xFFEFF6FF),
+                                iconColor: AppColors.cFF60A5FA,
+                                iconBg: AppColors.cFFEFF6FF,
                                 title: "เดินทางไปทำงาน",
                                 tag: "ยอดเยี่ยม",
-                                tagColor: const Color(0xFF047857),
-                                tagBg: const Color(0xFFD1FAE5),
+                                tagColor: AppColors.cFF047857,
+                                tagBg: AppColors.cFFD1FAE5,
                                 subtitle: "วันนี้ • 20 กม. • 28 นาที",
                               ),
                               _buildLogCard(
                                 icon: Icons.blur_on_rounded,
-                                iconColor: const Color(0xFF818CF8),
-                                iconBg: const Color(0xFFEEF2FF),
+                                iconColor: AppColors.cFF818CF8,
+                                iconBg: AppColors.cFFEEF2FF,
                                 title: "ซื้อของเข้าบ้าน",
                                 tag: "ดีมาก",
-                                tagColor: const Color(0xFF1D4ED8),
-                                tagBg: const Color(0xFFDBEAFE),
+                                tagColor: AppColors.cFF1D4ED8,
+                                tagBg: AppColors.cFFDBEAFE,
                                 subtitle: "เมื่อวาน • 6.7 กม. • 15 นาที",
                               ),
                               _buildLogCard(
                                 icon: Icons.visibility_off_rounded,
-                                iconColor: const Color(0xFFEA580C),
-                                iconBg: const Color(0xFFFFEDD5),
+                                iconColor: AppColors.cFFEA580C,
+                                iconBg: AppColors.cFFFFEDD5,
                                 title: '',
                                 tag: '',
-                                tagColor: const Color(0xFFEA580C),
-                                tagBg: const Color(0xFFFFEDD5),
+                                tagColor: AppColors.cFFEA580C,
+                                tagBg: AppColors.cFFFFEDD5,
                                 subtitle: '',
                               ),
                               const SizedBox(height: 30),
@@ -251,7 +256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [primaryDark, primaryLight],
+          colors: [AppColors.primaryDark, AppColors.primaryLight],
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(40)),
         boxShadow: [
@@ -333,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: isActive ? successGreen : dangerRed,
+                color: isActive ? AppColors.cFF4ADE80 : AppColors.cFFDC2626,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -356,8 +361,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildStatItem("ระยะทางรวม", "1,240 กม."),
-                  _buildStatItem("เวลาขับขี่", "42 ชม."),
+                  _buildStatItem("ระยะทางรวม", "${_totalDistance.toStringAsFixed(1)} กม."),
+                  _buildStatItem("เวลาขับขี่", "${(_totalDrivingMinutes / 60).toStringAsFixed(1)} ชม."),
                 ],
               ),
             ),
@@ -449,7 +454,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       alertType,
                       style: GoogleFonts.inter(
-                        color: textDark,
+                        color: AppColors.text,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
@@ -478,7 +483,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   _latestAlertText(alerts),
                   style: GoogleFonts.inter(
-                    color: const Color(0xFF64748B),
+                    color: AppColors.textMuted,
                     fontSize: 12,
                   ),
                 ),

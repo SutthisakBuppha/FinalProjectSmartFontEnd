@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'alert_screen.dart';
@@ -13,17 +14,7 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   // --- Theme Colors ---
-  static const Color primaryColor = Color(0xFF0F2646);
-  static const Color secondaryColor = Color(0xFFE63946);
-  static const Color backgroundColor = Color(0xFFF3F4F6);
-  static const Color cardColor = Colors.white;
-  static const Color textMain = Color(0xFF1F2937);
-  static const Color textSub = Color(0xFF6B7280);
-
   // Risk Colors
-  static const Color riskHigh = Color(0xFFEF4444);    // แดง - ระดับ 3
-  static const Color riskMedium = Color(0xFFF97316);  // ส้ม - ระดับ 2
-  static const Color riskLow = Color(0xFFEAB308);     // เหลือง - ระดับ 1
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +24,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 32.0);
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       extendBody: true,
       body: Stack(
         children: [
@@ -108,7 +99,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       return {
         'level': 3,
         'label': 'ความเสี่ยงสูง',
-        'color': riskHigh,
+        'color': AppColors.danger,
         'icon': Icons.warning_rounded,
         'desc': 'อันตรายมาก! กรุณาจอดพักทันที'
       };
@@ -116,7 +107,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       return {
         'level': 2,
         'label': 'ความเสี่ยงปานกลาง',
-        'color': riskMedium,
+        'color': AppColors.cFFF97316,
         'icon': Icons.info_outline_rounded,
         'desc': 'เริ่มมีอาการเหนื่อยล้า'
       };
@@ -124,7 +115,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       return {
         'level': 1,
         'label': 'ความเสี่ยงต่ำ',
-        'color': riskLow,
+        'color': AppColors.cFFEAB308,
         'icon': Icons.remove_red_eye_rounded,
         'desc': 'ตรวจพบอาการเล็กน้อย'
       };
@@ -154,7 +145,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     return Container(
       padding: EdgeInsets.all(16 * scale),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: color, width: 6 * scale)),
         boxShadow: [
@@ -180,7 +171,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     style: GoogleFonts.prompt(
                       fontSize: 18 * scale,
                       fontWeight: FontWeight.bold,
-                      color: textMain,
+                      color: AppColors.cFF1F2937,
                     ),
                   ),
                 ],
@@ -215,13 +206,13 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   children: [
                     RichText(
                       text: TextSpan(
-                        style: GoogleFonts.prompt(fontSize: 14 * scale, color: textSub),
+                        style: GoogleFonts.prompt(fontSize: 14 * scale, color: AppColors.cFF6B7280),
                         children: [
                           const TextSpan(text: "ระยะเวลา: "),
                           TextSpan(
                             text: durationText,
                             style: const TextStyle(
-                              color: textMain,
+                              color: AppColors.cFF1F2937,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -265,7 +256,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   statusText,
                   style: GoogleFonts.prompt(
                     fontSize: 12 * scale,
-                    color: textSub,
+                    color: AppColors.cFF6B7280,
                   ),
                 ),
               ],
@@ -282,7 +273,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [primaryColor, Color(0xFF1A3B66)],
+          colors: [AppColors.cFF0F2647, AppColors.cFF1A3B66],
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
         boxShadow: [
@@ -354,7 +345,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                           label: "ความเสี่ยงสูงสุด",
                           value: "ระดับ 3",
                           subLabel: "อันตราย",
-                          valueColor: riskHigh,
+                          valueColor: AppColors.danger,
                           scale: scale,
                         ),
                       ),
@@ -420,7 +411,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
             child: Text(
               text,
               style: GoogleFonts.prompt(
-                color: textSub,
+                color: AppColors.cFF6B7280,
                 fontSize: 12 * scale,
                 fontWeight: FontWeight.w600,
               ),

@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'main_layout.dart';
 import 'device_setting.dart';
-import 'device_registration_screen.dart';
 import '/services/api_service.dart';
 
 class DeviceManagementScreen extends StatefulWidget {
@@ -14,14 +14,6 @@ class DeviceManagementScreen extends StatefulWidget {
 }
 
 class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
-  static const Color primaryColor = Color(0xFF0F2646);
-  static const Color backgroundColor = Color(0xFFF3F4F6);
-  static const Color cardColor = Colors.white;
-  static const Color textMain = Color(0xFF1F2937);
-  static const Color textSub = Color(0xFF6B7280);
-  static const Color successGreen = Color(0xFF4ADE80);
-  static const Color offlineGrey = Color(0xFF9CA3AF);
-
   List<Map<String, dynamic>> _deviceList = [];
   bool _isLoading = true;
   Timer? _pollTimer;
@@ -63,10 +55,10 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
           });
         } else {
           // หากไม่มีการผูกอุปกรณ์ไว้เลยในระบบ ให้เด้งกลับไปหน้าลงทะเบียน (เฉพาะตอนโหลดครั้งแรก/ปัดรีเฟรชเอง)
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const DeviceRegistrationScreen()),
-          );
+          setState(() {
+            _deviceList = [];
+            _isLoading = false;
+          });
         }
         return;
       }
@@ -93,15 +85,15 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        backgroundColor: backgroundColor,
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        backgroundColor: AppColors.surfaceMuted,
+        body: Center(child: CircularProgressIndicator(color: AppColors.cFF0F2647)),
       );
     }
 
     final onlineCount = _deviceList.where((d) => d['status'] == 'ออนไลน์' || d['status'] == 'online').length;
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       body: Column(
         children: [
           // Header Section
@@ -109,7 +101,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
             decoration: const BoxDecoration(
-              color: primaryColor,
+              color: AppColors.cFF0F2647,
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
             ),
             child: Column(
@@ -170,7 +162,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                       margin: const EdgeInsets.only(bottom: 16),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: cardColor,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
@@ -185,12 +177,12 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: isOnline ? successGreen.withOpacity(0.1) : offlineGrey.withOpacity(0.1),
+                              color: isOnline ? AppColors.cFF4ADE80.withOpacity(0.1) : AppColors.cFF9CA3AF.withOpacity(0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
                               Icons.developer_board_rounded,
-                              color: isOnline ? successGreen : offlineGrey,
+                              color: isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF,
                               size: 28,
                             ),
                           ),
@@ -202,7 +194,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                                 Text(
                                   device['device_name'] ?? 'ไม่ระบุชื่ออุปกรณ์',
                                   style: GoogleFonts.prompt(
-                                    color: textMain,
+                                    color: AppColors.cFF1F2937,
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -210,7 +202,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   "S/N: ${device['serial_number'] ?? '-'}",
-                                  style: GoogleFonts.prompt(color: textSub, fontSize: 13),
+                                  style: GoogleFonts.prompt(color: AppColors.cFF6B7280, fontSize: 13),
                                 ),
                               ],
                             ),
@@ -221,7 +213,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: isOnline ? successGreen.withOpacity(0.2) : offlineGrey.withOpacity(0.2),
+                                  color: isOnline ? AppColors.cFF4ADE80.withOpacity(0.2) : AppColors.cFF9CA3AF.withOpacity(0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
@@ -234,7 +226,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              const Icon(Icons.arrow_forward_ios_rounded, color: offlineGrey, size: 14),
+                              const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.cFF9CA3AF, size: 14),
                             ],
                           )
                         ],

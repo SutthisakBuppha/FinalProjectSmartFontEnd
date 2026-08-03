@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
@@ -34,14 +35,6 @@ class HistoryDetailScreen extends StatefulWidget {
   });
 
   // --- Theme Colors ---
-  static const Color primaryColor = Color(0xFF0F2647);
-  static const Color secondaryColor = Color(0xFF1E3A66);
-  static const Color backgroundColor = Color(0xFFF3F4F6);
-  static const Color cardColor = Colors.white;
-  static const Color dangerColor = Color(0xFFEF4444);
-  static const Color textLight = Color(0xFF1F2937);
-  static const Color subTextLight = Color(0xFF6B7280);
-
   @override
   State<HistoryDetailScreen> createState() => _HistoryDetailScreenState();
 }
@@ -166,14 +159,14 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           'title': 'ตรวจพบความง่วงนอน',
           'desc': 'ระยะเวลาการหลับตาเกินกำหนดความปลอดภัย',
           'icon': Icons.bedtime_rounded,
-          'color': HistoryDetailScreen.dangerColor,
+          'color': AppColors.danger,
         };
       case 'ใช้โทรศัพท์':
         return {
           'title': 'ใช้โทรศัพท์ขณะขับขี่',
           'desc': 'ตรวจพบผู้ขับขี่ยกโทรศัพท์ขึ้นมาใช้ในสายตากล้อง',
           'icon': Icons.phone_android_rounded,
-          'color': HistoryDetailScreen.dangerColor,
+          'color': AppColors.danger,
         };
       case 'เสียสมาธิ':
         return {
@@ -222,7 +215,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: HistoryDetailScreen.backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       body: Column(
         children: [
           // --- 1. Header Section ---
@@ -257,7 +250,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                             style: GoogleFonts.prompt(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: HistoryDetailScreen.primaryColor,
+                              color: AppColors.cFF0F2647,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -276,7 +269,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                                 style: GoogleFonts.prompt(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
-                                  color: HistoryDetailScreen.primaryColor,
+                                  color: AppColors.cFF0F2647,
                                 ),
                               ),
                               Container(
@@ -331,7 +324,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [HistoryDetailScreen.primaryColor, HistoryDetailScreen.secondaryColor],
+          colors: [AppColors.cFF0F2647, AppColors.cFF1E3A66],
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
         boxShadow: [
@@ -399,7 +392,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: HistoryDetailScreen.cardColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
@@ -413,10 +406,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         child: Row(
           children: [
             _buildStatItem(
-                "ระยะทาง", widget.distance.replaceAll(" km", ""), "กม.", HistoryDetailScreen.textLight),
+                "ระยะทาง", widget.distance.replaceAll(" km", ""), "กม.", AppColors.cFF1F2937),
             VerticalDivider(color: Colors.grey.shade200, width: 1, thickness: 1),
             _buildStatItem(
-                "ระยะเวลา", widget.duration.replaceAll(" min", ""), "นาที", HistoryDetailScreen.textLight),
+                "ระยะเวลา", widget.duration.replaceAll(" min", ""), "นาที", AppColors.cFF1F2937),
           ],
         ),
       ),
@@ -432,7 +425,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
             style: GoogleFonts.prompt(
               fontSize: 10,
               fontWeight: FontWeight.bold,
-              color: HistoryDetailScreen.subTextLight,
+              color: AppColors.cFF6B7280,
             ),
           ),
           const SizedBox(height: 4),
@@ -455,7 +448,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                 style: GoogleFonts.prompt(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: HistoryDetailScreen.subTextLight,
+                  color: AppColors.cFF6B7280,
                 ),
               ),
             ],
@@ -471,7 +464,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24.0),
-          child: CircularProgressIndicator(color: HistoryDetailScreen.primaryColor),
+          child: CircularProgressIndicator(color: AppColors.cFF0F2647),
         ),
       );
     }
@@ -480,7 +473,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text(alertsError!, style: GoogleFonts.prompt(color: HistoryDetailScreen.dangerColor)),
+          child: Text(alertsError!, style: GoogleFonts.prompt(color: AppColors.danger)),
         ),
       );
     }
@@ -491,7 +484,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           padding: const EdgeInsets.all(24.0),
           child: Text(
             "ไม่พบเหตุการณ์ความเสี่ยงในการเดินทางนี้ 🎉",
-            style: GoogleFonts.prompt(color: HistoryDetailScreen.subTextLight),
+            style: GoogleFonts.prompt(color: AppColors.cFF6B7280),
           ),
         ),
       );
@@ -527,7 +520,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: HistoryDetailScreen.cardColor,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: color, width: 4)),
         boxShadow: [
@@ -554,10 +547,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                     style: GoogleFonts.prompt(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: HistoryDetailScreen.textLight)),
+                        color: AppColors.cFF1F2937)),
                 const SizedBox(height: 2),
                 Text(desc,
-                    style: GoogleFonts.prompt(fontSize: 12, color: HistoryDetailScreen.subTextLight)),
+                    style: GoogleFonts.prompt(fontSize: 12, color: AppColors.cFF6B7280)),
               ],
             ),
           ),
@@ -570,7 +563,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                 style: GoogleFonts.prompt(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: HistoryDetailScreen.textLight)),
+                    color: AppColors.cFF1F2937)),
           ),
         ],
       ),
@@ -586,7 +579,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           color: Colors.grey.shade200,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Center(child: CircularProgressIndicator(color: HistoryDetailScreen.primaryColor)),
+        child: const Center(child: CircularProgressIndicator(color: AppColors.cFF0F2647)),
       );
     }
 
@@ -599,7 +592,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           border: Border.all(color: Colors.grey.shade300),
         ),
         child: Center(
-          child: Text(mapError!, style: GoogleFonts.prompt(color: HistoryDetailScreen.dangerColor)),
+          child: Text(mapError!, style: GoogleFonts.prompt(color: AppColors.danger)),
         ),
       );
     }
@@ -613,7 +606,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           border: Border.all(color: Colors.grey.shade300),
         ),
         child: Center(
-          child: Text("ไม่มีข้อมูลเส้นทางการเดินทางเก็บไว้", style: GoogleFonts.prompt(color: HistoryDetailScreen.subTextLight)),
+          child: Text("ไม่มีข้อมูลเส้นทางการเดินทางเก็บไว้", style: GoogleFonts.prompt(color: AppColors.cFF6B7280)),
         ),
       );
     }
@@ -654,7 +647,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                 Polyline(
                   points: routePoints,
                   strokeWidth: 5.0,
-                  color: HistoryDetailScreen.primaryColor,
+                  color: AppColors.cFF0F2647,
                 ),
               ],
             ),
@@ -666,7 +659,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                   point: routePoints.first,
                   width: 40,
                   height: 40,
-                  child: const Icon(Icons.trip_origin, color: HistoryDetailScreen.primaryColor, size: 30),
+                  child: const Icon(Icons.trip_origin, color: AppColors.cFF0F2647, size: 30),
                 ),
                 Marker(
                   point: routePoints.last,

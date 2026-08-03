@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'login_screen.dart';
 import '/services/api_service.dart';
@@ -14,12 +15,6 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   // --- Theme Colors (ชุดเดียวกับหน้า Forgot Password) ---
-  static const Color primaryDark = Color(0xFF0D2140);
-  static const Color primaryLight = Color(0xFF1E3A8A);
-  static const Color backgroundLight = Color(0xFFF8FAFC);
-  static const Color textDark = Color(0xFF0F172A);
-  static const Color textGrey = Color(0xFF64748B);
-
   final TextEditingController _otpController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmController = TextEditingController();
@@ -97,11 +92,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundLight,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: textDark),
+        iconTheme: const IconThemeData(color: AppColors.text),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
@@ -114,17 +109,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.mark_email_read_rounded, size: 48, color: primaryLight),
+              child: const Icon(Icons.mark_email_read_rounded, size: 48, color: AppColors.primaryLight),
             ),
             const SizedBox(height: 24),
             Text(
               "ยืนยันรหัสและตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: textDark),
+              style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.text),
             ),
             const SizedBox(height: 8),
             Text(
               "กรอกรหัสยืนยัน 6 หลักที่ส่งไปยัง ${widget.email} พร้อมตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.inter(fontSize: 14, color: textGrey, height: 1.5),
+              style: GoogleFonts.inter(fontSize: 14, color: AppColors.textMuted, height: 1.5),
             ),
             const SizedBox(height: 32),
 
@@ -176,10 +171,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _handleSubmit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryDark,
+                  backgroundColor: AppColors.primaryDark,
                   elevation: 8,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  shadowColor: primaryDark.withOpacity(0.3),
+                  shadowColor: AppColors.primaryDark.withOpacity(0.3),
                 ),
                 child: _isLoading
                     ? const SizedBox(
@@ -204,7 +199,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       padding: const EdgeInsets.only(top: 4, bottom: 0),
       child: Text(
         text,
-        style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: textDark, fontSize: 14),
+        style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: AppColors.text, fontSize: 14),
       ),
     );
   }
@@ -225,7 +220,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: primaryLight, width: 1.5),
+        borderSide: const BorderSide(color: AppColors.primaryLight, width: 1.5),
       ),
     );
   }

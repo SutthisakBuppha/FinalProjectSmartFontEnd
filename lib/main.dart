@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'welcome_screen.dart'; // 💡 เปลี่ยนมาเรียกหน้า Welcome เป็นจุดเริ่มต้นแทน SplashScreen
 import 'main_layout.dart';
 
@@ -14,10 +15,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'SaveDriveAi',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0F284E)),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light,
       home: const WelcomeScreen(), // 💡 เปิดแอปแล้วไปหน้า Welcome ก่อนเสมอ
     );
   }

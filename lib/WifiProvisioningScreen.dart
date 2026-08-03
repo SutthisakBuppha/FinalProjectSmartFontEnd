@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -274,7 +275,7 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
                     height: 50,
                     child: ElevatedButton(
                       onPressed: _isConnected ? _sendWifiCredentials : null,
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F2646)),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.cFF0F2647),
                       child: const Text("ส่งข้อมูลให้กล้องเชื่อมต่อเน็ต", style: TextStyle(color: Colors.white)),
                     ),
                   )

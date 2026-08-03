@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 
@@ -49,14 +50,6 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMixin {
   // --- Theme Colors ---
-  static const Color primary = Color(0xFF0F2647);
-  static const Color accent = Color(0xFF3B82F6);
-  static const Color backgroundDark = Color(0xFF0F172A);
-  static const Color cardDark = Color(0xFF1E293B);
-  static const Color textDark = Color(0xFFF8FAFC);
-  static const Color subtextDark = Color(0xFF94A3B8);
-  static const Color dangerRed = Color(0xFFDC2626);
-
   late AnimationController _pulseController;
   final MapController _mapController = MapController();
 
@@ -329,14 +322,14 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     // กำลังเช็ค GPS / ขอ permission / ดึงตำแหน่งครั้งแรก
     if (_isResolvingLocation) {
       return Scaffold(
-        backgroundColor: backgroundDark,
+        backgroundColor: AppColors.text,
         body: const Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: accent),
+              CircularProgressIndicator(color: AppColors.secondary),
               SizedBox(height: 16),
-              Text('กำลังค้นหาตำแหน่งของคุณ...', style: TextStyle(color: subtextDark)),
+              Text('กำลังค้นหาตำแหน่งของคุณ...', style: TextStyle(color: AppColors.cFF94A3B8)),
             ],
           ),
         ),
@@ -346,19 +339,19 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     // เปิด GPS ไม่ได้ / โดนปฏิเสธ permission -> แสดงหน้าขอให้แก้ไขก่อน
     if (_locationError != null) {
       return Scaffold(
-        backgroundColor: backgroundDark,
+        backgroundColor: AppColors.text,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.location_off_rounded, color: dangerRed, size: 56),
+                const Icon(Icons.location_off_rounded, color: AppColors.cFFDC2626, size: 56),
                 const SizedBox(height: 16),
                 Text(
                   _locationError!,
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(color: textDark, fontSize: 15),
+                  style: GoogleFonts.inter(color: AppColors.background, fontSize: 15),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
@@ -366,7 +359,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('ลองอีกครั้ง'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: accent,
+                    backgroundColor: AppColors.secondary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -382,7 +375,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     final center = _currentLatLng!;
 
     return Scaffold(
-      backgroundColor: backgroundDark,
+      backgroundColor: AppColors.text,
       extendBody: true,
       body: Stack(
         children: [
@@ -509,7 +502,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       child: Container(
         height: 50,
         decoration: BoxDecoration(
-          color: cardDark.withOpacity(0.95),
+          color: AppColors.cFF1E293B.withOpacity(0.95),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withOpacity(0.1)),
           boxShadow: const [
@@ -523,13 +516,13 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         child: Row(
           children: [
             const SizedBox(width: 12),
-            const Icon(Icons.search, color: subtextDark),
+            const Icon(Icons.search, color: AppColors.cFF94A3B8),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 _isLoadingPlaces ? "กำลังค้นหาจุดพักรถ..." : "ค้นหาจุดพักรถ...",
                 style: GoogleFonts.inter(
-                  color: subtextDark,
+                  color: AppColors.cFF94A3B8,
                   fontSize: 14,
                 ),
               ),
@@ -557,7 +550,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: cardDark,
+          color: AppColors.cFF1E293B,
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white.withOpacity(0.1)),
           boxShadow: const [
@@ -582,7 +575,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
               height: 60 + (_pulseController.value * 50),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: accent.withOpacity(0.25 * (1 - _pulseController.value)),
+                color: AppColors.secondary.withOpacity(0.25 * (1 - _pulseController.value)),
               ),
             );
           },
@@ -593,10 +586,10 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           height: 24,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: accent.withOpacity(0.3),
+            color: AppColors.secondary.withOpacity(0.3),
             boxShadow: [
               BoxShadow(
-                color: accent.withOpacity(0.6),
+                color: AppColors.secondary.withOpacity(0.6),
                 blurRadius: 15,
               )
             ],
@@ -609,7 +602,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(color: accent, width: 3),
+            border: Border.all(color: AppColors.secondary, width: 3),
           ),
         ),
       ],
@@ -631,7 +624,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(color: primary, width: 2),
+            border: Border.all(color: AppColors.cFF0F2647, width: 2),
             boxShadow: const [
               BoxShadow(
                 color: Colors.black38,
@@ -640,14 +633,14 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
               ),
             ],
           ),
-          child: Icon(icon, color: primary, size: 20),
+          child: Icon(icon, color: AppColors.cFF0F2647, size: 20),
         ),
         // Arrow (Triangle)
         Transform.translate(
           offset: const Offset(0, -1),
           child: ClipPath(
             clipper: TriangleClipper(),
-            child: Container(width: 12, height: 8, color: primary),
+            child: Container(width: 12, height: 8, color: AppColors.cFF0F2647),
           ),
         ),
         const SizedBox(height: 4),
@@ -656,7 +649,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           constraints: const BoxConstraints(maxWidth: 90),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: primary,
+            color: AppColors.cFF0F2647,
             borderRadius: BorderRadius.circular(12),
             boxShadow: const [
               BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
@@ -683,7 +676,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       padding: const EdgeInsets.only(bottom: 16),
       constraints: const BoxConstraints(maxHeight: 320),
       decoration: BoxDecoration(
-        color: cardDark.withOpacity(0.98),
+        color: AppColors.cFF1E293B.withOpacity(0.98),
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(24),
           bottom: Radius.circular(24),
@@ -726,7 +719,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 ),
                 Text(
                   "ในระยะ 5 กม.",
-                  style: TextStyle(color: subtextDark, fontSize: 12),
+                  style: TextStyle(color: AppColors.cFF94A3B8, fontSize: 12),
                 ),
               ],
             ),
@@ -749,7 +742,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           child: SizedBox(
             width: 24,
             height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondary),
           ),
         ),
       );
@@ -763,7 +756,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             Text(
               _placesError!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: subtextDark, fontSize: 12),
+              style: GoogleFonts.inter(color: AppColors.cFF94A3B8, fontSize: 12),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -782,7 +775,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
           'ไม่พบปั๊มน้ำมันหรือจุดพักรถในระยะ 5 กม.',
-          style: GoogleFonts.inter(color: subtextDark, fontSize: 13),
+          style: GoogleFonts.inter(color: AppColors.cFF94A3B8, fontSize: 13),
         ),
       );
     }
@@ -808,7 +801,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A).withOpacity(0.6),
+        color: AppColors.text.withOpacity(0.6),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
@@ -842,7 +835,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: textDark,
+                          color: AppColors.background,
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
@@ -850,12 +843,12 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.near_me, size: 12, color: subtextDark),
+                          const Icon(Icons.near_me, size: 12, color: AppColors.cFF94A3B8),
                           const SizedBox(width: 4),
                           Text(
                             place.distanceLabel,
                             style: const TextStyle(
-                              color: subtextDark,
+                              color: AppColors.cFF94A3B8,
                               fontSize: 12,
                             ),
                           ),
@@ -875,7 +868,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: primary,
+                color: AppColors.cFF0F2647,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Row(

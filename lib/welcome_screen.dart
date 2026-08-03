@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'login_screen.dart';
@@ -13,13 +14,6 @@ class WelcomeScreen extends StatefulWidget {
 
 class _WelcomeScreenState extends State<WelcomeScreen> {
   // --- Color Palette (ปรับให้สอดคล้องกับ LoginScreen) ---
-  Color get primaryColor => const Color(0xFF0F284E);
-  Color get slate50 => const Color(0xFFF8FAFC);
-  Color get slate100 => const Color(0xFFF1F5F9);
-  Color get slate200 => const Color(0xFFE2E8F0);
-  Color get slate400 => const Color(0xFF94A3B8);
-  Color get blue50 => const Color(0xFFEFF6FF);
-  Color get blue900 => const Color(0xFF1E3A8A);
 
   Timer? _timer;
 
@@ -64,7 +58,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [slate50, Colors.white],
+            colors: [AppColors.background, Colors.white],
           ),
         ),
         child: Stack(
@@ -79,7 +73,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 height: 320,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: blue50.withOpacity(0.6),
+                  color: AppColors.cFFEFF6FF.withOpacity(0.6),
                 ),
                 child: DecoratedBox(
                   // เอา const ตรงนี้ออก
@@ -87,7 +81,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     color: Colors.transparent,
                     boxShadow: [
                       BoxShadow(
-                        color: blue50,
+                        color: AppColors.cFFEFF6FF,
                         blurRadius: 100,
                         spreadRadius: 20,
                       ),
@@ -105,7 +99,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 height: 320,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: slate100.withOpacity(0.6),
+                  color: AppColors.cFFF1F5F9.withOpacity(0.6),
                 ),
                 child: DecoratedBox(
                   // เอา const ตรงนี้ออกเช่นกันครับ
@@ -113,7 +107,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     color: Colors.transparent,
                     boxShadow: [
                       BoxShadow(
-                        color: slate100,
+                        color: AppColors.cFFF1F5F9,
                         blurRadius: 100,
                         spreadRadius: 20,
                       ),
@@ -157,10 +151,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   height: logoBoxSize,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: blue900.withOpacity(0.1),
+                                    color: AppColors.primaryLight.withOpacity(0.1),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: blue900.withOpacity(0.1),
+                                        color: AppColors.primaryLight.withOpacity(0.1),
                                         blurRadius: 24,
                                         spreadRadius: 5,
                                       ),
@@ -173,7 +167,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   width: logoSvgSize,
                                   height: logoSvgSize,
                                   colorFilter: ColorFilter.mode(
-                                    primaryColor,
+                                    AppColors.cFF0F284E,
                                     BlendMode.srcIn,
                                   ),
                                 ),
@@ -189,7 +183,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             style: GoogleFonts.outfit(
                               fontSize: (32 * scale).clamp(26.0, 38.0),
                               fontWeight: FontWeight.w700,
-                              color: primaryColor,
+                              color: AppColors.cFF0F284E,
                               height: 1.1,
                               letterSpacing: -0.5,
                             ),
@@ -201,7 +195,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               // เปลี่ยนเป็น Prompt เพื่อให้เข้ากับฟอนต์ภาษาไทยของหน้า Login
                               fontSize: 13 * scale,
                               fontWeight: FontWeight.w500,
-                              color: primaryColor.withOpacity(0.7),
+                              color: AppColors.cFF0F284E.withOpacity(0.7),
                               letterSpacing: 0.5,
                             ),
                           ),
@@ -219,8 +213,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: primaryColor,
-                            backgroundColor: slate200,
+                            color: AppColors.cFF0F284E,
+                            backgroundColor: AppColors.border,
                           ),
                         ),
                         SizedBox(height: 16 * scale),
@@ -229,7 +223,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                           style: GoogleFonts.outfit(
                             fontSize: 10 * scale,
                             fontWeight: FontWeight.w700,
-                            color: slate400,
+                            color: AppColors.cFF94A3B8,
                             letterSpacing: 2.5,
                           ),
                         ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'signup_screen.dart';
@@ -185,21 +186,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // --- Color Palette ---
-  Color get primary => const Color(0xFF0F284E);
-  Color get secondary => const Color(0xFF3B5998);
   Color get background =>
-      _isDarkMode ? const Color(0xFF0A1120) : const Color(0xFFFFFFFF);
+      _isDarkMode ? AppColors.cFF0A1120 : AppColors.surface;
   Color get surface =>
-      _isDarkMode ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC);
-  Color get textMain =>
-      _isDarkMode ? const Color(0xFFE2E8F0) : const Color(0xFF0F284E);
-  Color get textSub =>
-      _isDarkMode ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+      _isDarkMode ? AppColors.cFF1E293B : AppColors.background;
   Color get inputBorder =>
-      _isDarkMode ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+      _isDarkMode ? AppColors.cFF334155 : AppColors.border;
   Color get iconColor =>
-      _isDarkMode ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
-  Color get focusRing => primary.withOpacity(0.2);
+      _isDarkMode ? AppColors.textMuted : AppColors.cFF94A3B8;
 
   @override
   Widget build(BuildContext context) {
@@ -228,10 +222,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 height: 256,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: primary.withOpacity(0.05),
+                  color: AppColors.cFF0F284E.withOpacity(0.05),
                   boxShadow: [
                     BoxShadow(
-                      color: primary.withOpacity(0.05),
+                      color: AppColors.cFF0F284E.withOpacity(0.05),
                       blurRadius: 100,
                       spreadRadius: 20,
                     ),
@@ -283,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: GoogleFonts.prompt(
                             fontSize: 28 * scale,
                             fontWeight: FontWeight.w700,
-                            color: primary,
+                            color: AppColors.cFF0F284E,
                             letterSpacing: -0.5,
                           ),
                         ),
@@ -294,7 +288,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: GoogleFonts.prompt(
                             fontSize: 13 * scale,
                             fontWeight: FontWeight.w400,
-                            color: textSub,
+                            color: AppColors.cFF6B7280,
                           ),
                         ),
                         SizedBox(height: (isCompactHeight ? 24 : 36) * scale),
@@ -303,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: GoogleFonts.prompt(
                             fontSize: 22 * scale,
                             fontWeight: FontWeight.w600,
-                            color: primary,
+                            color: AppColors.cFF0F284E,
                           ),
                         ),
                         SizedBox(height: 4 * scale),
@@ -311,7 +305,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           "กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบ",
                           style: GoogleFonts.prompt(
                             fontSize: 13 * scale,
-                            color: textSub,
+                            color: AppColors.cFF6B7280,
                           ),
                         ),
                         SizedBox(height: 22 * scale),
@@ -357,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: GoogleFonts.prompt(
                                   fontSize: 12 * scale,
                                   fontWeight: FontWeight.w500,
-                                  color: primary,
+                                  color: AppColors.cFF0F284E,
                                 ),
                               ),
                             ),
@@ -369,7 +363,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: BoxDecoration(
                             boxShadow: [
                               BoxShadow(
-                                color: primary.withOpacity(0.08),
+                                color: AppColors.cFF0F284E.withOpacity(0.08),
                                 offset: const Offset(0, 4),
                                 blurRadius: 20,
                                 spreadRadius: -2,
@@ -379,7 +373,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : _handleLogin,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: primary,
+                              backgroundColor: AppColors.cFF0F284E,
                               foregroundColor: Colors.white,
                               elevation: 0,
                               padding: EdgeInsets.symmetric(vertical: 15 * scale),
@@ -423,7 +417,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: GoogleFonts.prompt(
                                   fontSize: 12 * scale,
                                   fontWeight: FontWeight.w400,
-                                  color: const Color(0xFF94A3B8),
+                                  color: AppColors.cFF94A3B8,
                                 ),
                               ),
                             ),
@@ -468,7 +462,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               "ยังไม่มีบัญชี?",
                               style: GoogleFonts.prompt(
                                 fontSize: 13 * scale,
-                                color: textSub,
+                                color: AppColors.cFF6B7280,
                               ),
                             ),
                             TextButton(
@@ -490,9 +484,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: GoogleFonts.prompt(
                                   fontSize: 13 * scale,
                                   fontWeight: FontWeight.w700,
-                                  color: primary,
+                                  color: AppColors.cFF0F284E,
                                   decoration: TextDecoration.underline,
-                                  decorationColor: primary,
+                                  decorationColor: AppColors.cFF0F284E,
                                 ),
                               ),
                             ),
@@ -521,7 +515,7 @@ class _LoginScreenState extends State<LoginScreen> {
           style: GoogleFonts.prompt(
             fontSize: 13 * scale,
             fontWeight: FontWeight.w500,
-            color: primary,
+            color: AppColors.cFF0F284E,
           ),
         ),
       ),
@@ -546,10 +540,10 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: controller,
         obscureText: isPassword && _obscurePassword,
         keyboardType: inputType,
-        style: GoogleFonts.prompt(fontSize: 14 * scale, color: textMain),
+        style: GoogleFonts.prompt(fontSize: 14 * scale, color: AppColors.cFF1F2937),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.prompt(color: const Color(0xFF94A3B8)),
+          hintStyle: GoogleFonts.prompt(color: AppColors.cFF94A3B8),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(vertical: 14 * scale),
           prefixIcon: Icon(icon, color: iconColor, size: 20 * scale),
@@ -608,7 +602,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: GoogleFonts.prompt(
                     fontSize: 13 * scale,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFF475569),
+                    color: AppColors.cFF475569,
                   ),
                 ),
               ],

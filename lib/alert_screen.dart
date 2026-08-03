@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 import 'map_screen.dart';
@@ -8,7 +9,7 @@ import '/services/media_upload_service.dart';
 
 class AlertScreen extends StatefulWidget {
   final dynamic
-  deviceId; // 🔴 ใหม่: รับ device_id เพื่อดึงเสียงที่ตั้งค่าไว้ของอุปกรณ์นั้น
+  deviceId; 
   const AlertScreen({super.key, this.deviceId});
 
   @override
@@ -18,7 +19,6 @@ class AlertScreen extends StatefulWidget {
 class _AlertScreenState extends State<AlertScreen> {
   bool _isLoading = false;
 
-  // 🔴 ใหม่: ตัวเล่นเสียงแจ้งเตือน
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isSoundPlaying = false;
 
@@ -129,15 +129,15 @@ class _AlertScreenState extends State<AlertScreen> {
   @override
   Widget build(BuildContext context) {
     // กำหนดสีตาม Tailwind config ของคุณ
-    const Color backgroundDark = Color(0xFF161022);
-    const Color alertRed = Color(0xFFFF4D4D);
+    const Color backgroundDark = AppColors.cFF161022;
+    const Color alertRed = AppColors.cFFFF4D4D;
 
     // 🔴 ใหม่: บังคับให้ปิดหน้านี้ได้ทางเดียวคือกดปุ่ม "นำทางไปจุดพักรถใกล้ฉัน"
     // เท่านั้น กันคนขับกดปุ่ม back ของมือถือหนีหน้าแจ้งเตือนไปเฉยๆ
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: backgroundDark,
+        backgroundColor: AppColors.text,
         body: Stack(
           fit: StackFit.expand,
           children: [
@@ -235,7 +235,7 @@ class _AlertScreenState extends State<AlertScreen> {
             Positioned.fill(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                child: Container(color: backgroundDark.withOpacity(0.6)),
+                child: Container(color: AppColors.text.withOpacity(0.6)),
               ),
             ),
 
@@ -270,7 +270,7 @@ class _AlertScreenState extends State<AlertScreen> {
                         "ตรวจพบความเสี่ยงง่วงนอน",
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF120D1B),
+                          color: AppColors.cFF120D1B,
                           fontSize: 24,
                           height: 1.2,
                           fontWeight: FontWeight.w800,
@@ -285,7 +285,7 @@ class _AlertScreenState extends State<AlertScreen> {
                         "ระบบแจ้งเตือนความปลอดภัยทำงาน โปรดหาที่จอดพักที่ปลอดภัยทันที",
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF6B7280),
+                          color: AppColors.cFF6B7280,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                           height: 1.5,
@@ -343,7 +343,7 @@ class _AlertScreenState extends State<AlertScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF161022).withOpacity(0.8),
+        color: AppColors.cFF161022.withOpacity(0.8),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
@@ -379,17 +379,17 @@ class _AlertScreenState extends State<AlertScreen> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: const Color(0xFFEFF6FF),
+            color: AppColors.cFFEFF6FF,
             shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFFDBEAFE)),
+            border: Border.all(color: AppColors.cFFDBEAFE),
           ),
-          child: Icon(icon, color: const Color(0xFF3B82F6), size: 28),
+          child: Icon(icon, color: AppColors.secondary, size: 28),
         ),
         const SizedBox(height: 8),
         Text(
           label,
           style: const TextStyle(
-            color: Color(0xFF60A5FA),
+            color: AppColors.cFF60A5FA,
             fontSize: 12,
             fontWeight: FontWeight.bold,
             letterSpacing: 0.5,
@@ -507,7 +507,7 @@ class _PulseWarningIconState extends State<PulseWarningIcon>
       width: 80,
       height: 80,
       decoration: const BoxDecoration(
-        color: Color(0xFFFEF2F2),
+        color: AppColors.cFFFEF2F2,
         shape: BoxShape.circle,
       ),
       child: Center(

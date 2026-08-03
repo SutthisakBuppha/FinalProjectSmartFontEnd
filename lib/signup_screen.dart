@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -34,22 +35,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isGoogleLoading = false;
   String? _errorMessage;
 
-  Color get primaryColor => const Color(0xFF112D4E);
-  Color get primaryLight => const Color(0xFF274A75);
 
   bool get isDark => Theme.of(context).brightness == Brightness.dark;
-  Color get backgroundColor =>
-      isDark ? const Color(0xFF0F172A) : const Color(0xFFFFFFFF);
+  Color get background =>
+      isDark ? AppColors.text : AppColors.surface;
   Color get surfaceColor =>
-      isDark ? const Color(0xFF1E293B) : const Color(0xFFFFFFFF);
+      isDark ? AppColors.cFF1E293B : AppColors.surface;
   Color get borderColor =>
-      isDark ? const Color(0xFF374151) : const Color(0xFFE5E7EB);
+      isDark ? AppColors.cFF374151 : AppColors.cFFE5E7EB;
   Color get textColor =>
-      isDark ? const Color(0xFFF8FAFC) : const Color(0xFF112D4E);
+      isDark ? AppColors.background : AppColors.cFF112D4E;
   Color get placeholderColor =>
-      isDark ? const Color(0xFF6B7280) : const Color(0xFF9CA3AF);
+      isDark ? AppColors.cFF6B7280 : AppColors.cFF9CA3AF;
   Color get iconColor =>
-      isDark ? const Color(0xFF9CA3AF) : const Color(0xFF112D4E);
+      isDark ? AppColors.cFF9CA3AF : AppColors.cFF112D4E;
 
   @override
   void initState() {
@@ -214,7 +213,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final isCompactHeight = screenHeight < 700;
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       body: SafeArea(
         child: Column(
           children: [
@@ -235,7 +234,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       child: SvgPicture.string(
                         _logoSvg,
                         colorFilter: ColorFilter.mode(
-                          isDark ? Colors.white : primaryColor,
+                          isDark ? Colors.white : AppColors.cFF112D4E,
                           BlendMode.srcIn,
                         ),
                       ),
@@ -248,7 +247,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       style: GoogleFonts.inter(
                         fontSize: (30 * scale).clamp(24.0, 34.0),
                         fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : primaryColor,
+                        color: isDark ? Colors.white : AppColors.cFF112D4E,
                         letterSpacing: -0.5,
                       ),
                     ),
@@ -259,7 +258,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       style: GoogleFonts.inter(
                         fontSize: (24 * scale).clamp(20.0, 28.0),
                         fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : primaryColor,
+                        color: isDark ? Colors.white : AppColors.cFF112D4E,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -269,8 +268,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       style: GoogleFonts.prompt(
                         fontSize: 13 * scale,
                         color: isDark
-                            ? const Color(0xFF9CA3AF)
-                            : const Color(0xFF6B7280),
+                            ? AppColors.cFF9CA3AF
+                            : AppColors.cFF6B7280,
                       ),
                     ),
 
@@ -296,7 +295,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             height: (48 * scale).clamp(44.0, 54.0),
                             child: Material(
                               color: isDark
-                                  ? const Color(0xFF1E293B)
+                                  ? AppColors.cFF1E293B
                                   : Colors.white,
                               borderRadius: BorderRadius.circular(12),
                               child: InkWell(
@@ -306,7 +305,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                     : _handleGoogleSignUp,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: borderColor),
+                                    border: Border.all(color: AppColors.border),
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Row(
@@ -347,7 +346,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     SizedBox(height: 20 * scale),
                     Row(
                       children: [
-                        Expanded(child: Divider(color: borderColor)),
+                        Expanded(child: Divider(color: AppColors.border)),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12.0),
                           child: Text(
@@ -358,7 +357,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: borderColor)),
+                        Expanded(child: Divider(color: AppColors.border)),
                       ],
                     ),
                     SizedBox(height: 20 * scale),
@@ -419,15 +418,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFEF2F2),
+                          color: AppColors.cFFFEF2F2,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                          border: Border.all(color: AppColors.cFFFCA5A5),
                         ),
                         child: Text(
                           _errorMessage!,
                           style: GoogleFonts.prompt(
                             fontSize: 13 * scale,
-                            color: const Color(0xFFB91C1C),
+                            color: AppColors.cFFB91C1C,
                           ),
                         ),
                       ),
@@ -444,7 +443,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         boxShadow: [
                           if (!isDark)
                             BoxShadow(
-                              color: primaryColor.withOpacity(0.3),
+                              color: AppColors.cFF112D4E.withOpacity(0.3),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -453,9 +452,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _handleRegister,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
+                          backgroundColor: AppColors.cFF112D4E,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: primaryColor.withOpacity(
+                          disabledBackgroundColor: AppColors.cFF112D4E.withOpacity(
                             0.6,
                           ),
                           shape: RoundedRectangleBorder(
@@ -501,8 +500,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           style: GoogleFonts.prompt(
                             fontSize: 14 * scale,
                             color: isDark
-                                ? const Color(0xFF9CA3AF)
-                                : const Color(0xFF6B7280),
+                                ? AppColors.cFF9CA3AF
+                                : AppColors.cFF6B7280,
                           ),
                         ),
                         TextButton(
@@ -524,7 +523,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             style: GoogleFonts.prompt(
                               fontSize: 14 * scale,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : primaryColor,
+                              color: isDark ? Colors.white : AppColors.cFF112D4E,
                             ),
                           ),
                         ),
@@ -539,8 +538,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       height: 4,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? const Color(0xFF1F2937)
-                            : const Color(0xFFE5E7EB),
+                            ? AppColors.cFF1F2937
+                            : AppColors.cFFE5E7EB,
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -590,7 +589,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             fontSize: 15 * scale,
           ),
           filled: true,
-          fillColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          fillColor: isDark ? AppColors.cFF1E293B : AppColors.surface,
           contentPadding: EdgeInsets.symmetric(
             vertical: 18 * scale,
             horizontal: 16,
@@ -600,7 +599,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               ? IconButton(
                   icon: Icon(
                     isObscure ? Icons.visibility_off : Icons.visibility,
-                    color: const Color(0xFF9CA3AF),
+                    color: AppColors.cFF9CA3AF,
                     size: 22 * scale,
                   ),
                   onPressed: onToggleVisibility,
@@ -608,11 +607,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
               : null,
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: borderColor),
+            borderSide: BorderSide(color: AppColors.border),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: primaryColor, width: 2),
+            borderSide: BorderSide(color: AppColors.cFF112D4E, width: 2),
           ),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
         ),

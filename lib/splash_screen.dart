@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 
 import '/services/api_service.dart';
 import 'devices_screen.dart';
@@ -20,9 +21,6 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  static const Color primaryColor = Color(0xFF0F2557);
-  static const Color backgroundColor = Color(0xFFF3F4F6);
-
   @override
   void initState() {
     super.initState();
@@ -62,9 +60,9 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.surfaceMuted,
       body: Center(
-        child: CircularProgressIndicator(color: primaryColor),
+        child: CircularProgressIndicator(color: AppColors.cFF0F2557),
       ),
     );
   }

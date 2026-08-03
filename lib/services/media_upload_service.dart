@@ -11,19 +11,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-import 'api_service.dart'; // ใช้ baseUrl เดียวกับ ApiService (10.0.2.2 / env / localhost)
+import 'api_service.dart'; 
 
-/// ผลลัพธ์ที่ได้กลับมาหลังอัปโหลดไฟล์สำเร็จ
-/// ตรงกับ response ของ endpoint POST /api/device-media/upload
 class UploadedMedia {
   final String
-  mediaId; // ✅ เพิ่ม: จำเป็นต้องใช้เรียก selectMedia() เพื่อตั้งเป็นไฟล์ active จริงในฐานข้อมูล
+  mediaId; 
   final String fileName;
   final String url;
   final int fileSizeBytes;
-  final String type; // 'image', 'video' หรือ 'audio'
+  final String type; 
   final bool
-  isActive; // ✅ เพิ่ม: ใช้เช็คว่าไฟล์นี้ active อยู่ในฐานข้อมูลจริงหรือไม่
+  isActive; 
 
   UploadedMedia({
     required this.mediaId,
@@ -48,24 +46,9 @@ class UploadedMedia {
   }
 }
 
-/// รวมฟังก์ชันทั้งหมดที่เกี่ยวกับการเลือกไฟล์จากเครื่อง, บีบอัด,
-/// และอัปโหลดขึ้น backend (Laravel) ซึ่งจะเก็บไฟล์ลง folder ของโปรเจกต์
-/// (storage/app/public/devices/{device_id}/...) แล้วบันทึกชื่อไฟล์ + url ลง MySQL
-///
-/// วิธีใช้แบบง่ายที่สุด (เลือก -> บีบอัด -> อัปโหลด ในคำสั่งเดียว):
-///
-/// ```dart
-/// final result = await MediaUploadService.instance.pickCompressAndUploadImage(
-///   deviceId: widget.deviceData['device_id'].toString(),
-/// );
-/// if (result != null) print(result.url);
-/// ```
 class MediaUploadService {
   MediaUploadService._();
   static final MediaUploadService instance = MediaUploadService._();
-
-  /// ใช้ base URL เดียวกับ ApiService เสมอ (10.0.2.2 บน Android emulator,
-  /// 127.0.0.1 ตอนรันเดสก์ท็อป/เว็บ หรือค่าที่ตั้งผ่าน --dart-define=API_BASE_URL)
   static String get _baseUrl => ApiService.instance.baseUrl;
 
   final ImagePicker _picker = ImagePicker();
@@ -74,18 +57,15 @@ class MediaUploadService {
   // 1) เลือกไฟล์จากเครื่อง
   // =====================================================================
 
-  /// เปิดกล้อง หรือ คลังรูปภาพ เพื่อเลือกรูป
   Future<XFile?> pickImage({bool fromCamera = false}) async {
     final XFile? picked = await _picker.pickImage(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
-      imageQuality: 100, // ดึงต้นฉบับมาก่อน แล้วค่อยไปบีบเองอีกที
+      imageQuality: 100, 
     );
     if (picked == null) return null;
     return picked;
   }
 
-  /// Lets the user crop an avatar to a square before it is compressed.
-  /// The cropper works on Android, iOS, desktop and Flutter Web.
   Future<XFile?> cropProfileImage(XFile source) async {
     final cropped = await ImageCropper().cropImage(
       sourcePath: source.path,
@@ -110,9 +90,6 @@ class MediaUploadService {
     return XFile(cropped.path);
   }
 
-  /// Compresses in memory, so it also works in Chrome where no local File
-  /// path is available. 1600px and JPEG quality 88 retain visual sharpness
-  /// while substantially reducing typical camera image sizes.
   Future<Uint8List> compressImageBytes(
     XFile image, {
     int quality = 88,
@@ -130,18 +107,13 @@ class MediaUploadService {
     );
   }
 
-  /// Complete avatar workflow: pick/capture -> crop -> compress -> upload.
-  /// Returns the URL persisted in drivers.avatar_url, or null when cancelled.
   Future<String?> pickCropCompressAndUploadProfileImage({
     bool fromCamera = false,
   }) async {
     final original = await pickImage(fromCamera: fromCamera);
     if (original == null) return null;
 
-    // image_cropper's native/IO path throws "Unsupported operation:
-    // _Namespace" on Flutter Web (dart:io File/Directory aren't available
-    // there). Skip cropping on web and just compress+upload the picked
-    // image as-is; keep cropping on mobile/desktop where it works fine.
+
     XFile toUpload = original;
     if (!kIsWeb) {
       final cropped = await cropProfileImage(original);
@@ -156,7 +128,7 @@ class MediaUploadService {
     );
   }
 
-  /// เปิดกล้อง หรือ คลังวิดีโอ เพื่อเลือกวิดีโอ
+
   Future<XFile?> pickVideo({bool fromCamera = false}) async {
     final XFile? picked = await _picker.pickVideo(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
@@ -165,21 +137,11 @@ class MediaUploadService {
     return picked;
   }
 
-  /// เปิดตัวเลือกไฟล์ของเครื่อง เพื่อเลือกไฟล์เสียง (mp3, wav, m4a, aac ฯลฯ)
-  /// ใช้ file_picker เพราะ image_picker ไม่รองรับไฟล์เสียง
-  ///
-  /// หมายเหตุสำคัญ (แก้บั๊กเว็บ): บน Flutter Web ไม่มี filesystem path ให้ใช้
-  /// (result.files.single.path จะเป็น null เสมอ) การเรียก File(path!) บนเว็บ
-  /// จะได้ error "On web `path` is unavailable... You should access `bytes`
-  /// property instead" ดังนั้นฟังก์ชันนี้จึงคืนค่าเป็น PlatformFile แทน File
-  /// เพื่อให้ใช้ได้ทั้งบนมือถือ (มี path) และบนเว็บ (มี bytes)
-  ///
-  /// ต้องส่ง withData: true เพื่อบังคับให้ file_picker โหลด bytes มาด้วย
-  /// (จำเป็นบนเว็บ และช่วยให้ใช้ path ร่วมกับ bytes ได้บนมือถือด้วยถ้าต้องการ)
+
   Future<PlatformFile?> pickAudio() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
-      withData: true, // สำคัญ: บังคับให้มี bytes เสมอ ใช้ได้ทั้งเว็บและมือถือ
+      withData: true,
     );
     if (result == null || result.files.isEmpty) return null;
     return result.files.single;
@@ -189,9 +151,6 @@ class MediaUploadService {
   // 2) บีบอัดไฟล์ (ลดขนาด แต่ยังคมชัด)
   // =====================================================================
 
-  /// บีบอัดรูปภาพ
-  /// - quality 70-85 คือช่วงที่คมชัดพอ แต่ไฟล์เล็กลงมาก (แนะนำ 80)
-  /// - minWidth/minHeight ควบคุมความละเอียดสูงสุดที่จะย่อลงมา
   Future<XFile> compressImage(
     XFile file, {
     int quality = 80,
@@ -213,7 +172,7 @@ class MediaUploadService {
       keepExif: false,
     );
 
-    if (result == null) return file; // บีบไม่สำเร็จ ใช้ไฟล์เดิมแทน
+    if (result == null) return file; 
     return result;
   }
 
@@ -289,10 +248,6 @@ class MediaUploadService {
     );
   }
 
-  /// ✅ เพิ่ม: ตั้งไฟล์สื่อ (media) ที่ระบุให้เป็น is_active = true ที่ backend
-  /// (รีเซ็ตไฟล์อื่นที่ type เดียวกันของ device เดียวกันเป็น false ให้อัตโนมัติ)
-  /// เดิมฟังก์ชันนี้หายไปจากไฟล์ ทำให้การเลือก/อัปโหลดเสียงใหม่ไม่ถูกบันทึกจริง
-  /// ลง backend เลย (ตั้งแค่ local state ในแอป) เสียงที่เล่นจริงเลยยังเป็นเสียงเก่า
   Future<void> selectMedia(String mediaId) async {
     final uri = Uri.parse('$_baseUrl/device-media/$mediaId/select');
     final response = await http.patch(uri);
