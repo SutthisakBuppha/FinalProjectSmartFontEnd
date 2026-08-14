@@ -3,6 +3,7 @@ import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
+import '/services/text_scale_service.dart'; // ⭐ เพิ่ม: ตัวควบคุมขนาดตัวอักษรทั้งแอป
 
 class ProfileEditScreen extends StatefulWidget {
   final Map<String, dynamic> currentData;
@@ -18,11 +19,15 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
   String? _avatarUrl;
   bool _isUploadingAvatar = false;
 
+  // ⭐ เพิ่ม: ขนาดตัวอักษรที่กำลังเลือกอยู่ในหน้านี้ (ยังไม่ commit จนกว่าจะกดบันทึก)
+  late double _selectedFontScale;
+
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.currentData['name'] ?? '');
     _avatarUrl = widget.currentData['avatar_url']?.toString();
+    _selectedFontScale = TextScaleController.instance.scaleFactor; // ⭐ เพิ่ม
   }
 
   @override
@@ -37,6 +42,10 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       await ApiService.instance.updateDriverProfile(
         name: _nameController.text.trim(),
       );
+
+      // ⭐ เพิ่ม: บันทึกขนาดตัวอักษรที่เลือกไว้ แล้วให้มีผลทั้งแอปทันที
+      await TextScaleController.instance.setScale(_selectedFontScale);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('อัปเดตข้อมูลสำเร็จเรียบร้อย')),
@@ -69,6 +78,8 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                     _buildAvatarPicker(),
                     const SizedBox(height: 24),
                     _buildInputField("ชื่อ-นามสกุลคนขับ", _nameController, Icons.person_outline_rounded),
+                    const SizedBox(height: 24),
+                    _buildFontSizeSection(), // ⭐ เพิ่ม: ส่วนเลือกขนาดตัวอักษร
                     const SizedBox(height: 36),
                     SizedBox(
                       width: double.infinity,
@@ -228,4 +239,69 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     );
   }
 
+  // ⭐ เพิ่ม: ส่วนเลือกขนาดตัวอักษรทั้งแอป พร้อมพรีวิวก่อนบันทึก
+  Widget _buildFontSizeSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "ขนาดตัวอักษร",
+          style: GoogleFonts.inter(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "ปรับขนาดตัวอักษรที่ต้องการ แล้วกดบันทึกเพื่อให้มีผลทั้งแอป",
+          style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: TextScaleController.presets.entries.map((entry) {
+            final isSelected = (_selectedFontScale - entry.value).abs() < 0.01;
+            return ChoiceChip(
+              label: Text(
+                entry.key,
+                style: TextStyle(
+                  fontSize: 14 * entry.value, // พรีวิวขนาดจริงในตัวปุ่มเลย
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? Colors.white : AppColors.text,
+                ),
+              ),
+              selected: isSelected,
+              onSelected: (_) {
+                setState(() => _selectedFontScale = entry.value);
+              },
+              selectedColor: AppColors.primaryLight,
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: isSelected ? AppColors.primaryLight : AppColors.border,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        // ตัวอย่างข้อความขนาดที่เลือกไว้ ให้เห็นผลก่อนบันทึกจริง
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Text(
+            "ตัวอย่างข้อความขนาดที่เลือก",
+            style: GoogleFonts.inter(
+              fontSize: 15 * _selectedFontScale,
+              color: AppColors.text,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

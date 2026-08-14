@@ -54,5 +54,7 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>แอปต้องการใช้กล้องเพื่อสแกน QR Code ของอุปกรณ์</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>แอปใช้ตำแหน่ง GPS เพื่อตรวจจับว่ารถเคลื่อนที่แล้ว จะได้ปิดโหมดพักรถให้อัตโนมัติ</string>
 </dict>
 </plist>

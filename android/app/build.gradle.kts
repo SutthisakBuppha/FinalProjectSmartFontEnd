@@ -11,6 +11,9 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // 1. เปิดใช้งาน Core Library Desugaring
+        isCoreLibraryDesugaringEnabled = true
+
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -25,10 +28,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         
-        // --- แก้บรรทัดนี้ครับ ---
         minSdk = flutter.minSdkVersion
-        // --------------------
-
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -45,4 +45,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// 2. เพิ่ม Library สำหรับ Desugaring ของ flutter_local_notifications
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

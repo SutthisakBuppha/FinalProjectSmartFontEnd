@@ -35,20 +35,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _isGoogleLoading = false;
   String? _errorMessage;
 
-
   bool get isDark => Theme.of(context).brightness == Brightness.dark;
-  Color get background =>
-      isDark ? AppColors.text : AppColors.surface;
-  Color get surfaceColor =>
-      isDark ? AppColors.cFF1E293B : AppColors.surface;
-  Color get borderColor =>
-      isDark ? AppColors.cFF374151 : AppColors.cFFE5E7EB;
-  Color get textColor =>
-      isDark ? AppColors.background : AppColors.cFF112D4E;
+  Color get background => isDark ? AppColors.text : AppColors.surface;
+  Color get surfaceColor => isDark ? AppColors.cFF1E293B : AppColors.surface;
+  Color get borderColor => isDark ? AppColors.cFF374151 : AppColors.cFFE5E7EB;
+  Color get textColor => isDark ? AppColors.background : AppColors.cFF112D4E;
   Color get placeholderColor =>
       isDark ? AppColors.cFF6B7280 : AppColors.cFF9CA3AF;
-  Color get iconColor =>
-      isDark ? AppColors.cFF9CA3AF : AppColors.cFF112D4E;
+  Color get iconColor => isDark ? AppColors.cFF9CA3AF : AppColors.cFF112D4E;
 
   @override
   void initState() {
@@ -229,26 +223,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                     // Logo
                     SizedBox(
-                      width: logoSize,
-                      height: logoSize,
-                      child: SvgPicture.string(
-                        _logoSvg,
-                        colorFilter: ColorFilter.mode(
-                          isDark ? Colors.white : AppColors.cFF112D4E,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 16 * scale),
-
-                    // Title
-                    Text(
-                      "Smart Drive Guard",
-                      style: GoogleFonts.inter(
-                        fontSize: (30 * scale).clamp(24.0, 34.0),
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white : AppColors.cFF112D4E,
-                        letterSpacing: -0.5,
+                      // 1. เพิ่มสเกลตั้งต้น และขยายเพดาน .clamp(min, max) ให้กว้างขึ้น
+                      width: (250 * scale).clamp(180.0, 350.0),
+                      height: (120 * scale).clamp(90.0, 180.0),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        fit: BoxFit.contain,
                       ),
                     ),
                     SizedBox(height: (isCompactHeight ? 20 : 32) * scale),
@@ -454,9 +434,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.cFF112D4E,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: AppColors.cFF112D4E.withOpacity(
-                            0.6,
-                          ),
+                          disabledBackgroundColor: AppColors.cFF112D4E
+                              .withOpacity(0.6),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
@@ -523,7 +502,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             style: GoogleFonts.prompt(
                               fontSize: 14 * scale,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : AppColors.cFF112D4E,
+                              color: isDark
+                                  ? Colors.white
+                                  : AppColors.cFF112D4E,
                             ),
                           ),
                         ),

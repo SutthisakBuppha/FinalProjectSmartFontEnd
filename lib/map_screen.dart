@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:http/http.dart' as http;
 
 // --- External Packages ---
 import 'package:flutter_map/flutter_map.dart';
@@ -16,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart'; // ใช้เปิดแอ�
 // --- Internal Imports ---
 import 'menu/custom_bottom_nav_bar.dart';
 import 'main_layout.dart';
+import '/services/api_service.dart';
 
 /// โมเดลข้อมูลสถานที่ใกล้เคียง (ปั๊มน้ำมัน / จุดพักรถ) ที่ได้จาก Overpass API
 class NearbyPlace {
@@ -200,61 +199,47 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   // ข้อ 7: หาปั๊ม/จุดพักรถใกล้เคียงจริง ผ่าน Overpass API (OpenStreetMap)
   // ═══════════════════════════════════════════════════════════════════════
 
+  // 🆕 เปลี่ยนจากยิง Overpass API ตรงๆ จากมือถือ มาเรียกผ่าน backend
+  // (Laravel: NearbyPlacesController) แทน เพราะ:
+  //   - overpass-api.de เป็นเซิร์ฟเวอร์สาธารณะที่คนใช้ทั่วโลก มักตอบ 504
+  //     บ่อยเวลาโหลดหนัก การยิงตรงจาก client จึงไม่เสถียร
+  //   - ฝั่ง backend ทำ retry ข้ามหลาย mirror + แคชผลลัพธ์ไว้ได้
+  //     (ปั๊ม/จุดพักรถไม่ค่อยเปลี่ยนตำแหน่ง) ลดโอกาสเจอ error แบบนี้ได้มาก
+  //   - ระยะทางถูกคำนวณและเรียงลำดับมาจาก backend แล้ว ไม่ต้องคำนวณซ้ำที่นี่
   Future<void> _fetchNearbyPlaces(LatLng center, {double radiusMeters = 5000}) async {
     setState(() {
       _isLoadingPlaces = true;
       _placesError = null;
     });
 
-    final query = '''
-      [out:json][timeout:25];
-      (
-        node["amenity"="fuel"](around:$radiusMeters,${center.latitude},${center.longitude});
-        node["highway"="rest_area"](around:$radiusMeters,${center.latitude},${center.longitude});
-        node["highway"="services"](around:$radiusMeters,${center.latitude},${center.longitude});
-      );
-      out body;
-    ''';
-
-    final url = Uri.parse(
-      'https://overpass-api.de/api/interpreter?data=${Uri.encodeComponent(query)}',
-    );
-
     try {
-      final response = await http.get(url).timeout(const Duration(seconds: 20));
+      final results = await ApiService.instance.nearbyPlaces(
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusMeters: radiusMeters,
+      );
 
-      if (response.statusCode != 200) {
-        throw Exception('เซิร์ฟเวอร์แผนที่ตอบกลับผิดพลาด (${response.statusCode})');
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final elements = (data['elements'] as List<dynamic>? ?? []);
-
-      final places = elements.map((el) {
-        final tags = (el['tags'] as Map<String, dynamic>? ?? {});
-        final isGas = tags['amenity'] == 'fuel';
-        final name = tags['name'] as String? ?? (isGas ? 'ปั๊มน้ำมัน' : 'จุดพักรถ');
-
-        final loc = LatLng(
-          (el['lat'] as num).toDouble(),
-          (el['lon'] as num).toDouble(),
-        );
+      final places = results.map((item) {
+        final lat = (item['latitude'] as num).toDouble();
+        final lng = (item['longitude'] as num).toDouble();
 
         return NearbyPlace(
-          id: el['id'].toString(),
-          name: name,
-          location: loc,
-          isGasStation: isGas,
-          distanceMeters: Geolocator.distanceBetween(
-            center.latitude,
-            center.longitude,
-            loc.latitude,
-            loc.longitude,
-          ),
+          id: item['id'].toString(),
+          name: item['name'] as String? ?? 'จุดพักรถ',
+          location: LatLng(lat, lng),
+          isGasStation: item['is_gas_station'] == true,
+          // backend คำนวณระยะทางมาให้แล้ว ถ้าไม่มีค่อยคำนวณสำรองที่นี่
+          distanceMeters: (item['distance_meters'] as num?)?.toDouble() ??
+              Geolocator.distanceBetween(
+                center.latitude,
+                center.longitude,
+                lat,
+                lng,
+              ),
         );
       }).toList();
 
-      // ── ข้อ 9: เรียงลำดับตามระยะทางใกล้สุดก่อน ──────────────────────
+      // backend เรียงลำดับใกล้สุดก่อนมาให้แล้ว แต่ sort ซ้ำไว้เผื่อกันเหนียว
       places.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
       if (!mounted) return;
@@ -322,14 +307,17 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     // กำลังเช็ค GPS / ขอ permission / ดึงตำแหน่งครั้งแรก
     if (_isResolvingLocation) {
       return Scaffold(
-        backgroundColor: AppColors.text,
-        body: const Center(
+        backgroundColor: Colors.grey.shade100,
+        body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(color: AppColors.secondary),
-              SizedBox(height: 16),
-              Text('กำลังค้นหาตำแหน่งของคุณ...', style: TextStyle(color: AppColors.cFF94A3B8)),
+              const CircularProgressIndicator(color: AppColors.secondary),
+              const SizedBox(height: 16),
+              Text(
+                'กำลังค้นหาตำแหน่งของคุณ...',
+                style: GoogleFonts.inter(color: AppColors.cFF1E293B, fontSize: 14, fontWeight: FontWeight.w500),
+              ),
             ],
           ),
         ),
@@ -339,33 +327,47 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     // เปิด GPS ไม่ได้ / โดนปฏิเสธ permission -> แสดงหน้าขอให้แก้ไขก่อน
     if (_locationError != null) {
       return Scaffold(
-        backgroundColor: AppColors.text,
+        backgroundColor: Colors.grey.shade100,
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.location_off_rounded, color: AppColors.cFFDC2626, size: 56),
-                const SizedBox(height: 16),
-                Text(
-                  _locationError!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(color: AppColors.background, fontSize: 15),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: _initLocationFlow,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('ลองอีกครั้ง'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.secondary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.all(24),
+            child: Container(
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.location_off_rounded, color: AppColors.cFFDC2626, size: 56),
+                  const SizedBox(height: 16),
+                  Text(
+                    _locationError!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(color: AppColors.cFF1E293B, fontSize: 15, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _initLocationFlow,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('ลองอีกครั้ง'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.secondary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -499,46 +501,64 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          color: AppColors.cFF1E293B.withOpacity(0.95),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black45,
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 12),
-            const Icon(Icons.search, color: AppColors.cFF94A3B8),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _isLoadingPlaces ? "กำลังค้นหาจุดพักรถ..." : "ค้นหาจุดพักรถ...",
-                style: GoogleFonts.inter(
-                  color: AppColors.cFF94A3B8,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            Container(
-              width: 36,
-              height: 36,
-              margin: const EdgeInsets.only(right: 8),
+      child: Row(
+        children: [
+          // ปุ่มปิด/กลับ ทรงกลมขาว ตามดีไซน์ใหม่ (มุมบนซ้าย)
+          GestureDetector(
+            onTap: () => Navigator.maybePop(context),
+            child: Container(
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: const Icon(Icons.mic, color: Colors.white, size: 20),
+              child: const Icon(Icons.close_rounded, color: AppColors.cFF1E293B, size: 20),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          // แถบค้นหาแบบเรียบ พื้นขาว ตามโทนดีไซน์ใหม่
+          Expanded(
+            child: Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search, color: AppColors.cFF94A3B8, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _isLoadingPlaces ? "กำลังค้นหาจุดพักรถ..." : "ค้นหาจุดพักรถ...",
+                      style: GoogleFonts.inter(
+                        color: AppColors.cFF94A3B8,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.mic, color: AppColors.cFF94A3B8, size: 20),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -550,14 +570,13 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: AppColors.cFF1E293B,
+          color: Colors.white,
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-          boxShadow: const [
-            BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 2)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
-        child: Icon(icon, color: Colors.white, size: 22),
+        child: Icon(icon, color: AppColors.cFF1E293B, size: 22),
       ),
     );
   }
@@ -674,17 +693,16 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.only(bottom: 16),
-      constraints: const BoxConstraints(maxHeight: 320),
-      decoration: BoxDecoration(
-        color: AppColors.cFF1E293B.withOpacity(0.98),
-        borderRadius: const BorderRadius.vertical(
+      constraints: const BoxConstraints(maxHeight: 340),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(
           top: Radius.circular(24),
           bottom: Radius.circular(24),
         ),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Colors.black54,
+            color: Colors.black26,
             blurRadius: 20,
             offset: Offset(0, 5),
           ),
@@ -699,7 +717,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey.shade600,
+              color: Colors.grey.shade200,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -709,17 +727,17 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   "สถานที่ใกล้เคียง",
-                  style: TextStyle(
-                    color: Colors.white,
+                  style: GoogleFonts.inter(
+                    color: AppColors.cFF1E293B,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 Text(
                   "ในระยะ 5 กม.",
-                  style: TextStyle(color: AppColors.cFF94A3B8, fontSize: 12),
+                  style: GoogleFonts.inter(color: Colors.grey.shade400, fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -756,7 +774,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             Text(
               _placesError!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: AppColors.cFF94A3B8, fontSize: 12),
+              style: GoogleFonts.inter(color: Colors.grey.shade500, fontSize: 12),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -775,7 +793,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
           'ไม่พบปั๊มน้ำมันหรือจุดพักรถในระยะ 5 กม.',
-          style: GoogleFonts.inter(color: AppColors.cFF94A3B8, fontSize: 13),
+          style: GoogleFonts.inter(color: Colors.grey.shade500, fontSize: 13),
         ),
       );
     }
@@ -793,68 +811,76 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   }
 
   Widget _buildLocationCard(NearbyPlace place) {
-    final iconColor = place.isGasStation ? Colors.blue.shade400 : Colors.indigo.shade400;
-    final iconBg = place.isGasStation
-        ? Colors.blue.shade900.withOpacity(0.4)
-        : Colors.indigo.shade900.withOpacity(0.4);
+    final iconColor = place.isGasStation ? AppColors.secondary : Colors.indigo.shade400;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.text.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Left: Info
+          // ระยะทาง (มุมซ้าย เหมือนเวลาใน RouteDetails ของดีไซน์ใหม่)
+          SizedBox(
+            width: 40,
+            child: Text(
+              place.distanceLabel,
+              style: GoogleFonts.inter(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade400,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          // Timeline dot
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: iconColor, shape: BoxShape.circle),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Icon + ชื่อสถานที่
           Expanded(
             child: Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: iconBg,
-                    borderRadius: BorderRadius.circular(12),
+                    color: iconColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     place.isGasStation ? Icons.local_gas_station_rounded : Icons.chair_rounded,
                     color: iconColor,
-                    size: 22,
+                    size: 20,
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        place.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.background,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.near_me, size: 12, color: AppColors.cFF94A3B8),
-                          const SizedBox(width: 4),
-                          Text(
-                            place.distanceLabel,
-                            style: const TextStyle(
-                              color: AppColors.cFF94A3B8,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  child: Text(
+                    place.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(
+                      color: AppColors.cFF1E293B,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -862,13 +888,13 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           ),
           const SizedBox(width: 8),
 
-          // Right: Button
+          // ปุ่มนำทาง สไตล์ปุ่ม action หลักของดีไซน์ใหม่ (พื้นน้ำเงิน)
           GestureDetector(
             onTap: () => _navigateTo(place),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.cFF0F2647,
+                color: AppColors.secondary,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Row(

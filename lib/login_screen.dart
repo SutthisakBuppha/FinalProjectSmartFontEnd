@@ -1,22 +1,19 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'theme/app_theme.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'signup_screen.dart';
-import 'main_layout.dart';
-import 'forgot_password_screen.dart';
-import 'services/api_service.dart';
-import 'google_auth_service.dart';
-
-// สำคัญ: ใช้ conditional import แทนการ import package:google_sign_in_web ตรงๆ
-// เพราะ import ปกติจะถูกคอมไพล์ทุกแพลตฟอร์มเสมอ (ไม่สนใจ kIsWeb ตอน runtime)
-// ทำให้ build Android พังเพราะ google_sign_in_web ใช้ dart:js_interop ที่มีเฉพาะบน Web
-// - บน Web: ใช้ google_signin_web_impl.dart (re-export ของ google_sign_in_web จริง)
-// - บนแพลตฟอร์มอื่น: ใช้ google_signin_web_stub.dart (stub เปล่าๆ ไม่แตะ dart:js_interop)
-import 'google_signin_web_stub.dart'
-    if (dart.library.js_interop) 'google_signin_web_impl.dart' as gsi_web;
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+
+import 'forgot_password_screen.dart';
+import 'google_auth_service.dart';
+import 'google_signin_web_stub.dart'
+    if (dart.library.js_interop) 'google_signin_web_impl.dart'
+    as gsi_web;
+import 'main_layout.dart';
+import 'services/api_service.dart';
+import 'signup_screen.dart';
+import 'theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -34,26 +31,25 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  StreamSubscription? _googleSignInSubscription;
+
   @override
   void initState() {
     super.initState();
 
-    // ขั้นตอนที่ 2.1: ดักฟังเหตุการณ์ Google Sign-In สำหรับการทำงานบน Web
-    // v7+: onCurrentUserChanged ถูกลบไปแล้ว ใช้ authenticationEvents แทน
-    // ต้องเรียก ensureInitialized() ให้เสร็จก่อนค่อย listen สตรีม
     if (kIsWeb) {
       GoogleAuthService.instance.ensureInitialized().then((_) {
-        GoogleAuthService.instance.googleSignInEvents.listen((event) async {
+        if (!mounted) return;
+        _googleSignInSubscription = GoogleAuthService.instance.googleSignInEvents
+            .listen((event) async {
           if (event is! GoogleSignInAuthenticationEventSignIn) return;
 
           final account = event.user;
-          // v7+: authentication เป็น synchronous getter และมีแค่ idToken เท่านั้น
           final token = account.authentication.idToken;
 
           if (token != null) {
-            setState(() => _isGoogleLoading = true);
+            if (mounted) setState(() => _isGoogleLoading = true);
             try {
-              // เรียก api_service ส่ง Token ไปยัง Laravel backend
               await ApiService.instance.loginWithGoogle(idToken: token);
               if (mounted) {
                 Navigator.pushReplacement(
@@ -63,14 +59,16 @@ class _LoginScreenState extends State<LoginScreen> {
               }
             } on ApiException catch (e) {
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.message)),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text(e.message)));
               }
             } catch (e) {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('เข้าสู่ระบบด้วย Google ไม่สำเร็จ: $e')),
+                  SnackBar(
+                    content: Text('เข้าสู่ระบบด้วย Google ไม่สำเร็จ: $e'),
+                  ),
                 );
               }
             } finally {
@@ -84,6 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _googleSignInSubscription?.cancel();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -100,8 +99,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // ✅ เพิ่ม: ตรวจรูปแบบเบื้องต้นก่อนยิง API (กันเคสพิมพ์ผิดชัดเจน เช่น
-    // มีช่องว่างปนอยู่ หรือสั้นเกินไปจนรู้ได้เลยว่าไม่ถูกต้อง)
     if (username.contains(' ')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('ชื่อผู้ใช้ต้องไม่มีช่องว่าง')),
@@ -129,9 +126,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -142,7 +139,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  /// ฟังก์ชันล็อกอิน Google แบบดั้งเดิม (จะทำงานเฉพาะบน Mobile)
   Future<void> _handleGoogleLogin() async {
     setState(() => _isGoogleLoading = true);
 
@@ -162,14 +158,11 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
       if (!mounted) return;
-      // ✅ เพิ่ม: แยกข้อความตอน timeout (มาจาก GoogleAuthService.signInAndGetIdToken
-      // ที่ throw Exception('TIMEOUT: ...') เมื่อ authenticate ค้างเกิน 15 วิ)
-      // ให้ผู้ใช้รู้ว่าเป็นปัญหาการเชื่อมต่อ ไม่ใช่ล็อกอินผิด
       final isTimeout = e.toString().contains('TIMEOUT');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -185,7 +178,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- Color Palette ---
   Color get background =>
       _isDarkMode ? AppColors.cFF0A1120 : AppColors.surface;
   Color get surface =>
@@ -203,7 +195,6 @@ class _LoginScreenState extends State<LoginScreen> {
     scale = scale.clamp(0.85, 1.25);
 
     final horizontalPadding = (screenWidth * 0.08).clamp(20.0, 40.0);
-    final logoSize = (96 * scale).clamp(72.0, 120.0);
     final isCompactHeight = screenHeight < 700;
 
     return Scaffold(
@@ -263,22 +254,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     constraints: const BoxConstraints(maxWidth: 480),
                     child: Column(
                       children: [
-                        SizedBox(height: isCompactHeight ? 8 : 20),
                         SizedBox(
-                          width: logoSize,
-                          height: logoSize,
-                          child: SvgPicture.string(
-                            _logoSvgString(_isDarkMode),
-                          ),
-                        ),
-                        SizedBox(height: 16 * scale),
-                        Text(
-                          "Smart Drive Guard",
-                          style: GoogleFonts.prompt(
-                            fontSize: 28 * scale,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.cFF0F284E,
-                            letterSpacing: -0.5,
+                          width: (250 * scale).clamp(180.0, 350.0),
+                          height: (120 * scale).clamp(90.0, 180.0),
+                          child: Image.asset(
+                            'assets/images/logo.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                         SizedBox(height: 8 * scale),
@@ -337,7 +318,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => const ForgotPasswordScreen(),
+                                    builder: (context) =>
+                                        const ForgotPasswordScreen(),
                                   ),
                                 );
                               },
@@ -376,7 +358,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               backgroundColor: AppColors.cFF0F284E,
                               foregroundColor: Colors.white,
                               elevation: 0,
-                              padding: EdgeInsets.symmetric(vertical: 15 * scale),
+                              padding: EdgeInsets.symmetric(
+                                vertical: 15 * scale,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -401,7 +385,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                       ),
                                       SizedBox(width: 8 * scale),
-                                      Icon(Icons.arrow_forward, size: 18 * scale),
+                                      Icon(
+                                        Icons.arrow_forward,
+                                        size: 18 * scale,
+                                      ),
                                     ],
                                   ),
                           ),
@@ -411,7 +398,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             Expanded(child: Divider(color: inputBorder)),
                             Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16.0 * scale),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16.0 * scale,
+                              ),
                               child: Text(
                                 "หรือเข้าสู่ระบบด้วย",
                                 style: GoogleFonts.prompt(
@@ -425,8 +414,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ],
                         ),
                         SizedBox(height: (isCompactHeight ? 18 : 24) * scale),
-                        
-                        // 🛠️ ตรวจสอบเรียบร้อย: วิดเจ็ตปุ่ม Google สำหรับ Web และ Mobile ทำงานปกติ ไร้ตัวอักษรพิมพ์ตกค้าง
                         kIsWeb
                             ? SizedBox(
                                 width: double.infinity,
@@ -448,7 +435,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       label: "Google",
                                       svgIcon: _googleSvg,
                                       isLoading: _isGoogleLoading,
-                                      onTap: _isGoogleLoading ? null : _handleGoogleLogin,
+                                      onTap: _isGoogleLoading
+                                          ? null
+                                          : _handleGoogleLogin,
                                       scale: scale,
                                     ),
                                   ),
@@ -475,7 +464,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 );
                               },
                               style: TextButton.styleFrom(
-                                padding: EdgeInsets.symmetric(horizontal: 4 * scale),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 4 * scale,
+                                ),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
@@ -540,7 +531,10 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: controller,
         obscureText: isPassword && _obscurePassword,
         keyboardType: inputType,
-        style: GoogleFonts.prompt(fontSize: 14 * scale, color: AppColors.cFF1F2937),
+        style: GoogleFonts.prompt(
+          fontSize: 14 * scale,
+          color: AppColors.cFF1F2937,
+        ),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: GoogleFonts.prompt(color: AppColors.cFF94A3B8),
@@ -595,7 +589,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               else ...[
-                SvgPicture.string(svgIcon, width: 20 * scale, height: 20 * scale),
+                SvgPicture.string(
+                  svgIcon,
+                  width: 20 * scale,
+                  height: 20 * scale,
+                ),
                 SizedBox(width: 8 * scale),
                 Text(
                   label,
@@ -611,22 +609,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
-  }
-
-  String _logoSvgString(bool dark) {
-    const textColor = "#0F284E";
-    const strokeColor = "#0F284E";
-    const bgColor = "#FFFFFF";
-
-    return '''
-    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M50 10C27.9086 10 10 27.9086 10 50C10 72.0914 27.9086 90 50 90C72.0914 90 90 72.0914 90 50C90 27.9086 72.0914 10 50 10ZM50 82C32.3269 82 18 67.6731 18 50C18 32.3269 32.3269 18 50 18C67.6731 18 82 32.3269 82 50C82 67.6731 67.6731 82 50 82Z" fill="$textColor"/>
-      <path d="M22 45H35L42 30L50 60L58 40L65 45H78" stroke="$strokeColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="$bgColor" />
-      <path d="M50 18V35" stroke="$strokeColor" stroke-linecap="round" stroke-width="6"/>
-      <path d="M30 68L42 55" stroke="$strokeColor" stroke-linecap="round" stroke-width="6"/>
-      <path d="M70 68L58 55" stroke="$strokeColor" stroke-linecap="round" stroke-width="6"/>
-    </svg>
-    ''';
   }
 
   final String _googleSvg = '''

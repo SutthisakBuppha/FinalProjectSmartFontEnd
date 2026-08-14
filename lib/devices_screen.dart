@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'theme/app_theme.dart';
 import 'main_layout.dart';
 import 'device_setting.dart';
 import '/services/api_service.dart';
@@ -18,14 +18,16 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
   bool _isLoading = true;
   Timer? _pollTimer;
 
-  // ระยะเวลาที่จะ auto-refresh สถานะอุปกรณ์ (ให้สอดคล้องกับรอบ heartbeat/timeout ฝั่ง backend)
+  // ตัวกรองสถานะอุปกรณ์ (ทั้งหมด / ออนไลน์ / ออฟไลน์)
+  String _selectedFilter = 'ทั้งหมด';
+
+  // ระยะเวลาที่จะ auto-refresh สถานะอุปกรณ์
   static const Duration _pollInterval = Duration(seconds: 5);
 
   @override
   void initState() {
     super.initState();
     _loadDevices();
-    // เริ่ม polling อัตโนมัติ เพื่อให้สถานะออนไลน์/ออฟไลน์อัปเดตเองโดยไม่ต้องรอผู้ใช้ปัดหน้าจอ
     _pollTimer = Timer.periodic(_pollInterval, (_) {
       _loadDevices(silent: true);
     });
@@ -37,29 +39,17 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
     super.dispose();
   }
 
-  // silent = true ใช้ตอน poll พื้นหลัง จะไม่โชว์ loading spinner เต็มจอ และไม่ redirect ไปหน้าลงทะเบียนอัตโนมัติ
-  // (กันเคส network สะดุดชั่วคราวแล้วดันเด้งผู้ใช้ออกจากหน้าที่กำลังดูอยู่)
   Future<void> _loadDevices({bool silent = false}) async {
     try {
-      // แก้ไข: เรียกใช้งาน devices() แบบไม่มี arguments ตามความจริงในโปรเจกต์ของคุณ
       final list = await ApiService.instance.devices();
 
       if (!mounted) return;
 
       if (list.isEmpty) {
-        if (silent) {
-          // ตอน poll เงียบๆ ถ้าไม่มีอุปกรณ์เลย แค่เคลียร์ list ในจอ ไม่ redirect ระหว่างที่ผู้ใช้เปิดหน้าอยู่
-          setState(() {
-            _deviceList = [];
-            _isLoading = false;
-          });
-        } else {
-          // หากไม่มีการผูกอุปกรณ์ไว้เลยในระบบ ให้เด้งกลับไปหน้าลงทะเบียน (เฉพาะตอนโหลดครั้งแรก/ปัดรีเฟรชเอง)
-          setState(() {
-            _deviceList = [];
-            _isLoading = false;
-          });
-        }
+        setState(() {
+          _deviceList = [];
+          _isLoading = false;
+        });
         return;
       }
 
@@ -70,7 +60,6 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
     } catch (e) {
       if (!mounted) return;
       if (silent) {
-        // poll พื้นหลังล้มเหลว (เช่น เน็ตสะดุด) ไม่ต้องรบกวนผู้ใช้ด้วย SnackBar ทุกครั้ง แค่ log ไว้เฉยๆ
         debugPrint("Silent poll โหลดข้อมูลอุปกรณ์ล้มเหลว: $e");
         return;
       }
@@ -81,8 +70,18 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
     }
   }
 
+  // Helper ตรวจสอบสถานะออนไลน์
+  bool _isOnline(Map<String, dynamic> device) {
+    final status = device['status']?.toString().toLowerCase() ?? '';
+    return status == 'ออนไลน์' || status == 'online';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    double scale = (screenWidth / 375.0).clamp(0.85, 1.25);
+    final horizontalPadding = (screenWidth * 0.05).clamp(16.0, 24.0);
+
     if (_isLoading) {
       return const Scaffold(
         backgroundColor: AppColors.surfaceMuted,
@@ -90,151 +89,421 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       );
     }
 
-    final onlineCount = _deviceList.where((d) => d['status'] == 'ออนไลน์' || d['status'] == 'online').length;
+    final totalCount = _deviceList.length;
+    final onlineCount = _deviceList.where(_isOnline).length;
+    final offlineCount = totalCount - onlineCount;
+
+    // กรองลิสต์ตามตัวเลือก Filter
+    final filteredDevices = _deviceList.where((d) {
+      final isOnline = _isOnline(d);
+      if (_selectedFilter == 'ออนไลน์') return isOnline;
+      if (_selectedFilter == 'ออฟไลน์') return !isOnline;
+      return true; // 'ทั้งหมด'
+    }).toList();
 
     return Scaffold(
       backgroundColor: AppColors.surfaceMuted,
-      body: Column(
-        children: [
-          // Header Section
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
-            decoration: const BoxDecoration(
-              color: AppColors.cFF0F2647,
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      body: RefreshIndicator(
+        onRefresh: _loadDevices,
+        color: AppColors.cFF0F2647,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // 1. Header พื้นหลังสีน้ำเงิน Gradient
+                  _buildHeader(scale, horizontalPadding, onlineCount, totalCount),
+
+                  // 2. เนื้อหาซ้อนทับ Header (Overlap Layout)
+                  Padding(
+                    padding: EdgeInsets.only(top: 170 * scale),
+                    child: Column(
+                      children: [
+                        // การ์ดสรุปสถานะอุปกรณ์ (3 การ์ดเล็ก)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  title: "ทั้งหมด",
+                                  value: "$totalCount",
+                                  icon: Icons.developer_board_rounded,
+                                  color: AppColors.cFF0F2647,
+                                  scale: scale,
+                                ),
+                              ),
+                              SizedBox(width: 8 * scale),
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  title: "ออนไลน์",
+                                  value: "$onlineCount",
+                                  icon: Icons.wifi_rounded,
+                                  color: const Color(0xFF10B981),
+                                  scale: scale,
+                                ),
+                              ),
+                              SizedBox(width: 8 * scale),
+                              Expanded(
+                                child: _buildSummaryCard(
+                                  title: "ออฟไลน์",
+                                  value: "$offlineCount",
+                                  icon: Icons.wifi_off_rounded,
+                                  color: const Color(0xFF6B7280),
+                                  scale: scale,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        SizedBox(height: 20 * scale),
+
+                        // ปุ่ม Filter Chips (ทั้งหมด / ออนไลน์ / ออฟไลน์)
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                          child: Row(
+                            children: [
+                              _buildFilterChip('ทั้งหมด', scale),
+                              SizedBox(width: 8 * scale),
+                              _buildFilterChip('ออนไลน์', scale),
+                              SizedBox(width: 8 * scale),
+                              _buildFilterChip('ออฟไลน์', scale),
+                            ],
+                          ),
+                        ),
+
+                        SizedBox(height: 16 * scale),
+
+                        // รายการอุปกรณ์
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                          child: filteredDevices.isEmpty
+                              ? _buildEmptyState(scale)
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: filteredDevices.length,
+                                  itemBuilder: (context, index) {
+                                    final device = filteredDevices[index];
+                                    return _buildDeviceCard(device, scale);
+                                  },
+                                ),
+                        ),
+
+                        SizedBox(height: 40 * scale),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Header ---
+  Widget _buildHeader(double scale, double padding, int onlineCount, int totalCount) {
+    return Container(
+      height: 230 * scale,
+      padding: EdgeInsets.fromLTRB(padding, 56 * scale, padding, 0),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.cFF0F2647, AppColors.cFF1E3A66],
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton(
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const MainLayout(initialIndex: 0)),
+                (route) => false,
+              );
+            },
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18 * scale),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white.withOpacity(0.12),
+              padding: EdgeInsets.all(10 * scale),
+            ),
+          ),
+          SizedBox(width: 12 * scale),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-                      onPressed: () {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (context) => const MainLayout(initialIndex: 0)),
-                          (route) => false,
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      "รายการอุปกรณ์",
-                      style: GoogleFonts.prompt(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                Text(
+                  "รายการอุปกรณ์",
+                  style: GoogleFonts.kanit(
+                    color: Colors.white,
+                    fontSize: 24 * scale,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 48, top: 4),
-                  child: Text(
-                    "เชื่อมต่อ $onlineCount อุปกรณ์ออนไลน์",
-                    style: GoogleFonts.prompt(color: Colors.blue.shade100, fontSize: 14),
+                SizedBox(height: 2 * scale),
+                Text(
+                  "เชื่อมต่อแล้ว $onlineCount จาก $totalCount อุปกรณ์",
+                  style: GoogleFonts.kanit(
+                    color: Colors.white.withOpacity(0.75),
+                    fontSize: 13 * scale,
                   ),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
 
-          // List ของอุปกรณ์ที่ลงทะเบียนไว้
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _loadDevices,
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: _deviceList.length,
-                itemBuilder: (context, index) {
-                  final device = _deviceList[index];
-                  final isOnline = device['status'] == 'ออนไลน์' || device['status'] == 'online';
+  // --- Summary Card ---
+  Widget _buildSummaryCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+    required double scale,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 14 * scale),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18 * scale),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: GoogleFonts.kanit(
+                  color: AppColors.cFF6B7280,
+                  fontSize: 12 * scale,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Icon(icon, color: color, size: 16 * scale),
+            ],
+          ),
+          SizedBox(height: 6 * scale),
+          Text(
+            value,
+            style: GoogleFonts.kanit(
+              color: color,
+              fontSize: 22 * scale,
+              fontWeight: FontWeight.bold,
+              height: 1.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-                  return GestureDetector(
-                    onTap: () {
-                      // กดที่ Card แล้วลิงก์ไปยังหน้าแก้ไขการตั้งค่าอุปกรณ์ตัวนั้นๆ ทันที
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DeviceCustomizationScreen(deviceData: device),
-                        ),
-                      ).then((_) => _loadDevices()); // เมื่อกลับมาหน้านี้ ให้รีเฟรชข้อมูลใหม่
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(16),
+  // --- Filter Chip ---
+  Widget _buildFilterChip(String label, double scale) {
+    final bool isSelected = _selectedFilter == label;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedFilter = label),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(horizontal: 16 * scale, vertical: 8 * scale),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.cFF0F2647 : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.cFF0F2647 : Colors.grey.shade300,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.cFF0F2647.withOpacity(0.2),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  )
+                ]
+              : [],
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.kanit(
+            fontSize: 13 * scale,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? Colors.white : AppColors.cFF6B7280,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Device Item Card ---
+  Widget _buildDeviceCard(Map<String, dynamic> device, double scale) {
+    final isOnline = _isOnline(device);
+    final statusColor = isOnline ? const Color(0xFF10B981) : const Color(0xFF9CA3AF);
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 12 * scale),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20 * scale),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20 * scale),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20 * scale),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DeviceCustomizationScreen(deviceData: device),
+              ),
+            ).then((_) => _loadDevices());
+          },
+          child: Padding(
+            padding: EdgeInsets.all(16 * scale),
+            child: Row(
+              children: [
+                // Icon Box พร้อมไฟจุดสถานะออนไลน์/ออฟไลน์
+                Stack(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(12 * scale),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          )
-                        ],
+                        color: statusColor.withOpacity(0.12),
+                        shape: BoxShape.circle,
                       ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isOnline ? AppColors.cFF4ADE80.withOpacity(0.1) : AppColors.cFF9CA3AF.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.developer_board_rounded,
-                              color: isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF,
-                              size: 28,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  device['device_name'] ?? 'ไม่ระบุชื่ออุปกรณ์',
-                                  style: GoogleFonts.prompt(
-                                    color: AppColors.cFF1F2937,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  "S/N: ${device['serial_number'] ?? '-'}",
-                                  style: GoogleFonts.prompt(color: AppColors.cFF6B7280, fontSize: 13),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isOnline ? AppColors.cFF4ADE80.withOpacity(0.2) : AppColors.cFF9CA3AF.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  isOnline ? "ออนไลน์" : "ออฟไลน์",
-                                  style: GoogleFonts.prompt(
-                                    color: isOnline ? Colors.green.shade800 : Colors.grey.shade700,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.cFF9CA3AF, size: 14),
-                            ],
-                          )
-                        ],
+                      child: Icon(
+                        Icons.developer_board_rounded,
+                        color: statusColor,
+                        size: 26 * scale,
                       ),
                     ),
-                  );
-                },
-              ),
+                    Positioned(
+                      right: 2,
+                      bottom: 2,
+                      child: Container(
+                        width: 12 * scale,
+                        height: 12 * scale,
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(width: 14 * scale),
+
+                // รายละเอียดอุปกรณ์
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        device['device_name'] ?? 'ไม่ระบุชื่ออุปกรณ์',
+                        style: GoogleFonts.kanit(
+                          fontSize: 16 * scale,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.cFF1F2937,
+                        ),
+                      ),
+                      SizedBox(height: 2 * scale),
+                      Text(
+                        "S/N: ${device['serial_number'] ?? '-'}",
+                        style: GoogleFonts.kanit(
+                          fontSize: 12 * scale,
+                          color: AppColors.cFF6B7280,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ป้ายสถานะ และลูกศร
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 4 * scale),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        isOnline ? "ออนไลน์" : "ออฟไลน์",
+                        style: GoogleFonts.kanit(
+                          fontSize: 11 * scale,
+                          fontWeight: FontWeight.bold,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8 * scale),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.cFF9CA3AF,
+                      size: 20 * scale,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Empty State ---
+  Widget _buildEmptyState(double scale) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(vertical: 40 * scale, horizontal: 20 * scale),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20 * scale),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.devices_other_rounded,
+            size: 48 * scale,
+            color: AppColors.cFF9CA3AF,
+          ),
+          SizedBox(height: 12 * scale),
+          Text(
+            "ไม่พบอุปกรณ์ในหมวดหมู่นี้",
+            style: GoogleFonts.kanit(
+              fontSize: 15 * scale,
+              color: AppColors.cFF6B7280,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],

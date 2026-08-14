@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '/services/api_service.dart';
+import '/services/rest_mode_service.dart';
 import 'alert_screen.dart';
 import 'home_screen.dart';
 import 'history_screen.dart';
@@ -40,6 +41,8 @@ class _MainLayoutState extends State<MainLayout> {
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
+    // โหลดสถานะโหมดพักรถที่เคย persist ไว้ (เผื่อผู้ใช้ปิด-เปิดแอประหว่างพักรถ)
+    RestModeService.instance.ensureInitialized();
     _startNotificationPolling();
   }
 
@@ -52,6 +55,12 @@ class _MainLayoutState extends State<MainLayout> {
   //
   // จุดเดียวของทั้งแอปที่เด้ง AlertScreen (ย้ายมาจาก map_screen.dart เดิม
   // เพื่อให้ทำงานได้ไม่ว่าผู้ใช้จะอยู่หน้าไหนใน MainLayout ก็ตาม)
+  //
+  // 🆕 โหมดพักรถ (Rest Mode): ถ้าผู้ใช้เปิดโหมดพักรถอยู่ (เช่น จอดรถนอนพัก/
+  // จอดหยิบของโดยติดเครื่องทิ้งไว้) จะ "ไม่เด้ง" หน้า AlertScreen และไม่เล่น
+  // เสียงเตือนในแอป แต่ยังคงติดตาม alert id ล่าสุดไว้ตามปกติ เพื่อไม่ให้เกิด
+  // การเด้งแจ้งเตือนแบบ "ค้าง" ทันทีที่โหมดพักรถหมดอายุ (จะรอ alert ใหม่จริงๆ
+  // ที่เกิดขึ้นหลังจากพ้นโหมดพักรถแล้วเท่านั้น)
   // ═══════════════════════════════════════════════════════════════════════
   void _startNotificationPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
@@ -74,7 +83,20 @@ class _MainLayoutState extends State<MainLayout> {
 
         if (alertId == _lastSeenAlertId) return;
 
+        // มี alert ใหม่จริง -> จำ id ไว้เสมอไม่ว่าจะอยู่ในโหมดพักรถหรือไม่
+        // (กันไม่ให้ alert นี้ค้างมาเด้งซ้ำทันทีที่โหมดพักรถหมดอายุ)
         _lastSeenAlertId = alertId;
+
+        // 🆕 ถ้ากำลังอยู่ในโหมดพักรถ -> ระงับการเด้ง AlertScreen ไว้ก่อน
+        // (ยังคงมาร์คว่าเห็น alert นี้แล้วเหมือนเดิม เพื่อไม่ให้เด้งซ้ำภายหลัง)
+        if (RestModeService.instance.isActive) {
+          debugPrint(
+            "Rest Mode กำลังทำงานอยู่ (เหลือ ${RestModeService.instance.remaining.inMinutes} นาที) "
+            "-> ระงับการแจ้งเตือน alert_id=$alertId ไว้ก่อน",
+          );
+          return;
+        }
+
         _isShowingAlert = true;
 
         try {

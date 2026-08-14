@@ -180,6 +180,7 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
       Map<String, String> wifiData = {
         "ssid": _ssidController.text,
         "pass": _passwordController.text,
+        "server_ip": "smartdriver.lnw.mn",
       };
       String jsonString = jsonEncode(wifiData);
 

@@ -8,28 +8,40 @@ import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
 
 class AlertScreen extends StatefulWidget {
-  final dynamic
-  deviceId; 
+  final dynamic deviceId;
   const AlertScreen({super.key, this.deviceId});
 
   @override
   State<AlertScreen> createState() => _AlertScreenState();
 }
 
-class _AlertScreenState extends State<AlertScreen> {
+class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
-
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isSoundPlaying = false;
+  
+  // สำหรับ Animation ตอนเปิดหน้า
+  late AnimationController _entranceController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
+    
+    // Setup Entrance Animation
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _scaleAnimation = CurvedAnimation(
+      parent: _entranceController,
+      curve: Curves.elasticOut,
+    );
+    _entranceController.forward();
+
     _playAlertSound();
   }
 
-  // ดึง active_tone ของอุปกรณ์ -> หาไฟล์เสียงที่ตรงกันในรายการที่อัปโหลดไว้ -> เล่นวนลูป
-  // ถ้าไม่มี deviceId หรือไม่เจอไฟล์ที่ตรงกัน -> ไม่เล่นอะไรเลย (เงียบ)
   Future<void> _playAlertSound() async {
     final deviceId = widget.deviceId;
     if (deviceId == null) {
@@ -40,8 +52,7 @@ class _AlertScreenState extends State<AlertScreen> {
     try {
       final setting = await ApiService.instance.deviceSetting(deviceId);
       final activeTone = setting?['active_tone'];
-      final soundEnabled =
-          setting?['sound_enabled'] == 1 || setting?['sound_enabled'] == true;
+      final soundEnabled = setting?['sound_enabled'] == 1 || setting?['sound_enabled'] == true;
 
       if (!soundEnabled || activeTone == null) {
         debugPrint('ปิดเสียงไว้ หรือไม่มี active_tone -> ไม่เล่นเสียง');
@@ -51,9 +62,7 @@ class _AlertScreenState extends State<AlertScreen> {
       final mediaList = await MediaUploadService.instance.fetchDeviceMedia(
         deviceId.toString(),
       );
-      final match = mediaList
-          .where((m) => m.type == 'audio' && m.isActive)
-          .toList();
+      final match = mediaList.where((m) => m.type == 'audio' && m.isActive).toList();
 
       if (match.isEmpty) {
         debugPrint('ไม่มีไฟล์เสียงที่ถูกเลือก (is_active) -> ไม่เล่นเสียง');
@@ -61,36 +70,19 @@ class _AlertScreenState extends State<AlertScreen> {
       }
 
       final volumeLevel = setting?['volume_level'] ?? 100;
-      final volume =
-          (volumeLevel is int
+      final volume = (volumeLevel is int
               ? volumeLevel
               : int.tryParse(volumeLevel.toString()) ?? 100) /
           100.0;
 
-      String rawUrl = match.first.url;
-      final storageIndex = rawUrl.indexOf('/storage/');
-      final relativePath = storageIndex != -1
-          ? rawUrl.substring(storageIndex + '/storage/'.length)
-          : rawUrl.replaceFirst(RegExp(r'^/+'), '');
-
-      final apiUri = Uri.parse(
-        ApiService.instance.baseUrl,
-      ); 
-      final audioUrl = Uri(
-        scheme: apiUri.scheme,
-        host: apiUri.host,
-        port: apiUri.port,
-        path: '/storage/$relativePath',
-      ).toString();
+      final audioUrl = match.first.url;
 
       debugPrint('=========================================');
       debugPrint('👉 URL ที่กำลังจะเล่นจริงบนมือถือ: $audioUrl');
       debugPrint('=========================================');
 
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-
-      // บังคับเสียงดัง 100%
-      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.setVolume(volume.clamp(0.0, 1.0).toDouble());
       await _audioPlayer.play(UrlSource(audioUrl));
 
       if (mounted) {
@@ -114,13 +106,20 @@ class _AlertScreenState extends State<AlertScreen> {
 
   @override
   void dispose() {
+    _entranceController.dispose();
     _audioPlayer.dispose();
     super.dispose();
   }
 
   Future<void> _navigateToNearestRest() async {
     if (!mounted) return;
+    setState(() => _isLoading = true);
     await _stopAlertSound();
+    
+    // หน่วงเวลาเล็กน้อยให้เห็นปุ่ม Loading
+    await Future.delayed(const Duration(milliseconds: 300)); 
+    
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const MapScreen()),
     );
@@ -128,16 +127,12 @@ class _AlertScreenState extends State<AlertScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // กำหนดสีตาม Tailwind config ของคุณ
-    const Color backgroundDark = AppColors.cFF161022;
     const Color alertRed = AppColors.cFFFF4D4D;
 
-    // 🔴 ใหม่: บังคับให้ปิดหน้านี้ได้ทางเดียวคือกดปุ่ม "นำทางไปจุดพักรถใกล้ฉัน"
-    // เท่านั้น กันคนขับกดปุ่ม back ของมือถือหนีหน้าแจ้งเตือนไปเฉยๆ
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.text,
+        backgroundColor: AppColors.cFF161022, // สีพื้นหลังเข้ม
         body: Stack(
           fit: StackFit.expand,
           children: [
@@ -147,25 +142,21 @@ class _AlertScreenState extends State<AlertScreen> {
                 children: [
                   // Header
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Expanded(
-                          child: Text(
-                            "SaveDriveAi",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Manrope',
-                            ),
+                        const Text(
+                          "SaveDriveAi",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            fontFamily: 'Manrope',
+                            letterSpacing: 0.5,
                           ),
                         ),
-                        _buildIconButton(Icons.account_circle),
+                        _buildIconButton(Icons.account_circle_outlined),
                       ],
                     ),
                   ),
@@ -173,19 +164,38 @@ class _AlertScreenState extends State<AlertScreen> {
                   // Map Placeholder Area
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                       child: Stack(
                         children: [
                           Container(
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: Colors.grey[800],
-                              borderRadius: BorderRadius.circular(12),
-                              image: const DecorationImage(
-                                image: NetworkImage(
-                                  "https://via.placeholder.com/400x700/333333/666666?text=Map+View",
-                                ),
-                                fit: BoxFit.cover,
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.grey[800]!.withOpacity(0.5),
+                                  Colors.grey[900]!.withOpacity(0.8),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: Colors.white.withOpacity(0.05)),
+                            ),
+                            child: const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.map_rounded, color: Colors.white24, size: 80),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Map view unavailable',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -195,19 +205,9 @@ class _AlertScreenState extends State<AlertScreen> {
                             right: 16,
                             child: Row(
                               children: [
-                                Expanded(
-                                  child: _buildInfoCard(
-                                    "ความเร็ว",
-                                    "65 กม./ชม.",
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildInfoCard(
-                                    "เวลาขับขี่",
-                                    "2 ชม. 15 น.",
-                                  ),
-                                ),
+                                Expanded(child: _buildInfoCard("ความเร็ว", "65", "กม./ชม.")),
+                                const SizedBox(width: 12),
+                                Expanded(child: _buildInfoCard("เวลาขับขี่", "2:15", "ชม.")),
                               ],
                             ),
                           ),
@@ -215,18 +215,7 @@ class _AlertScreenState extends State<AlertScreen> {
                       ),
                     ),
                   ),
-                  // Bottom Indicator
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      height: 6,
-                      width: 128,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(100),
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -234,92 +223,91 @@ class _AlertScreenState extends State<AlertScreen> {
             // --- Layer 2: Blur Overlay ---
             Positioned.fill(
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
-                child: Container(color: AppColors.text.withOpacity(0.6)),
+                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                child: Container(color: AppColors.cFF161022.withOpacity(0.75)),
               ),
             ),
 
             // --- Layer 3: Modal Alert ---
             Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Container(
-                  constraints: const BoxConstraints(maxWidth: 340),
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.25),
-                        blurRadius: 25,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Warning Icon
-                      const PulseWarningIcon(color: alertRed),
-
-                      const SizedBox(height: 24),
-
-                      // Title
-                      const Text(
-                        "ตรวจพบความเสี่ยงง่วงนอน",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AppColors.cFF120D1B,
-                          fontSize: 24,
-                          height: 1.2,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(32),
+                      boxShadow: [
+                        BoxShadow(
+                          color: alertRed.withOpacity(0.2), // แสงเงาสีแดงรอบๆ การ์ด
+                          blurRadius: 40,
+                          spreadRadius: 10,
+                          offset: const Offset(0, 10),
                         ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Subtitle
-                      const Text(
-                        "ระบบแจ้งเตือนความปลอดภัยทำงาน โปรดหาที่จอดพักที่ปลอดภัยทันที",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: AppColors.cFF6B7280,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          height: 1.5,
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
                         ),
-                      ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Warning Icon (Ripple Effect)
+                        const PulseWarningIcon(color: alertRed),
+                        const SizedBox(height: 28),
 
-                      const SizedBox(height: 24),
+                        // Title
+                        const Text(
+                          "ตรวจพบความเสี่ยง\nง่วงนอนหลับใน!",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.cFF120D1B,
+                            fontSize: 26,
+                            height: 1.2,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
 
-                      // Status Icons
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildStatusIndicator(Icons.volume_up, "เสียงเตือน"),
-                          const SizedBox(width: 16),
-                          _buildStatusIndicator(Icons.vibration, "ระบบสั่น"),
-                        ],
-                      ),
+                        // Subtitle
+                        const Text(
+                          "ระบบแจ้งเตือนความปลอดภัยกำลังทำงาน\nโปรดหาที่จอดพักที่ปลอดภัยทันที",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.cFF6B7280,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
 
-                      const SizedBox(height: 24),
+                        // Status Icons (Pills)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildStatusChip(Icons.volume_up_rounded, "เสียงเตือน"),
+                            const SizedBox(width: 12),
+                            _buildStatusChip(Icons.vibration_rounded, "ระบบสั่น"),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
 
-                      // 🔴 ปุ่มเรียกฟังก์ชันพาไปหน้า MapScreen ในแอป
-                      _buildFilledButton(
-                        text: _isLoading
-                            ? "กำลังเปิดแผนที่..."
-                            : "นำทางไปจุดพักรถใกล้ฉัน",
-                        icon: _isLoading
-                            ? Icons.refresh_rounded
-                            : Icons.navigation,
-                        color: alertRed,
-                        onPressed: _isLoading
-                            ? null
-                            : _navigateToNearestRest, // ถ้าโหลดอยู่จะกดซ้ำไม่ได้
-                      ),
-                    ],
+                        // 🔴 Button
+                        _buildFilledButton(
+                          text: _isLoading ? "กำลังค้นหาจุดพักรถ..." : "นำทางไปจุดพักรถใกล้ฉัน",
+                          icon: _isLoading ? Icons.hourglass_top_rounded : Icons.navigation_rounded,
+                          color: alertRed,
+                          onPressed: _isLoading ? null : _navigateToNearestRest,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -332,38 +320,87 @@ class _AlertScreenState extends State<AlertScreen> {
 
   Widget _buildIconButton(IconData icon) {
     return Container(
-      width: 48,
-      height: 48,
-      alignment: Alignment.center,
-      child: Icon(icon, color: Colors.white, size: 28),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        shape: BoxShape.circle,
+      ),
+      padding: const EdgeInsets.all(10),
+      child: Icon(icon, color: Colors.white, size: 24),
     );
   }
 
-  Widget _buildInfoCard(String title, String value) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: AppColors.cFF161022.withOpacity(0.8),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+  Widget _buildInfoCard(String title, String value, String unit) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
           ),
-          const SizedBox(height: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    unit,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: const Color(0xFFDBEAFE)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF3B82F6), size: 18),
+          const SizedBox(width: 6),
           Text(
-            value,
+            label,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
+              color: Color(0xFF2563EB),
+              fontSize: 13,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -372,81 +409,51 @@ class _AlertScreenState extends State<AlertScreen> {
     );
   }
 
-  Widget _buildStatusIndicator(IconData icon, String label) {
-    return Column(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: AppColors.cFFEFF6FF,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.cFFDBEAFE),
-          ),
-          child: Icon(icon, color: AppColors.secondary, size: 28),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.cFF60A5FA,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildFilledButton({
     required String text,
     required IconData icon,
     required Color color,
-    required VoidCallback?
-    onPressed, // เปลี่ยนเป็น nullable เพื่อรองรับปุ่มปิดการทำงาน (Disabled)
+    required VoidCallback? onPressed,
   }) {
-    return SizedBox(
+    return Container(
       width: double.infinity,
-      height: 56,
+      height: 60,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(100),
+        boxShadow: onPressed == null ? [] : [
+          BoxShadow(
+            color: color.withOpacity(0.4),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: color.withOpacity(
-            0.6,
-          ), // สีปุ่มตอนที่โหลดอยู่
+          disabledBackgroundColor: color.withOpacity(0.6),
           disabledForegroundColor: Colors.white70,
-          elevation: onPressed == null ? 0 : 5,
-          shadowColor: Colors.red[200],
+          elevation: 0, 
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(100),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 12,
-          ), // 🔴 แก้ไข: กันข้อความชนขอบซ้ายขวา
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // แสดง Spinner หรือ Icon ปกติตามสถานะ Loading
             _isLoading
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(
                       color: Colors.white,
-                      strokeWidth: 2,
+                      strokeWidth: 2.5,
                     ),
                   )
-                : Icon(icon, size: 24),
-            const SizedBox(width: 8),
-            // 🔴 แก้ไข: ห่อ Text ด้วย Flexible กัน RenderFlex overflow
-            // เดิม Text ถูกวางตรงๆ ใน Row ทำให้เวลาข้อความยาว (เช่นตอน
-            // loading เปลี่ยนเป็น "กำลังเปิดแผนที่...") หรือจอแคบ จะดันล้น
-            // ออกนอกปุ่ม (RIGHT OVERFLOWED BY x PIXELS) ห่อด้วย Flexible +
-            // ellipsis ให้มันตัดคำแทนที่จะล้นออกไป
+                : Icon(icon, size: 26),
+            const SizedBox(width: 12),
             Flexible(
               child: Text(
                 text,
@@ -454,8 +461,8 @@ class _AlertScreenState extends State<AlertScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
                   fontFamily: 'Manrope',
                 ),
               ),
@@ -465,12 +472,11 @@ class _AlertScreenState extends State<AlertScreen> {
       ),
     );
   }
-} // 🔴 แก้ไข: ปิด class _AlertScreenState ตรงนี้ (เดิมวงเล็บนี้หายไปจากตำแหน่งนี้
-// แล้วไปโผล่เกินที่ท้ายไฟล์แทน ทำให้ PulseWarningIcon กลายเป็น class
-// ที่ซ้อนอยู่ข้างใน _AlertScreenState แทนที่จะเป็น top-level class
-// เป็นสาเหตุของ error "The name 'PulseWarningIcon' isn't a class")
+}
 
-// คลาส PulseWarningIcon คงไว้ตามแบบเดิมของคุณ
+// ----------------------------------------------------------------------
+// PulseWarningIcon: ปรับแต่งให้แอนิเมชันเด้งและแผ่รัศมี (Ripple) สวยขึ้น
+// ----------------------------------------------------------------------
 class PulseWarningIcon extends StatefulWidget {
   final Color color;
   const PulseWarningIcon({super.key, required this.color});
@@ -479,20 +485,25 @@ class PulseWarningIcon extends StatefulWidget {
   State<PulseWarningIcon> createState() => _PulseWarningIconState();
 }
 
-class _PulseWarningIconState extends State<PulseWarningIcon>
-    with SingleTickerProviderStateMixin {
+class _PulseWarningIconState extends State<PulseWarningIcon> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
-  late Animation<double> _animation;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
-    )..repeat(reverse: true);
+    )..repeat();
 
-    _animation = Tween<double>(begin: 0.5, end: 1.0).animate(_controller);
+    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.5).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+    _opacityAnimation = Tween<double>(begin: 0.5, end: 0.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
   }
 
   @override
@@ -503,18 +514,56 @@ class _PulseWarningIconState extends State<PulseWarningIcon>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 80,
-      height: 80,
-      decoration: const BoxDecoration(
-        color: AppColors.cFFFEF2F2,
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: FadeTransition(
-          opacity: _animation,
-          child: Icon(Icons.warning_rounded, color: widget.color, size: 60),
-        ),
+    return SizedBox(
+      width: 100,
+      height: 100,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // วงแหวนที่แผ่ออกไป (Ripple)
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _scaleAnimation.value,
+                child: Opacity(
+                  opacity: _opacityAnimation.value,
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // วงกลมพื้นหลังชั้นใน
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: widget.color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+          ),
+          // วงกลมสีทึบตรงกลาง
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: widget.color.withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.warning_rounded,
+              color: widget.color,
+              size: 36,
+            ),
+          ),
+        ],
       ),
     );
   }

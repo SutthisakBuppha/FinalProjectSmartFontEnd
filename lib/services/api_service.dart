@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,12 +21,12 @@ class ApiService {
   final http.Client _client = http.Client();
 
   String? _token;
-  String? _driverId;  
+  String? _driverId;
   Map<String, dynamic>? _driver;
 
   String get baseUrl => _baseUrl;
   bool get isLoggedIn => _token != null && _driverId != null;
-  String? get driverId => _driverId;  
+  String? get driverId => _driverId;
   Map<String, dynamic>? get currentDriver => _driver;
 
   static final String _baseUrl = _resolveBaseUrl();
@@ -38,11 +37,7 @@ class ApiService {
       return _normalizeBaseUrl(fromEnv);
     }
 
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000/api';
-    }
-
-    return 'http://127.0.0.1:8000/api';
+    return 'http://smartdriver.lnw.mn/api';
   }
 
   static String _normalizeBaseUrl(String value) {
@@ -70,10 +65,6 @@ class ApiService {
     );
   }
 
-  // / Sign in (or auto-register) a driver using a Google ID token.
-  // /
-  // / [idToken] must be the ID token obtained from `GoogleSignInAuthentication`
-  // / on the Flutter side. The backend verifies it directly with Google.
   Future<Map<String, dynamic>> loginWithGoogle({
     required String idToken,
   }) async {
@@ -92,7 +83,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> registerDriver({
     required String name,
-    required String username, // เพิ่มใหม่
+    required String username,
     required String email,
     required String password,
     required String passwordConfirmation,
@@ -102,7 +93,7 @@ class ApiService {
       'driver/register',
       body: {
         'name': name,
-        'username': username, // เพิ่มใหม่
+        'username': username,
         'email': email,
         'password': password,
         'password_confirmation': passwordConfirmation,
@@ -161,22 +152,19 @@ class ApiService {
     _token = null;
     _driverId = null;
     _driver = null;
-    // ล้างค่าที่เคยจำไว้ใน local storage ด้วย (ไม่ await เพราะ clearSession() เป็น sync)
     SharedPreferences.getInstance().then((prefs) {
       prefs.remove(_kTokenKey);
       prefs.remove(_kDriverIdKey);
+      prefs.remove(_kLastRouteKey);
     });
   }
 
   static const _kTokenKey = 'auth_token';
   static const _kDriverIdKey = 'auth_driver_id';
 
-  /// เรียกครั้งเดียวตอนแอปเริ่มทำงาน (splash) เพื่อโหลด session ที่เคย login ค้างไว้
-  /// คืน true ถ้ามี token เก่าอยู่ (ยังไม่ได้ตรวจกับ backend ว่า token หมดอายุหรือยัง)
   Future<bool> restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_kTokenKey);
-    // เปลี่ยนจาก getInt เป็น getString เนื่องจาก driverId เป็น String แล้ว
     final driverId = prefs.getString(_kDriverIdKey);
 
     if (token == null || driverId == null) return false;
@@ -186,12 +174,35 @@ class ApiService {
     return true;
   }
 
-  // เปลี่ยน driverId parameter จาก int เป็น String
   Future<void> _persistSession(String token, String driverId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kTokenKey, token);
-    // เปลี่ยนจาก setInt เป็น setString
     await prefs.setString(_kDriverIdKey, driverId);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 🆕 จำ "หน้าล่าสุด" ที่ผู้ใช้อยู่ไว้ เพื่อให้ SplashScreen พาไปหน้าเดิม
+  // ได้เวลา refresh (เว็บ) หรือปิด-เปิดแอปใหม่ (มือถือ) แทนที่จะเด้งไป
+  // หน้าคงที่หน้าใดหน้าหนึ่งเสมอ
+  //
+  // วิธีใช้: ให้แต่ละหน้าหลัก (home, devices, profile, ฯลฯ) เรียก
+  // ApiService.instance.saveLastRoute('ชื่อ_key_เฉพาะของหน้านั้น') ใน initState()
+  // ═══════════════════════════════════════════════════════════════════
+  static const _kLastRouteKey = 'last_route';
+
+  Future<void> saveLastRoute(String routeKey) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastRouteKey, routeKey);
+  }
+
+  Future<String?> getLastRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kLastRouteKey);
+  }
+
+  Future<void> clearLastRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLastRouteKey);
   }
 
   Future<Map<String, dynamic>> dashboard() async {
@@ -229,7 +240,6 @@ class ApiService {
     return profile;
   }
 
-  /// Uploads an avatar file and returns the URL stored in drivers.avatar_url.
   Future<String> uploadDriverAvatar({
     required List<int> bytes,
     required String fileName,
@@ -294,8 +304,6 @@ class ApiService {
     return _dataMap(response);
   }
 
-  /// ลงทะเบียนอุปกรณ์ใหม่ด้วย Serial Number อย่างเดียว
-  /// (ตั้งชื่อ/ประเภทเริ่มต้นให้อัตโนมัติ เพราะหน้าจอมีแค่ช่อง S/N)
   Future<bool> registerDevice(String serialNumber) async {
     try {
       await createDevice(
@@ -389,11 +397,17 @@ class ApiService {
     return _dataList(response);
   }
 
-  Future<List<Map<String, dynamic>>> alerts({dynamic tripId}) async {
+  Future<List<Map<String, dynamic>>> alerts({
+    dynamic tripId,
+    bool todayOnly = false,
+  }) async {
     final response = await _request(
       'GET',
       'app/drivers/${_requireDriverId()}/alerts',
-      query: {if (tripId != null) 'trip_id': tripId.toString()},
+      query: {
+        if (tripId != null) 'trip_id': tripId.toString(),
+        if (todayOnly) 'today': true,
+      },
     );
     return _dataList(response);
   }
@@ -432,14 +446,12 @@ class ApiService {
     );
   }
 
-  /// ดึงข้อมูลโปรไฟล์ล่าสุดของ Driver ที่ล็อกอินอยู่
   Future<Map<String, dynamic>> getProfile() async {
     final response = await _request('GET', 'app/drivers/${_requireDriverId()}');
     _driver = _dataMap(response);
     return _driver!;
   }
 
-  /// อัปเดตข้อมูลโปรไฟล์ (สำหรับหน้า ProfileEditScreen)
   Future<Map<String, dynamic>> updateProfile({
     required String name,
     String? password,
@@ -456,7 +468,6 @@ class ApiService {
     return _driver!;
   }
 
-  /// ดึงรายการอุปกรณ์เฉพาะของ Driver คนนี้
   Future<List<Map<String, dynamic>>> getMyDevices() async {
     final response = await _request(
       'GET',
@@ -465,7 +476,6 @@ class ApiService {
     return _dataList(response);
   }
 
-  /// อัปเดตตั้งค่าเสียงอุปกรณ์ (สำหรับหน้า DeviceCustomizationScreen)
   Future<Map<String, dynamic>> updateDeviceSettings({
     required dynamic deviceId,
     required int volumeLevel,
@@ -484,7 +494,54 @@ class ApiService {
     return _dataMap(response);
   }
 
-  // เปลี่ยน return type จาก int เป็น String
+  // ═══════════════════════════════════════════════════════════════════
+  // FCM Push Notification token registration
+  // ═══════════════════════════════════════════════════════════════════
+
+  Future<void> registerFcmToken({
+    required String token,
+    required String platform,
+  }) async {
+    await _request(
+      'POST',
+      'app/drivers/${_requireDriverId()}/fcm-token',
+      body: {
+        'token': token,
+        'platform': platform,
+      },
+    );
+  }
+
+  Future<void> unregisterFcmToken({required String token}) async {
+    await _request(
+      'DELETE',
+      'app/drivers/${_requireDriverId()}/fcm-token',
+      body: {'token': token},
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Rest Mode
+  // ═══════════════════════════════════════════════════════════════════
+
+  Future<void> activateRestMode({
+    required dynamic deviceId,
+    required int minutes,
+  }) async {
+    await _request(
+      'POST',
+      'app/drivers/${_requireDriverId()}/devices/$deviceId/rest-mode',
+      body: {'minutes': minutes},
+    );
+  }
+
+  Future<void> cancelRestMode({required dynamic deviceId}) async {
+    await _request(
+      'DELETE',
+      'app/drivers/${_requireDriverId()}/devices/$deviceId/rest-mode',
+    );
+  }
+
   String _requireDriverId() {
     final id = _driverId;
     if (_token == null || id == null) {
@@ -493,14 +550,11 @@ class ApiService {
     return id;
   }
 
-  /// Shared logic for login / register / google-login responses:
-  /// they all return the same { token, driver_id, name, avatar_url, status } shape.
   Map<String, dynamic> _applyAuthResponse(
     Map<String, dynamic> response,
     String errorMessage,
   ) {
     final token = response['token']?.toString();
-    // เปลี่ยนจาก _toInt เป็น _toString เพราะ driverId เป็น String
     final driverId = _toString(response['driver_id']);
 
     if (token == null || token.isEmpty || driverId == null) {
@@ -519,6 +573,28 @@ class ApiService {
     _persistSession(token, driverId);
 
     return Map<String, dynamic>.from(_driver!);
+  }
+
+  Future<List<Map<String, dynamic>>> nearbyPlaces({
+    required double latitude,
+    required double longitude,
+    double radiusMeters = 5000,
+  }) async {
+    final response = await _request(
+      'GET',
+      'nearby-places',
+      query: {
+        'lat': latitude,
+        'lng': longitude,
+        'radius': radiusMeters,
+      },
+    );
+
+    final list = response['data'];
+    if (list is List) {
+      return list.cast<Map<String, dynamic>>();
+    }
+    return [];
   }
 
   Future<Map<String, dynamic>> _request(
@@ -556,33 +632,13 @@ class ApiService {
           body: encodedBody,
         );
       case 'DELETE':
-        response = await _client.delete(uri, headers: headers);
+        response = await _client.delete(uri, headers: headers, body: encodedBody);
       default:
         throw ApiException('Unsupported request method: $method');
     }
 
-  //   final decoded = _decodeResponse(response);
+    final decoded = _decodeResponse(response);
 
-  //   if (response.statusCode < 200 || response.statusCode >= 300) {
-  //     throw ApiException(
-  //       _messageFrom(decoded) ?? 'Request failed (${response.statusCode}).',
-  //       statusCode: response.statusCode,
-  //     );
-  //   }
-
-  //   if (decoded is Map<String, dynamic> && decoded['success'] == false) {
-  //     throw ApiException(_messageFrom(decoded) ?? 'Request failed.');
-  //   }
-
-  //   if (decoded is Map<String, dynamic>) {
-  //     return decoded;
-  //   }
-
-  //   return {'data': decoded};
-  // }
-  final decoded = _decodeResponse(response);
-
-    // 🔴 เพิ่มส่วนนี้: ล้าง Session ทันทีเมื่อเซิร์ฟเวอร์ตอบกลับว่า Unauthenticated / Token หมดอายุ (401)
     if (response.statusCode == 401) {
       clearSession();
       throw ApiException(
@@ -608,6 +664,7 @@ class ApiService {
 
     return {'data': decoded};
   }
+
   Uri _uri(String path, Map<String, dynamic>? query) {
     final cleanPath = path.startsWith('/') ? path.substring(1) : path;
     final uri = Uri.parse('$_baseUrl/$cleanPath');
@@ -687,7 +744,6 @@ class ApiService {
     return <Map<String, dynamic>>[];
   }
 
-  // เปลี่ยนเป็น _toString ที่ convert ค่าเป็น String แทน int
   String? _toString(dynamic value) {
     if (value is String) return value;
     if (value is int) return value.toString();
@@ -695,12 +751,23 @@ class ApiService {
     return null;
   }
 
-  /// ดึง Alert ล่าสุดของ driver คนนี้ (ใช้เอา device_id ตอนเด้ง AlertScreen)
+  // ═══════════════════════════════════════════════════════════════════
+  // 🆕 Notifications summary (today_events / max_risk สำหรับหน้า NotificationScreen)
+  // ═══════════════════════════════════════════════════════════════════
+
+  Future<Map<String, dynamic>> notificationsSummary() async {
+    final response = await _request(
+      'GET',
+      'app/drivers/${_requireDriverId()}/notifications/summary',
+    );
+    return _dataMap(response);
+  }
+
   Future<Map<String, dynamic>?> latestAlert() async {
     final response = await _request(
       'GET',
       'driver-latest-alert',
-      query: {'driver_id': _requireDriverId()},  // ส่งเป็น String แล้ว
+      query: {'driver_id': _requireDriverId()},
       requireAuth: false,
     );
     return _nullableDataMap(response);
