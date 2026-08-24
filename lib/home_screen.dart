@@ -5,14 +5,14 @@ import 'dart:async';
 
 // Import ส่วนประกอบต่างๆ ของแอปพลิเคชันคุณ
 import '/services/api_service.dart';
+import 'utils/device_status.dart';
 import '/services/rest_mode_service.dart';
 import 'main_layout.dart';
 
 void main() {
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: HomeScreen(),
-  ));
+  runApp(
+    const MaterialApp(debugShowCheckedModeBanner: false, home: HomeScreen()),
+  );
 }
 
 class HomeScreen extends StatefulWidget {
@@ -22,7 +22,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   bool _isMonitoring = false;
 
@@ -108,14 +109,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     try {
       final devices = await ApiService.instance.devices();
-      final bool isDeviceOnline = devices.any(
-        (d) => d['status'] == 'ออนไลน์' || d['status'] == 'online',
-      );
+      final bool isAnyDeviceOnline = devices.any(isDeviceOnline);
 
       if (!mounted) return;
 
-      if (isDeviceOnline != _isMonitoring) {
-        _setMonitoring(isDeviceOnline);
+      if (isAnyDeviceOnline != _isMonitoring) {
+        _setMonitoring(isAnyDeviceOnline);
       }
     } catch (e) {
       debugPrint("Device status poll error: $e");
@@ -146,105 +145,147 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _showRestModeSheet() async {
     final selected = await showModalBottomSheet<int>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              Row(
+        final screenHeight = MediaQuery.sizeOf(sheetContext).height;
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: screenHeight * 0.9),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Center(
+                    child: Container(
+                      width: 44,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.cFF0F2557.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.bedtime_rounded,
+                          color: AppColors.cFF0F2557,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "เปิดโหมดพักรถ",
+                              style: GoogleFonts.prompt(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.cFF1E293B,
+                              ),
+                            ),
+                            Text(
+                              "ระบบจะไม่แจ้งเตือนชั่วคราวตามเวลาที่เลือก",
+                              style: GoogleFonts.prompt(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ...[10, 15, 30, 60].map(
+                    (minutes) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: () => Navigator.pop(sheetContext, minutes),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 11,
+                            horizontal: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.cFFECF0F3,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.timer_outlined,
+                                size: 20,
+                                color: AppColors.cFF1E293B.withOpacity(0.7),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                minutes < 60 ? "$minutes นาที" : "1 ชั่วโมง",
+                                style: GoogleFonts.prompt(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.cFF1E293B,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.cFF0F2557.withOpacity(0.1),
+                      color: AppColors.cFFFFF7ED,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.bedtime_rounded, color: AppColors.cFF0F2557),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          "เปิดโหมดพักรถ",
-                          style: GoogleFonts.kanit(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.cFF1E293B),
+                        const Icon(
+                          Icons.info_outline_rounded,
+                          size: 18,
+                          color: AppColors.cFF9A3412,
                         ),
-                        Text(
-                          "ระบบจะไม่แจ้งเตือนชั่วคราวตามเวลาที่เลือก",
-                          style: GoogleFonts.kanit(fontSize: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "ระบบยังคงเก็บบันทึกเหตุการณ์ตามปกติ เพียงแต่จะไม่ส่งเสียง/แจ้งเตือนรบกวนในช่วงเวลานี้",
+                            softWrap: true,
+                            style: GoogleFonts.prompt(
+                              fontSize: 11,
+                              color: AppColors.cFF9A3412,
+                              height: 1.3,
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
-              ...[10, 15, 30, 60].map((minutes) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => Navigator.pop(sheetContext, minutes),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                        decoration: BoxDecoration(
-                          color: AppColors.cFFECF0F3,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.timer_outlined, size: 20, color: AppColors.cFF1E293B.withOpacity(0.7)),
-                            const SizedBox(width: 12),
-                            Text(
-                              minutes < 60 ? "$minutes นาที" : "1 ชั่วโมง",
-                              style: GoogleFonts.kanit(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.cFF1E293B),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.cFFFFF7ED,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.cFF9A3412),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        "ระบบยังคงเก็บบันทึกเหตุการณ์ตามปกติ เพียงแต่จะไม่ส่งเสียง/แจ้งเตือนรบกวนในช่วงเวลานี้",
-                        style: GoogleFonts.kanit(fontSize: 11.5, color: AppColors.cFF9A3412, height: 1.4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
@@ -263,7 +304,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     await RestModeService.instance.cancel();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("ยกเลิกโหมดพักรถแล้ว กลับมาแจ้งเตือนตามปกติ")),
+      const SnackBar(
+        content: Text("ยกเลิกโหมดพักรถแล้ว กลับมาแจ้งเตือนตามปกติ"),
+      ),
     );
   }
 
@@ -284,7 +327,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final isLandscape = mediaQuery.orientation == Orientation.landscape;
-    final scale = isLandscape ? 0.85 : 1.0;
+    final screenHeight = mediaQuery.size.height;
+    final isCompact = screenHeight < 760;
+    final heightScale = (screenHeight / 850).clamp(0.72, 1.0);
+    final scale = isLandscape ? 0.72 : heightScale;
     final statusColor = _isMonitoring ? AppColors.cFF059669 : Colors.grey;
     final bool isResting = RestModeService.instance.isActive;
 
@@ -295,37 +341,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: EdgeInsets.fromLTRB(20, isCompact ? 8 : 14, 20, 0),
                 child: _buildHeader(),
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                padding: EdgeInsets.fromLTRB(20, isCompact ? 12 : 22, 20, 0),
                 child: _buildStatusCard(scale, statusColor),
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                padding: EdgeInsets.fromLTRB(20, isCompact ? 10 : 16, 20, 0),
                 child: _buildInfoRow(statusColor),
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                padding: EdgeInsets.fromLTRB(20, isCompact ? 8 : 12, 20, 0),
                 child: _buildRestModeCard(isResting),
               ),
             ),
             SliverFillRemaining(
               hasScrollBody: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  isCompact ? 10 : 18,
+                  20,
+                  isCompact ? 8 : 16,
+                ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    _buildControlButton(scale),
-                  ],
+                  children: [_buildControlButton(scale)],
                 ),
               ),
             ),
@@ -345,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           children: [
             Text(
               "ยินดีต้อนรับกลับมา",
-              style: GoogleFonts.kanit(
+              style: GoogleFonts.prompt(
                 color: AppColors.cFF1E293B.withOpacity(0.55),
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -354,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             const SizedBox(height: 2),
             Text(
               "ผู้ขับขี่ปลอดภัย",
-              style: GoogleFonts.kanit(
+              style: GoogleFonts.prompt(
                 color: AppColors.cFF1E293B,
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
@@ -388,7 +437,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
               ],
             ),
-            child: const Icon(Icons.person_pin, size: 28, color: AppColors.cFF0F2557),
+            child: const Icon(
+              Icons.person_pin,
+              size: 28,
+              color: AppColors.cFF0F2557,
+            ),
           ),
         ),
       ],
@@ -409,13 +462,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           colors: isResting
               ? [AppColors.cFF6B7280, AppColors.cFF6B7280.withOpacity(0.85)]
               : _isMonitoring
-                  ? [AppColors.cFF0F2557, AppColors.cFF0F2557.withOpacity(0.85)]
-                  : [Colors.white, Colors.white],
+              ? [AppColors.cFF0F2557, AppColors.cFF0F2557.withOpacity(0.85)]
+              : [Colors.white, Colors.white],
         ),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: (_isMonitoring || isResting ? AppColors.cFF0F2557 : Colors.black).withOpacity(0.12),
+            color:
+                (_isMonitoring || isResting
+                        ? AppColors.cFF0F2557
+                        : Colors.black)
+                    .withOpacity(0.12),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -434,11 +491,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   children: [
                     if (_isMonitoring && !isResting)
                       Container(
-                        width: (140 * scale) * (0.75 + 0.25 * _controller.value),
-                        height: (140 * scale) * (0.75 + 0.25 * _controller.value),
+                        width:
+                            (140 * scale) * (0.75 + 0.25 * _controller.value),
+                        height:
+                            (140 * scale) * (0.75 + 0.25 * _controller.value),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.15 * (1 - _controller.value)),
+                          color: Colors.white.withOpacity(
+                            0.15 * (1 - _controller.value),
+                          ),
                         ),
                       ),
                     Container(
@@ -446,14 +507,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       height: 96 * scale,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: (_isMonitoring || isResting) ? Colors.white.withOpacity(0.15) : AppColors.cFFECF0F3,
+                        color: (_isMonitoring || isResting)
+                            ? Colors.white.withOpacity(0.15)
+                            : AppColors.cFFECF0F3,
                       ),
                       child: Icon(
                         isResting
                             ? Icons.bedtime_rounded
-                            : (_isMonitoring ? Icons.security_rounded : Icons.shield_moon_rounded),
+                            : (_isMonitoring
+                                  ? Icons.security_rounded
+                                  : Icons.shield_moon_rounded),
                         size: 48 * scale,
-                        color: (_isMonitoring || isResting) ? Colors.white : Colors.grey,
+                        color: (_isMonitoring || isResting)
+                            ? Colors.white
+                            : Colors.grey,
                       ),
                     ),
                   ],
@@ -465,10 +532,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Text(
             isResting
                 ? "กำลังอยู่ในโหมดพักรถ"
-                : (_isMonitoring ? "ระบบ AI กำลังคุ้มครองคุณ" : "ระบบปิดการทำงานอยู่"),
+                : (_isMonitoring
+                      ? "ระบบ AI กำลังคุ้มครองคุณ"
+                      : "ระบบปิดการทำงานอยู่"),
             textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(
-              color: (_isMonitoring || isResting) ? Colors.white : AppColors.cFF1E293B,
+            style: GoogleFonts.prompt(
+              color: (_isMonitoring || isResting)
+                  ? Colors.white
+                  : AppColors.cFF1E293B,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
@@ -478,11 +549,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             isResting
                 ? "ระงับการแจ้งเตือนชั่วคราว เหลือเวลา ${_formatRemaining(RestModeService.instance.remaining)}"
                 : (_isMonitoring
-                    ? "กำลังตรวจสอบพฤติกรรมการขับขี่แบบเรียลไทม์..."
-                    : "ระบบจะเริ่มทำงานอัตโนมัติเมื่อจ่ายไฟเข้าอุปกรณ์"),
+                      ? "กำลังตรวจสอบพฤติกรรมการขับขี่แบบเรียลไทม์..."
+                      : "ระบบจะเริ่มทำงานอัตโนมัติเมื่อจ่ายไฟเข้าอุปกรณ์"),
             textAlign: TextAlign.center,
-            style: GoogleFonts.kanit(
-              color: (_isMonitoring || isResting) ? Colors.white.withOpacity(0.8) : Colors.grey[600],
+            style: GoogleFonts.prompt(
+              color: (_isMonitoring || isResting)
+                  ? Colors.white.withOpacity(0.8)
+                  : Colors.grey[600],
               fontSize: 13,
             ),
           ),
@@ -552,11 +625,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               children: [
                 Text(
                   label,
-                  style: GoogleFonts.kanit(fontSize: 11, color: Colors.grey[500]),
+                  style: GoogleFonts.prompt(
+                    fontSize: 11,
+                    color: Colors.grey[500],
+                  ),
                 ),
                 Text(
                   value,
-                  style: GoogleFonts.kanit(
+                  style: GoogleFonts.prompt(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppColors.cFF1E293B,
@@ -592,7 +668,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (isResting ? AppColors.cFF6B7280 : AppColors.cFF0F2557).withOpacity(0.1),
+              color: (isResting ? AppColors.cFF6B7280 : AppColors.cFF0F2557)
+                  .withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
@@ -608,7 +685,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               children: [
                 Text(
                   "โหมดพักรถ",
-                  style: GoogleFonts.kanit(
+                  style: GoogleFonts.prompt(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: AppColors.cFF1E293B,
@@ -619,7 +696,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   isResting
                       ? "ระงับแจ้งเตือนอีก ${_formatRemaining(RestModeService.instance.remaining)}"
                       : "จอดพัก/นอน/หยิบของ? กดเปิดเพื่อไม่ให้ระบบรบกวน",
-                  style: GoogleFonts.kanit(fontSize: 11.5, color: Colors.grey[500]),
+                  style: GoogleFonts.prompt(
+                    fontSize: 11.5,
+                    color: Colors.grey[500],
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -633,10 +713,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               style: TextButton.styleFrom(
                 backgroundColor: AppColors.cFFFEF2F2,
                 foregroundColor: Colors.red.shade600,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: Text("ยกเลิก", style: GoogleFonts.kanit(fontSize: 12.5, fontWeight: FontWeight.bold)),
+              child: Text(
+                "ยกเลิก",
+                style: GoogleFonts.prompt(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             )
           else
             ElevatedButton(
@@ -645,10 +736,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 backgroundColor: AppColors.cFF0F2557,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: Text("เปิด", style: GoogleFonts.kanit(fontSize: 12.5, fontWeight: FontWeight.bold)),
+              child: Text(
+                "เปิด",
+                style: GoogleFonts.prompt(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
         ],
       ),
@@ -665,7 +767,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: (_isMonitoring ? Colors.red : AppColors.cFF059669).withOpacity(0.28),
+            color: (_isMonitoring ? Colors.red : AppColors.cFF059669)
+                .withOpacity(0.28),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -680,14 +783,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                _isMonitoring ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded,
+                _isMonitoring
+                    ? Icons.stop_circle_rounded
+                    : Icons.play_circle_fill_rounded,
                 color: Colors.white,
                 size: 28 * scale,
               ),
               const SizedBox(width: 10),
               Text(
                 _isMonitoring ? "หยุดการตรวจจับ" : "เริ่มตรวจจับ",
-                style: GoogleFonts.kanit(
+                style: GoogleFonts.prompt(
                   color: Colors.white,
                   fontSize: 17,
                   fontWeight: FontWeight.bold,

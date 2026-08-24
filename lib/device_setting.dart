@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'main_layout.dart';
 import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
+import 'utils/device_status.dart';
 
 class DeviceCustomizationScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData;
@@ -15,6 +16,8 @@ class DeviceCustomizationScreen extends StatefulWidget {
 }
 
 class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
+  static const int _maxUploadedAudioTones = 5;
+
   // ── Theme (คงชุดสีเดิมของแอปไว้ทั้งหมด) ─────────────────────────────
   bool _soundEnabled = true;
   double _volumeLevel = 75.0;
@@ -25,12 +28,11 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   List<UploadedMedia> _audioTones = [];
   bool _isLoadingAudio = true;
   bool _isUploadingAudio = false;
+  String? _deletingAudioId;
 
   String get _deviceId => widget.deviceData['device_id'].toString();
 
-  bool get _isOnline =>
-      widget.deviceData['status'] == 'ออนไลน์' ||
-      widget.deviceData['status'] == 'online';
+  bool get _isOnline => isDeviceOnline(widget.deviceData);
 
   void _returnToDeviceList() {
     // The settings page was pushed from the device tab. Pop to preserve the
@@ -87,7 +89,9 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
       );
       if (mounted) {
         setState(
-          () => _audioTones = list.where((m) => m.type == 'audio').toList(),
+          () => _audioTones = list
+              .where((m) => m.type == 'audio' && !m.isDefault)
+              .toList(),
         );
       }
     } catch (e) {
@@ -122,6 +126,17 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   }
 
   Future<void> _handleUploadAudio() async {
+    if (_audioTones.length >= _maxUploadedAudioTones) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'อัปโหลดเสียงได้สูงสุด 5 เสียงต่ออุปกรณ์ โดยไม่นับเสียงหลัก 3 เสียง',
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isUploadingAudio = true);
     try {
       final result = await MediaUploadService.instance.pickAndUploadAudio(
@@ -149,11 +164,68 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('อัปโหลดไฟล์เสียงไม่สำเร็จ: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('อัปโหลดไฟล์เสียงไม่สำเร็จ: $e')));
     } finally {
       if (mounted) setState(() => _isUploadingAudio = false);
+    }
+  }
+
+  Future<void> _confirmDeleteAudio(UploadedMedia audio) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ลบไฟล์เสียง'),
+        content: Text(
+          'ต้องการลบ “${audio.fileName}” หรือไม่?\n\nไฟล์จะถูกลบออกจากฐานข้อมูลและ Supabase อย่างถาวร',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('ยกเลิก'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('ลบ'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAudioId = audio.mediaId);
+    final wasSelected = _activeTone == audio.fileName || audio.isActive;
+
+    try {
+      await MediaUploadService.instance.deleteMedia(audio.mediaId);
+      if (!mounted) return;
+
+      setState(() {
+        _audioTones.removeWhere((item) => item.mediaId == audio.mediaId);
+        if (wasSelected) {
+          _activeTone = 'เสียงคลาสสิก (Classic)';
+        }
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            wasSelected
+                ? 'ลบไฟล์เสียงแล้ว และเปลี่ยนกลับเป็นเสียง Classic'
+                : 'ลบไฟล์เสียงสำเร็จ',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('ลบไฟล์เสียงไม่สำเร็จ: $e')));
+    } finally {
+      if (mounted) setState(() => _deletingAudioId = null);
     }
   }
 
@@ -177,7 +249,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         ),
         title: Text(
           "การตั้งค่าอุปกรณ์",
-          style: GoogleFonts.notoSansThai(
+          style: GoogleFonts.prompt(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: AppColors.cFF0F2557,
@@ -185,7 +257,9 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
         ),
       ),
       body: _isLoadingSetting
-          ? const Center(child: CircularProgressIndicator(color: AppColors.cFF0F2557))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.cFF0F2557),
+            )
           : RefreshIndicator(
               color: AppColors.cFF0F2557,
               onRefresh: () async {
@@ -203,7 +277,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                     _buildSectionTitle(
                       icon: Icons.graphic_eq_rounded,
                       title: "เสียงสัญญาณอินเตอร์คอม",
-                      subtitle: "เลือกเสียงที่จะใช้แจ้งเตือนเมื่อระบบตรวจพบความเสี่ยง",
+                      subtitle:
+                          "เลือกเสียงที่จะใช้แจ้งเตือนเมื่อระบบตรวจพบความเสี่ยง",
                     ),
                     const SizedBox(height: 12),
                     _buildSoundPreferences(),
@@ -237,12 +312,15 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                             : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.save_rounded,
-                                      color: Colors.white, size: 20),
+                                  const Icon(
+                                    Icons.save_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     "บันทึกการตั้งค่าทั้งหมด",
-                                    style: GoogleFonts.notoSansThai(
+                                    style: GoogleFonts.prompt(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,
@@ -301,7 +379,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
               children: [
                 Text(
                   widget.deviceData['device_name'] ?? 'ไม่ระบุชื่อ',
-                  style: GoogleFonts.notoSansThai(
+                  style: GoogleFonts.prompt(
                     fontWeight: FontWeight.bold,
                     fontSize: 17,
                     color: Colors.white,
@@ -310,7 +388,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'S/N: ${widget.deviceData['serial_number'] ?? '-'}',
-                  style: GoogleFonts.notoSansThai(
+                  style: GoogleFonts.prompt(
                     color: Colors.white.withOpacity(0.75),
                     fontSize: 13,
                   ),
@@ -321,7 +399,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: (_isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF).withOpacity(0.2),
+              color: (_isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF)
+                  .withOpacity(0.2),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: (_isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF)
@@ -335,14 +414,16 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: _isOnline ? AppColors.cFF4ADE80 : AppColors.cFF9CA3AF,
+                    color: _isOnline
+                        ? AppColors.cFF4ADE80
+                        : AppColors.cFF9CA3AF,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   _isOnline ? "ออนไลน์" : "ออฟไลน์",
-                  style: GoogleFonts.notoSansThai(
+                  style: GoogleFonts.prompt(
                     color: Colors.white,
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
@@ -379,7 +460,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
             children: [
               Text(
                 title,
-                style: GoogleFonts.notoSansThai(
+                style: GoogleFonts.prompt(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   color: AppColors.cFF0F2557,
@@ -389,7 +470,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: GoogleFonts.notoSansThai(
+                  style: GoogleFonts.prompt(
                     fontSize: 12,
                     color: Colors.grey.shade600,
                   ),
@@ -458,7 +539,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Text(
                       "เสียงที่คุณอัปโหลดเอง",
-                      style: GoogleFonts.notoSansThai(
+                      style: GoogleFonts.prompt(
                         fontSize: 11,
                         color: Colors.grey.shade500,
                         fontWeight: FontWeight.w600,
@@ -476,6 +557,9 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                   audio.fileName,
                   icon: Icons.audiotrack_rounded,
                   mediaId: audio.mediaId,
+                  onDelete: _deletingAudioId == audio.mediaId
+                      ? null
+                      : () => _confirmDeleteAudio(audio),
                 ),
               ),
             ),
@@ -485,7 +569,12 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     );
   }
 
-  Widget _buildToneOption(String title, {required IconData icon, String? mediaId}) {
+  Widget _buildToneOption(
+    String title, {
+    required IconData icon,
+    String? mediaId,
+    VoidCallback? onDelete,
+  }) {
     final isSelected = _activeTone == title;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -536,19 +625,40 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
             Expanded(
               child: Text(
                 title,
-                style: GoogleFonts.notoSansThai(
+                style: GoogleFonts.prompt(
                   fontSize: 14,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected ? AppColors.cFF0F2557 : Colors.grey.shade800,
+                  color: isSelected
+                      ? AppColors.cFF0F2557
+                      : Colors.grey.shade800,
                 ),
               ),
             ),
             if (isSelected)
-              const Icon(Icons.check_circle_rounded,
-                  color: AppColors.cFF0F2557, size: 20)
-            else
-              Icon(Icons.circle_outlined,
-                  color: Colors.grey.shade300, size: 20),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.cFF0F2557,
+                size: 20,
+              )
+            else if (onDelete == null)
+              Icon(
+                Icons.circle_outlined,
+                color: Colors.grey.shade300,
+                size: 20,
+              ),
+            if (onDelete != null) ...[
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'ลบไฟล์เสียง',
+                onPressed: onDelete,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.redAccent,
+                  size: 21,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -557,6 +667,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
 
   // ── การ์ดอัปโหลดเสียงใหม่ ──────────────────────────────────────────────
   Widget _buildUploadCard() {
+    final hasReachedAudioLimit = _audioTones.length >= _maxUploadedAudioTones;
+
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: _isUploadingAudio ? null : _handleUploadAudio,
@@ -598,8 +710,12 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                   ),
             const SizedBox(width: 12),
             Text(
-              _isUploadingAudio ? "กำลังอัปโหลด..." : "อัปโหลดไฟล์เสียงใหม่",
-              style: GoogleFonts.notoSansThai(
+              _isUploadingAudio
+                  ? "กำลังอัปโหลด..."
+                  : hasReachedAudioLimit
+                  ? "อัปโหลดครบ 5/5 เสียงแล้ว"
+                  : "อัปโหลดเสียงใหม่ (${_audioTones.length}/$_maxUploadedAudioTones)",
+              style: GoogleFonts.prompt(
                 color: AppColors.cFF0F2557,
                 fontWeight: FontWeight.bold,
                 fontSize: 14,
@@ -628,7 +744,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   //     //       child: Text(
   //     //         "เสียงที่เลือกไว้จะถูกเล่นจากตัวอุปกรณ์โดยตรงเมื่อระบบตรวจพบความเสี่ยงขณะขับขี่ "
   //     //         "คุณสามารถอัปโหลดเสียงของตัวเองหรือเลือกจากเสียงสำเร็จรูปด้านบนได้ตลอดเวลา",
-  //     //         style: GoogleFonts.notoSansThai(
+  //     //         style: GoogleFonts.prompt(
   //     //           fontSize: 12.5,
   //     //           color: AppColors.cFF0F2557.withOpacity(0.85),
   //     //           height: 1.5,

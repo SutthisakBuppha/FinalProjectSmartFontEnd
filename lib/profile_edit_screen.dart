@@ -94,7 +94,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
                             ? const CircularProgressIndicator(color: Colors.white)
                             : Text(
                                 "บันทึกข้อมูลส่วนตัว",
-                                style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                style: GoogleFonts.prompt(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                               ),
                       ),
                     ),
@@ -128,7 +128,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           const SizedBox(width: 16),
           Text(
             "แก้ไขโปรไฟล์",
-            style: GoogleFonts.inter(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            style: GoogleFonts.prompt(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -175,7 +175,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Text('แตะเพื่อเปลี่ยนรูปโปรไฟล์', style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 13)),
+          Text('แตะเพื่อเปลี่ยนรูปโปรไฟล์', style: GoogleFonts.prompt(color: AppColors.textMuted, fontSize: 13)),
         ],
       ),
     );
@@ -223,7 +223,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.inter(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(label, style: GoogleFonts.prompt(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
@@ -246,12 +246,12 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
       children: [
         Text(
           "ขนาดตัวอักษร",
-          style: GoogleFonts.inter(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
+          style: GoogleFonts.prompt(color: AppColors.text, fontSize: 14, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         Text(
           "ปรับขนาดตัวอักษรที่ต้องการ แล้วกดบันทึกเพื่อให้มีผลทั้งแอป",
-          style: GoogleFonts.inter(color: AppColors.textMuted, fontSize: 12),
+          style: GoogleFonts.prompt(color: AppColors.textMuted, fontSize: 12),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -295,7 +295,7 @@ class _ProfileEditScreenState extends State<ProfileEditScreen> {
           ),
           child: Text(
             "ตัวอย่างข้อความขนาดที่เลือก",
-            style: GoogleFonts.inter(
+            style: GoogleFonts.prompt(
               fontSize: 15 * _selectedFontScale,
               color: AppColors.text,
             ),

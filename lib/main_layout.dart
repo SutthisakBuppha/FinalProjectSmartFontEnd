@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '/services/api_service.dart';
 import '/services/rest_mode_service.dart';
+import '/services/push_notification_service.dart';
 import 'alert_screen.dart';
 import 'home_screen.dart';
 import 'history_screen.dart';
@@ -26,7 +27,8 @@ class _MainLayoutState extends State<MainLayout> {
 
   Timer? _pollingTimer;
   bool _isShowingAlert = false;
-  dynamic _lastSeenAlertId; // เก็บ id ของ alert ล่าสุดที่เคยเห็นแล้ว (กันเด้งซ้ำ/เด้งของเก่า)
+  dynamic
+  _lastSeenAlertId; // เก็บ id ของ alert ล่าสุดที่เคยเห็นแล้ว (กันเด้งซ้ำ/เด้งของเก่า)
 
   final List<Widget> _screens = [
     const HomeScreen(), // Index 0
@@ -43,6 +45,7 @@ class _MainLayoutState extends State<MainLayout> {
     _selectedIndex = widget.initialIndex;
     // โหลดสถานะโหมดพักรถที่เคย persist ไว้ (เผื่อผู้ใช้ปิด-เปิดแอประหว่างพักรถ)
     RestModeService.instance.ensureInitialized();
+    unawaited(PushNotificationService.instance.registerTokenWithBackend());
     _startNotificationPolling();
   }
 
@@ -177,7 +180,11 @@ class _DeviceSectionState extends State<DeviceSection> {
     if (_hasDevices == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_hasDevices!) return const DeviceManagementScreen();
+    if (_hasDevices!) {
+      return DeviceManagementScreen(
+        onDevicesEmpty: () => setState(() => _hasDevices = false),
+      );
+    }
     return DeviceRegistrationScreen(
       onRegistered: () => setState(() => _hasDevices = true),
     );

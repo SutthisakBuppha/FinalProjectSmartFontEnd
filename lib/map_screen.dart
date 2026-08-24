@@ -10,11 +10,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart'; // ใช้เปิดแอป Google Maps เพื่อนำทางจริง
+import 'package:permission_handler/permission_handler.dart';
 
 // --- Internal Imports ---
 import 'menu/custom_bottom_nav_bar.dart';
 import 'main_layout.dart';
 import '/services/api_service.dart';
+import '/services/trip_tracking_service.dart';
 
 /// โมเดลข้อมูลสถานที่ใกล้เคียง (ปั๊มน้ำมัน / จุดพักรถ) ที่ได้จาก Overpass API
 class NearbyPlace {
@@ -47,7 +49,8 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   // --- Theme Colors ---
   late AnimationController _pulseController;
   final MapController _mapController = MapController();
@@ -62,25 +65,101 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   List<NearbyPlace> _nearbyPlaces = [];
   bool _isLoadingPlaces = false;
   String? _placesError;
+  bool _navigationWasBackgrounded = false;
+  bool _isStartingNavigation = false;
+  bool _isShowingFinishDialog = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat();
 
     _initLocationFlow(); // ← เริ่ม flow ทั้งหมดตั้งแต่เช็ค GPS จนถึงหาสถานที่ใกล้เคียง
+    TripTrackingService.instance.restore().then((_) {
+      if (mounted) setState(() {});
+    });
     // 🔴 หมายเหตุ: ระบบ polling alert ถูกย้ายไปไว้ที่ main_layout.dart แล้ว
     // (ให้ทำงานได้ทุกหน้าในแอป ไม่ใช่แค่ตอนอยู่หน้า MapScreen เท่านั้น)
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _positionStream?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused &&
+        TripTrackingService.instance.isTracking) {
+      _navigationWasBackgrounded = true;
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed &&
+        _navigationWasBackgrounded &&
+        TripTrackingService.instance.isTracking) {
+      _navigationWasBackgrounded = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _askToFinishTrip();
+      });
+    }
+  }
+
+  Future<void> _askToFinishTrip() async {
+    if (_isShowingFinishDialog || !TripTrackingService.instance.isTracking) {
+      return;
+    }
+    _isShowingFinishDialog = true;
+
+    final shouldFinish = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('สิ้นสุดการเดินทางหรือยัง?'),
+        content: Text(
+          'กำลังบันทึกเส้นทางไปยัง '
+          '${TripTrackingService.instance.destinationName ?? 'จุดหมาย'}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('เดินทางต่อ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('จบทริป'),
+          ),
+        ],
+      ),
+    );
+    _isShowingFinishDialog = false;
+
+    if (shouldFinish != true || !mounted) return;
+    try {
+      final trip = await TripTrackingService.instance.finish();
+      if (!mounted) return;
+      final distance =
+          num.tryParse(trip?['distance']?.toString() ?? '')?.toDouble() ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'บันทึกการเดินทางสำเร็จ ระยะทาง ${distance.toStringAsFixed(2)} กม.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('จบทริปไม่สำเร็จ กรุณาลองใหม่: $error')),
+      );
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -262,6 +341,8 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   // ═══════════════════════════════════════════════════════════════════════
 
   Future<void> _navigateTo(NearbyPlace place) async {
+    if (_isStartingNavigation) return;
+    _isStartingNavigation = true;
     final destination =
         '${place.location.latitude},${place.location.longitude}';
 
@@ -275,12 +356,31 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
     );
 
     try {
+      if (!TripTrackingService.instance.isTracking) {
+        if (Theme.of(context).platform == TargetPlatform.android) {
+          final backgroundStatus = await Permission.locationAlways.status;
+          if (!backgroundStatus.isGranted) {
+            await Permission.locationAlways.request();
+          }
+        }
+
+        final initialPosition = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        await TripTrackingService.instance.start(
+          initialPosition: initialPosition,
+          destinationName: place.name,
+        );
+        if (mounted) setState(() {});
+      }
+
       final launched = await launchUrl(
         googleMapsUrl,
         mode: LaunchMode.externalApplication,
       );
 
       if (!launched) {
+        await TripTrackingService.instance.finish();
         throw Exception('ไม่สามารถเปิด Google Maps ได้');
       }
     } catch (e) {
@@ -288,6 +388,8 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('เปิด Google Maps ไม่สำเร็จ: $e')),
       );
+    } finally {
+      _isStartingNavigation = false;
     }
   }
 
@@ -316,7 +418,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
               const SizedBox(height: 16),
               Text(
                 'กำลังค้นหาตำแหน่งของคุณ...',
-                style: GoogleFonts.inter(color: AppColors.cFF1E293B, fontSize: 14, fontWeight: FontWeight.w500),
+                style: GoogleFonts.prompt(color: AppColors.cFF1E293B, fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -352,7 +454,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   Text(
                     _locationError!,
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(color: AppColors.cFF1E293B, fontSize: 15, fontWeight: FontWeight.w500),
+                    style: GoogleFonts.prompt(color: AppColors.cFF1E293B, fontSize: 15, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
@@ -465,6 +567,21 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             ),
           ),
 
+          if (TripTrackingService.instance.isTracking)
+            Positioned(
+              top: 120,
+              left: 16,
+              child: FilledButton.icon(
+                onPressed: _askToFinishTrip,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.cFFDC2626,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('จบทริป'),
+              ),
+            ),
+
           // --- 4. Bottom Sheet (Nearest Locations) ---
           Positioned(
             bottom: 85,
@@ -547,7 +664,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   Expanded(
                     child: Text(
                       _isLoadingPlaces ? "กำลังค้นหาจุดพักรถ..." : "ค้นหาจุดพักรถ...",
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.prompt(
                         color: AppColors.cFF94A3B8,
                         fontSize: 14,
                       ),
@@ -678,7 +795,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.inter(
+            style: GoogleFonts.prompt(
               color: Colors.white,
               fontSize: 10,
               fontWeight: FontWeight.bold,
@@ -729,7 +846,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
               children: [
                 Text(
                   "สถานที่ใกล้เคียง",
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.prompt(
                     color: AppColors.cFF1E293B,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -737,7 +854,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 ),
                 Text(
                   "ในระยะ 5 กม.",
-                  style: GoogleFonts.inter(color: Colors.grey.shade400, fontSize: 12, fontWeight: FontWeight.w500),
+                  style: GoogleFonts.prompt(color: Colors.grey.shade400, fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -774,7 +891,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             Text(
               _placesError!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(color: Colors.grey.shade500, fontSize: 12),
+              style: GoogleFonts.prompt(color: Colors.grey.shade500, fontSize: 12),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -793,7 +910,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         padding: const EdgeInsets.symmetric(vertical: 24),
         child: Text(
           'ไม่พบปั๊มน้ำมันหรือจุดพักรถในระยะ 5 กม.',
-          style: GoogleFonts.inter(color: Colors.grey.shade500, fontSize: 13),
+          style: GoogleFonts.prompt(color: Colors.grey.shade500, fontSize: 13),
         ),
       );
     }
@@ -835,7 +952,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             width: 40,
             child: Text(
               place.distanceLabel,
-              style: GoogleFonts.inter(
+              style: GoogleFonts.prompt(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color: Colors.grey.shade400,
@@ -876,7 +993,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                     place.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: GoogleFonts.prompt(
                       color: AppColors.cFF1E293B,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,

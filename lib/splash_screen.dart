@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 
 import '/services/api_service.dart';
+import '/services/push_notification_service.dart';
 import 'devices_screen.dart';
 import 'device_registration_screen.dart';
-import 'home_screen.dart';
 import 'main_layout.dart';
 import 'welcome_screen.dart'; // หน้าแรกเดิมของคุณ (มี logic ไป Login เอง)
 
@@ -25,24 +27,39 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _didNavigate = false;
+
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    _bootstrap().timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        ApiService.instance.clearSession();
+        _goTo(const WelcomeScreen());
+      },
+    );
   }
 
   Future<void> _bootstrap() async {
-    final hasSession = await ApiService.instance.restoreSession();
-
-    if (!hasSession) {
-      _goTo(const WelcomeScreen());
-      return;
-    }
-
-    // 🆕 เช็คหน้าล่าสุดที่ผู้ใช้เคยอยู่ก่อนรีเฟรช/ปิดแอป
-    final lastRoute = await ApiService.instance.getLastRoute();
-
     try {
+      final hasSession = await ApiService.instance.restoreSession().timeout(
+        const Duration(seconds: 3),
+      );
+
+      // A fresh install has no saved token and must always start at Welcome.
+      if (!hasSession) {
+        _goTo(const WelcomeScreen());
+        return;
+      }
+
+      // FCM registration is best-effort background work. Never block startup.
+      unawaited(PushNotificationService.instance.registerTokenWithBackend());
+
+      final lastRoute = await ApiService.instance.getLastRoute().timeout(
+        const Duration(seconds: 3),
+      );
+
       switch (lastRoute) {
         case 'home':
           _goTo(const MainLayout());
@@ -56,7 +73,9 @@ class _SplashScreenState extends State<SplashScreen> {
       }
 
       // ไม่มี last_route ที่รู้จัก (เช่น login ครั้งแรก) -> ใช้ logic เดิม
-      final devices = await ApiService.instance.devices();
+      final devices = await ApiService.instance.devices().timeout(
+        const Duration(seconds: 6),
+      );
       if (devices.isNotEmpty) {
         _goTo(const DeviceManagementScreen());
       } else {
@@ -70,7 +89,8 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _goTo(Widget screen) {
-    if (!mounted) return;
+    if (!mounted || _didNavigate) return;
+    _didNavigate = true;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => screen),

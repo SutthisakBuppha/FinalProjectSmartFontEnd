@@ -137,11 +137,11 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   // 1. Header Gradient สีน้ำเงิน
-                  _buildHeader(scale, horizontalPadding),
+                  _buildHeader(),
 
                   // 2. เนื้อหาหลัก Overlap ขึ้นไปบน Header
                   Padding(
-                    padding: EdgeInsets.only(top: 130 * scale),
+                    padding: const EdgeInsets.only(top: 130),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -190,10 +190,10 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
 
   // --- Widgets ---
 
-  Widget _buildHeader(double scale, double padding) {
+  Widget _buildHeader() {
     return Container(
-      height: 210 * scale,
-      padding: EdgeInsets.fromLTRB(padding, 56 * scale, padding, 0),
+      height: 210,
+      padding: const EdgeInsets.fromLTRB(20, 50, 20, 0),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -205,15 +205,6 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18 * scale),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.12),
-              padding: EdgeInsets.all(10 * scale),
-            ),
-          ),
-          SizedBox(width: 12 * scale),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,16 +214,16 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                   'แนวโน้มความเสี่ยง',
                   style: GoogleFonts.prompt(
                     color: Colors.white,
-                    fontSize: 22 * scale,
+                    fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 4 * scale),
+                const SizedBox(height: 4),
                 Text(
                   'สถิติและภาพรวมการแจ้งเตือน',
                   style: GoogleFonts.prompt(
                     color: Colors.white.withOpacity(0.8),
-                    fontSize: 13 * scale,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -240,10 +231,11 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
           ),
           IconButton(
             onPressed: _isLoading ? null : _loadAlerts,
-            icon: Icon(Icons.refresh_rounded, color: Colors.white, size: 22 * scale),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.12),
-              padding: EdgeInsets.all(10 * scale),
+            tooltip: 'รีเฟรชข้อมูล',
+            icon: const Icon(
+              Icons.refresh,
+              color: Colors.white,
+              size: 24,
             ),
           ),
         ],

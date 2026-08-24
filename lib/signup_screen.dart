@@ -235,7 +235,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
                     Text(
                       "สมัครสมาชิก",
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.prompt(
                         fontSize: (24 * scale).clamp(20.0, 28.0),
                         fontWeight: FontWeight.w700,
                         color: isDark ? Colors.white : AppColors.cFF112D4E,

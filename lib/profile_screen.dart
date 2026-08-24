@@ -38,12 +38,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _alerts = results[1] as List<Map<String, dynamic>>;
         final trips = results[2] as List<Map<String, dynamic>>;
         _totalDistance = trips.fold<double>(0, (sum, trip) {
-          return sum + (double.tryParse(trip['distance']?.toString() ?? '') ?? 0);
+          return sum +
+              (double.tryParse(trip['distance']?.toString() ?? '') ?? 0);
         });
         _totalDrivingMinutes = trips.fold<int>(0, (sum, trip) {
           final start = DateTime.tryParse(trip['start_time']?.toString() ?? '');
           final end = DateTime.tryParse(trip['end_time']?.toString() ?? '');
-          return sum + (start != null && end != null ? end.difference(start).inMinutes : 0);
+          return sum +
+              (start != null && end != null
+                  ? end.difference(start).inMinutes
+                  : 0);
         });
         _isLoading = false;
       });
@@ -90,21 +94,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) => AlertDialog(
         title: Text(
           "ยืนยันการออกจากระบบ",
-          style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+          style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
         ),
         content: Text(
           "คุณต้องการออกจากระบบใช่หรือไม่?",
-          style: GoogleFonts.inter(),
+          style: GoogleFonts.prompt(),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text("ยกเลิก", style: GoogleFonts.inter(color: Colors.grey)),
+            child: Text("ยกเลิก", style: GoogleFonts.prompt(color: Colors.grey)),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context); 
+              Navigator.pop(context);
 
               Navigator.pushAndRemoveUntil(
                 context,
@@ -118,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
             child: Text(
               "ออกจากระบบ",
-              style: GoogleFonts.inter(color: Colors.red),
+              style: GoogleFonts.prompt(color: Colors.red),
             ),
           ),
         ],
@@ -128,21 +132,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.sizeOf(context).height < 760;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       extendBody: true,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.primaryLight))
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primaryLight),
+            )
           : Stack(
               children: [
                 Column(
                   children: [
-                    _buildHeader(),
+                    _buildHeader(isCompact),
                     Expanded(
                       child: SingleChildScrollView(
                         physics: const BouncingScrollPhysics(),
                         child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                          padding: EdgeInsets.fromLTRB(
+                            20,
+                            isCompact ? 12 : 20,
+                            20,
+                            110,
+                          ),
                           child: Column(
                             children: [
                               Row(
@@ -151,23 +164,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 children: [
                                   Text(
                                     "ประวัติการขับขี่ล่าสุด",
-                                    style: GoogleFonts.inter(
+                                    style: GoogleFonts.prompt(
                                       fontSize: 17,
                                       fontWeight: FontWeight.bold,
                                       color: AppColors.text,
                                     ),
                                   ),
-                                  Text(
-                                    "ดูทั้งหมด",
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.secondary,
-                                    ),
-                                  ),
+                                  // Text(
+                                  //   "ดูทั้งหมด",
+                                  //   style: GoogleFonts.prompt(
+                                  //     fontSize: 12,
+                                  //     fontWeight: FontWeight.w600,
+                                  //     color: AppColors.secondary,
+                                  //   ),
+                                  // ),
                                 ],
                               ),
-                              const SizedBox(height: 12),
+                              SizedBox(height: isCompact ? 8 : 12),
                               _buildLogCard(
                                 icon: Icons.bedtime_rounded,
                                 iconColor: AppColors.cFF60A5FA,
@@ -198,39 +211,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 tagBg: AppColors.cFFFFEDD5,
                                 subtitle: '',
                               ),
-                              const SizedBox(height: 30),
-                              SizedBox(
-                                width: double.infinity,
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: _handleLogout,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white,
-                                    foregroundColor: Colors.red.shade600,
-                                    elevation: 0,
-                                    side: BorderSide(
-                                      color: Colors.red.shade100,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const Icon(Icons.logout_rounded),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        "ออกจากระบบ",
-                                        style: GoogleFonts.inter(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
                             ],
                           ),
                         ),
@@ -243,7 +223,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(bool isCompact) {
     final name = _profileData?['name'] ?? 'ไม่ระบุชื่อ';
     final username = _profileData?['username'] ?? 'No Username';
     final rawStatus = _profileData?['status'];
@@ -252,14 +232,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final avatarUrl = _profileData?['avatar_url'];
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [AppColors.primaryDark, AppColors.primaryLight],
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(40)),
-        boxShadow: [
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(isCompact ? 28 : 34),
+        ),
+        boxShadow: const [
           BoxShadow(
             color: Colors.black26,
             blurRadius: 10,
@@ -272,24 +254,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: isCompact ? 2 : 6,
+              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const SizedBox(width: 40),
-                  Text(
-                    "โปรไฟล์",
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      "โปรไฟล์",
+                      style: GoogleFonts.prompt(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   IconButton(
                     icon: const Icon(
                       Icons.edit_note_rounded,
                       color: Colors.white,
-                      size: 28,
+                      size: 25,
                     ),
                     onPressed: () {
                       Navigator.push(
@@ -302,58 +287,76 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ).then((_) => _fetchProfile());
                     },
                   ),
+                  IconButton(
+                    tooltip: 'ออกจากระบบ',
+                    onPressed: _handleLogout,
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      color: Colors.white,
+                      size: 23,
+                    ),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isCompact ? 2 : 10),
             CircleAvatar(
-              radius: 50,
+              radius: isCompact ? 34 : 42,
               backgroundColor: Colors.white24,
               backgroundImage:
                   avatarUrl != null && avatarUrl.toString().isNotEmpty
                   ? NetworkImage(avatarUrl)
                   : null,
               child: avatarUrl == null || avatarUrl.toString().isEmpty
-                  ? const Icon(
+                  ? Icon(
                       Icons.person_rounded,
-                      size: 50,
+                      size: isCompact ? 36 : 44,
                       color: Colors.white,
                     )
                   : null,
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: isCompact ? 6 : 10),
             Text(
               name,
-              style: GoogleFonts.inter(
+              style: GoogleFonts.prompt(
                 color: Colors.white,
-                fontSize: 22,
+                fontSize: isCompact ? 19 : 21,
                 fontWeight: FontWeight.bold,
               ),
             ),
             Text(
               "@$username",
-              style: GoogleFonts.inter(color: Colors.white70, fontSize: 14),
+              style: GoogleFonts.prompt(
+                color: Colors.white70,
+                fontSize: isCompact ? 12 : 13,
+              ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: isCompact ? 5 : 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: isCompact ? 4 : 5,
+              ),
               decoration: BoxDecoration(
                 color: isActive ? AppColors.cFF4ADE80 : AppColors.cFFDC2626,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
                 status,
-                style: GoogleFonts.inter(
+                style: GoogleFonts.prompt(
                   color: Colors.white,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: isCompact ? 6 : 12),
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              margin: EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: isCompact ? 6 : 10,
+              ),
+              padding: EdgeInsets.symmetric(vertical: isCompact ? 9 : 12),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(16),
@@ -361,12 +364,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildStatItem("ระยะทางรวม", "${_totalDistance.toStringAsFixed(1)} กม."),
-                  _buildStatItem("เวลาขับขี่", "${(_totalDrivingMinutes / 60).toStringAsFixed(1)} ชม."),
+                  _buildStatItem(
+                    "ระยะทางรวม",
+                    "${_totalDistance.toStringAsFixed(1)} กม.",
+                  ),
+                  _buildStatItem(
+                    "เวลาขับขี่",
+                    "${(_totalDrivingMinutes / 60).toStringAsFixed(1)} ชม.",
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: isCompact ? 6 : 10),
           ],
         ),
       ),
@@ -378,7 +387,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Text(
           value,
-          style: GoogleFonts.inter(
+          style: GoogleFonts.prompt(
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -387,7 +396,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: GoogleFonts.inter(color: Colors.white70, fontSize: 12),
+          style: GoogleFonts.prompt(color: Colors.white70, fontSize: 12),
         ),
       ],
     );
@@ -400,10 +409,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   List<Map<String, dynamic>> _alertsForType(String type) {
-    final matches = _alerts.where((alert) => alert['type']?.toString() == type).toList();
+    final matches = _alerts.where((alert) {
+      final alertType = alert['type']?.toString();
+
+      // AI บันทึกการลืมตาค้างโดยใช้ชื่อประเภทนี้ในฐานข้อมูล
+      // แต่หน้า Profile แสดงชื่อที่อ่านง่ายว่า "เหม่อลอย"
+      if (type == 'เหม่อลอย') {
+        return alertType == 'เหม่อลอย' ||
+            alertType == 'ไม่กระพริบตาเป็นเวลานาน';
+      }
+
+      return alertType == type;
+    }).toList();
     matches.sort((a, b) {
-      final aTime = DateTime.tryParse((a['timestamp'] ?? a['created_at'] ?? '').toString()) ?? DateTime(0);
-      final bTime = DateTime.tryParse((b['timestamp'] ?? b['created_at'] ?? '').toString()) ?? DateTime(0);
+      final aTime =
+          DateTime.tryParse(
+            (a['timestamp'] ?? a['created_at'] ?? '').toString(),
+          ) ??
+          DateTime(0);
+      final bTime =
+          DateTime.tryParse(
+            (b['timestamp'] ?? b['created_at'] ?? '').toString(),
+          ) ??
+          DateTime(0);
       return bTime.compareTo(aTime);
     });
     return matches;
@@ -453,7 +481,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Text(
                       alertType,
-                      style: GoogleFonts.inter(
+                      style: GoogleFonts.prompt(
                         color: AppColors.text,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -470,7 +498,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       child: Text(
                         '${alerts.length} ครั้ง',
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.prompt(
                           color: tagColor,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -482,7 +510,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 4),
                 Text(
                   _latestAlertText(alerts),
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.prompt(
                     color: AppColors.textMuted,
                     fontSize: 12,
                   ),

@@ -117,7 +117,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
         children: [
           // ==================== ส่วน Header สีน้ำเงิน ====================
           Container(
-            padding: const EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 30),
+            padding: const EdgeInsets.only(
+              top: 50,
+              left: 20,
+              right: 20,
+              bottom: 30,
+            ),
             decoration: const BoxDecoration(
               color: Color(0xFF1B3258),
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
@@ -128,12 +133,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'ประวัติการแจ้งเตือน',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    const Expanded(
+                      child: Text(
+                        'ประวัติการแจ้งเตือน',
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                     IconButton(
@@ -149,104 +157,151 @@ class _NotificationScreenState extends State<NotificationScreen> {
                 const SizedBox(height: 20),
 
                 // Cards แสดงสถิติด้านบน
-                Row(
-                  children: [
-                    // การ์ดวันนี้
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: const [
-                                Text('วันนี้', style: TextStyle(color: Colors.black54, fontSize: 13)),
-                                CircleAvatar(
-                                  radius: 12,
-                                  backgroundColor: Color(0xFFE8ECEF),
-                                  child: Icon(Icons.notifications, size: 14, color: Colors.black87),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final textScale = MediaQuery.textScalerOf(context).scale(1);
+                    final stackCards =
+                        textScale >= 1.3 || constraints.maxWidth < 340;
+                    final cardWidth = stackCards
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 12) / 2;
+
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        // การ์ดวันนี้
+                        SizedBox(
+                          width: cardWidth,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: const [
+                                    Expanded(
+                                      child: Text(
+                                        'วันนี้',
+                                        softWrap: true,
+                                        style: TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Color(0xFFE8ECEF),
+                                      child: Icon(
+                                        Icons.notifications,
+                                        size: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                RichText(
+                                  text: TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: '$todayEventsCount ',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1B3258),
+                                        ),
+                                      ),
+                                      const TextSpan(
+                                        text: 'เหตุการณ์',
+                                        style: TextStyle(
+                                          color: Colors.black87,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            RichText(
-                              text: TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: '$todayEventsCount ',
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFF1B3258),
-                                    ),
-                                  ),
-                                  const TextSpan(
-                                    text: 'เหตุการณ์',
-                                    style: TextStyle(color: Colors.black87, fontSize: 13),
-                                  ),
-                                ],
-                              ),
+                          ),
+                        ),
+                        // การ์ดความเสี่ยงสูงสุด
+                        SizedBox(
+                          width: cardWidth,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // การ์ดความเสี่ยงสูงสุด
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: const [
-                                Text('ความเสี่ยงสูงสุด', style: TextStyle(color: Colors.black54, fontSize: 13)),
-                                CircleAvatar(
-                                  radius: 12,
-                                  backgroundColor: Color(0xFFFFF3E0),
-                                  child: Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: const [
+                                    Expanded(
+                                      child: Text(
+                                        'ความเสี่ยงสูงสุด',
+                                        softWrap: true,
+                                        style: TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Color(0xFFFFF3E0),
+                                      child: Icon(
+                                        Icons.warning_amber_rounded,
+                                        size: 14,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                RichText(
+                                  text: TextSpan(
+                                    children: [
+                                      const TextSpan(
+                                        text: 'ระดับ ',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: '$maxRiskLevel ',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            RichText(
-                              text: TextSpan(
-                                children: [
-                                  const TextSpan(
-                                    text: 'ระดับ ',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.orange,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: '$maxRiskLevel ',
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.orange,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ],
             ),
@@ -257,130 +312,163 @@ class _NotificationScreenState extends State<NotificationScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : isError
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                errorMessage,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1B3258),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 10),
-                                ),
-                                onPressed: handleRetryOrLogout,
-                                child: Text(
-                                  isAuthError ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่',
-                                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : notifications.isEmpty
-                        ? const Center(child: Text('ยังไม่มีการแจ้งเตือน'))
-                        : RefreshIndicator(
-                            onRefresh: fetchNotificationData,
-                            child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
-                              itemCount: notifications.length,
-                              itemBuilder: (context, index) {
-                                final n = notifications[index];
-                                final bool isRead = n['is_read'] == true || n['is_read'] == 1;
-                                final String message = n['message']?.toString() ?? '';
-                                final alertData = n['alert'];
-                                final String type = alertData is Map
-                                    ? (alertData['type']?.toString() ?? '')
-                                    : '';
-                                final String time = _formatDate(n['created_at']?.toString());
-                                final String notiId = n['noti_id']?.toString() ?? '';
-
-                                return InkWell(
-                                  onTap: isRead || notiId.isEmpty
-                                      ? null
-                                      : () async {
-                                          try {
-                                            await ApiService.instance
-                                                .markNotificationRead(notiId);
-                                            if (!mounted) return;
-                                            setState(() {
-                                              n['is_read'] = true;
-                                            });
-                                          } catch (_) {
-                                            // เงียบไว้ ไม่ต้อง block UI ถ้า mark read ไม่สำเร็จ
-                                          }
-                                        },
-                                  child: Container(
-                                    margin: const EdgeInsets.only(bottom: 12),
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: isRead ? Colors.transparent : Colors.orange.shade200,
-                                      ),
-                                    ),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 18,
-                                          backgroundColor: isRead
-                                              ? const Color(0xFFE8ECEF)
-                                              : const Color(0xFFFFF3E0),
-                                          child: Icon(
-                                            Icons.warning_amber_rounded,
-                                            size: 18,
-                                            color: isRead ? Colors.black45 : Colors.orange,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              if (type.isNotEmpty)
-                                                Text(
-                                                  type,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                message,
-                                                style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                              ),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                time,
-                                                style: const TextStyle(fontSize: 11, color: Colors.black45),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            errorMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B3258),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 36,
+                                vertical: 10,
+                              ),
+                            ),
+                            onPressed: handleRetryOrLogout,
+                            child: Text(
+                              isAuthError ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : notifications.isEmpty
+                ? const Center(child: Text('ยังไม่มีการแจ้งเตือน'))
+                : RefreshIndicator(
+                    onRefresh: fetchNotificationData,
+                    child: ListView.builder(
+                      // MainLayout ใช้ BottomNavigationBar แบบลอยทับเนื้อหา
+                      // จึงต้องเผื่อพื้นที่ท้ายรายการ เพื่อให้การ์ดใบสุดท้าย
+                      // เลื่อนขึ้นมาเหนือเมนูและมองเห็นได้ทั้งหมด
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        16,
+                        16,
+                        MediaQuery.paddingOf(context).bottom + 120,
+                      ),
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: notifications.length,
+                      itemBuilder: (context, index) {
+                        final n = notifications[index];
+                        final bool isRead =
+                            n['is_read'] == true || n['is_read'] == 1;
+                        final String message = n['message']?.toString() ?? '';
+                        final alertData = n['alert'];
+                        final String type = alertData is Map
+                            ? (alertData['type']?.toString() ?? '')
+                            : '';
+                        final String time = _formatDate(
+                          n['created_at']?.toString(),
+                        );
+                        final String notiId = n['noti_id']?.toString() ?? '';
+
+                        return InkWell(
+                          onTap: isRead || notiId.isEmpty
+                              ? null
+                              : () async {
+                                  try {
+                                    await ApiService.instance
+                                        .markNotificationRead(notiId);
+                                    if (!mounted) return;
+                                    setState(() {
+                                      n['is_read'] = true;
+                                    });
+                                  } catch (_) {
+                                    // เงียบไว้ ไม่ต้อง block UI ถ้า mark read ไม่สำเร็จ
+                                  }
+                                },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isRead
+                                    ? Colors.transparent
+                                    : Colors.orange.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: isRead
+                                      ? const Color(0xFFE8ECEF)
+                                      : const Color(0xFFFFF3E0),
+                                  child: Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 18,
+                                    color: isRead
+                                        ? Colors.black45
+                                        : Colors.orange,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (type.isNotEmpty)
+                                        Text(
+                                          type,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        message,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        time,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.black45,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),

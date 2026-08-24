@@ -76,7 +76,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             const SizedBox(height: 16),
             Text(
               "ส่งรหัสยืนยันสำเร็จ!",
-              style: GoogleFonts.inter(
+              style: GoogleFonts.prompt(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: AppColors.text,
@@ -86,7 +86,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             Text(
               "กรุณาตรวจสอบอีเมลของคุณ\nเพื่อนำรหัส OTP มากรอกตั้งรหัสผ่านใหม่",
               textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 14, color: AppColors.textMuted),
+              style: GoogleFonts.prompt(fontSize: 14, color: AppColors.textMuted),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -111,7 +111,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ),
                 child: Text(
                   "กรอกรหัสยืนยัน",
-                  style: GoogleFonts.inter(
+                  style: GoogleFonts.prompt(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -154,7 +154,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             const SizedBox(height: 24),
             Text(
               "ลืมรหัสผ่าน?",
-              style: GoogleFonts.inter(
+              style: GoogleFonts.prompt(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
                 color: AppColors.text,
@@ -164,7 +164,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             // ↓ แก้ข้อความให้ตรงกับ flow จริง: ส่งรหัส OTP ไม่ใช่ลิงก์
             Text(
               "ไม่ต้องกังวล! กรุณากรอกอีเมลที่เชื่อมโยงกับบัญชีของคุณ เราจะส่งรหัสยืนยัน 6 หลักไปที่อีเมลของคุณเพื่อตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.inter(
+              style: GoogleFonts.prompt(
                 fontSize: 16,
                 color: AppColors.textMuted,
                 height: 1.5,
@@ -173,7 +173,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             const SizedBox(height: 32),
             Text(
               "อีเมล",
-              style: GoogleFonts.inter(
+              style: GoogleFonts.prompt(
                 fontWeight: FontWeight.w600,
                 color: AppColors.text,
                 fontSize: 14,
@@ -185,7 +185,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               keyboardType: TextInputType.emailAddress,
               decoration: InputDecoration(
                 hintText: "example@email.com",
-                hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                hintStyle: GoogleFonts.prompt(color: Colors.grey.shade400),
                 prefixIcon: Icon(
                   Icons.email_outlined,
                   color: Colors.grey.shade400,
@@ -233,7 +233,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     // ↓ แก้ข้อความปุ่มจาก "ส่งลิงก์รีเซ็ตรหัสผ่าน" เป็นข้อความที่ตรงกับ OTP จริง
                     : Text(
                         "ส่งรหัสยืนยันรีเซ็ตรหัสผ่าน",
-                        style: GoogleFonts.inter(
+                        style: GoogleFonts.prompt(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,

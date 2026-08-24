@@ -90,7 +90,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       children: [
         Text(
           'ประวัติการตรวจจับจาก AI',
-          style: GoogleFonts.kanit(fontSize: 18 * scale, fontWeight: FontWeight.bold, color: AppColors.cFF0F2647),
+          style: GoogleFonts.prompt(fontSize: 18 * scale, fontWeight: FontWeight.bold, color: AppColors.cFF0F2647),
         ),
         SizedBox(height: 12 * scale),
         ...detectionTypes.map((item) {
@@ -104,10 +104,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
               CircleAvatar(backgroundColor: item.$3.withOpacity(.12), child: Icon(item.$2, color: item.$3)),
               SizedBox(width: 12 * scale),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item.$1, style: GoogleFonts.kanit(fontSize: 15 * scale, fontWeight: FontWeight.w600, color: AppColors.cFF1F2937)),
-                Text(latest == null ? 'ยังไม่พบการตรวจจับ' : _formatDateTime(latest.toString()), style: GoogleFonts.kanit(fontSize: 12 * scale, color: AppColors.cFF6B7280)),
+                Text(item.$1, style: GoogleFonts.prompt(fontSize: 15 * scale, fontWeight: FontWeight.w600, color: AppColors.cFF1F2937)),
+                Text(latest == null ? 'ยังไม่พบการตรวจจับ' : _formatDateTime(latest.toString()), style: GoogleFonts.prompt(fontSize: 12 * scale, color: AppColors.cFF6B7280)),
               ])),
-              Text('${alerts.length} ครั้ง', style: GoogleFonts.kanit(fontSize: 14 * scale, fontWeight: FontWeight.bold, color: item.$3)),
+              Text('${alerts.length} ครั้ง', style: GoogleFonts.prompt(fontSize: 14 * scale, fontWeight: FontWeight.bold, color: item.$3)),
             ]),
           );
         }),
@@ -189,14 +189,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   SizedBox(height: 16 * scale),
                                   Text(
                                     _errorMessage,
-                                    style: GoogleFonts.kanit(color: AppColors.cFF1F2937, fontSize: 14 * scale),
+                                    style: GoogleFonts.prompt(color: AppColors.cFF1F2937, fontSize: 14 * scale),
                                     textAlign: TextAlign.center,
                                   ),
                                   SizedBox(height: 16 * scale),
                                   ElevatedButton(
                                     onPressed: _fetchHistoryData,
                                     style: ElevatedButton.styleFrom(backgroundColor: AppColors.cFF0F2647),
-                                    child: Text("ลองใหม่อีกครั้ง", style: GoogleFonts.kanit(color: Colors.white, fontSize: 14 * scale)),
+                                    child: Text("ลองใหม่อีกครั้ง", style: GoogleFonts.prompt(color: Colors.white, fontSize: 14 * scale)),
                                   )
                                 ],
                               ),
@@ -247,7 +247,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       children: [
                                         Text(
                                           "การเดินทางล่าสุด",
-                                          style: GoogleFonts.kanit(
+                                          style: GoogleFonts.prompt(
                                             fontSize: 18 * scale,
                                             fontWeight: FontWeight.bold,
                                             color: AppColors.cFF0F2647,
@@ -255,7 +255,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         ),
                                         Text(
                                           "ดูทั้งหมด",
-                                          style: GoogleFonts.kanit(
+                                          style: GoogleFonts.prompt(
                                             fontSize: 14 * scale,
                                             fontWeight: FontWeight.w500,
                                             color: AppColors.secondary,
@@ -274,7 +274,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         child: Center(
                                           child: Text(
                                             "ไม่พบประวัติการเดินทางของท่าน",
-                                            style: GoogleFonts.kanit(color: AppColors.cFF6B7280, fontSize: 16 * scale),
+                                            style: GoogleFonts.prompt(color: AppColors.cFF6B7280, fontSize: 16 * scale),
                                           ),
                                         ),
                                       )
@@ -378,7 +378,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       Text(
                         "ประวัติการขับขี่",
-                        style: GoogleFonts.kanit(
+                        style: GoogleFonts.prompt(
                           color: Colors.white,
                           fontSize: 24 * scale,
                           fontWeight: FontWeight.bold,
@@ -423,11 +423,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           children: [
                             Text(
                               "ประวัติทั้งหมด",
-                              style: GoogleFonts.kanit(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w600),
+                              style: GoogleFonts.prompt(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w600),
                             ),
                             Text(
                               "ระยะทางรวม ${_totalDistance.toStringAsFixed(1)} กม.",
-                              style: GoogleFonts.kanit(color: Colors.white60, fontSize: 12 * scale, fontWeight: FontWeight.w500),
+                              style: GoogleFonts.prompt(color: Colors.white60, fontSize: 12 * scale, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
@@ -475,7 +475,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               Expanded(
                 child: Text(
                   title.toUpperCase(),
-                  style: GoogleFonts.kanit(
+                  style: GoogleFonts.prompt(
                     color: iconColor,
                     fontSize: 10 * scale,
                     fontWeight: FontWeight.bold,
@@ -492,7 +492,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               children: [
                 TextSpan(
                   text: value,
-                  style: GoogleFonts.kanit(
+                  style: GoogleFonts.prompt(
                     color: AppColors.cFF1F2937,
                     fontSize: 24 * scale,
                     fontWeight: FontWeight.bold,
@@ -501,7 +501,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 if (suffix.isNotEmpty)
                   TextSpan(
                     text: suffix,
-                    style: GoogleFonts.kanit(
+                    style: GoogleFonts.prompt(
                       color: AppColors.cFF6B7280,
                       fontSize: 14 * scale,
                       fontWeight: FontWeight.normal,
@@ -585,7 +585,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               children: [
                                 Text(
                                   title,
-                                  style: GoogleFonts.kanit(
+                                  style: GoogleFonts.prompt(
                                     color: AppColors.cFF1F2937,
                                     fontSize: 16 * scale,
                                     fontWeight: FontWeight.bold,
@@ -594,7 +594,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 ),
                                 Text(
                                   date,
-                                  style: GoogleFonts.kanit(
+                                  style: GoogleFonts.prompt(
                                     color: AppColors.cFF6B7280,
                                     fontSize: 12 * scale,
                                   ),
@@ -618,7 +618,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           SizedBox(width: 4 * scale),
                           Text(
                             status,
-                            style: GoogleFonts.kanit(
+                            style: GoogleFonts.prompt(
                               color: statusColor,
                               fontSize: 12 * scale,
                               fontWeight: FontWeight.bold,
@@ -656,7 +656,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           Text(
             label,
-            style: GoogleFonts.kanit(
+            style: GoogleFonts.prompt(
               color: isAlert && valueColor != null ? valueColor : AppColors.cFF6B7280,
               fontSize: 12 * scale,
               fontWeight: isAlert ? FontWeight.w500 : FontWeight.normal,
@@ -665,7 +665,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           SizedBox(height: 2 * scale),
           Text(
             value,
-            style: GoogleFonts.kanit(
+            style: GoogleFonts.prompt(
               color: isAlert && valueColor != null ? valueColor : AppColors.cFF1F2937,
               fontSize: 14 * scale,
               fontWeight: FontWeight.bold,

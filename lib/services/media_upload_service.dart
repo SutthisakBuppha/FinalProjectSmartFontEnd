@@ -11,17 +11,17 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-import 'api_service.dart'; 
+import 'api_service.dart';
 
 class UploadedMedia {
-  final String
-  mediaId; 
+  final String mediaId;
   final String fileName;
   final String url;
   final int fileSizeBytes;
-  final String type; 
-  final bool
-  isActive; 
+  final String type;
+  final bool isActive;
+  final bool isDefault;
+  final String? displayName;
 
   UploadedMedia({
     required this.mediaId,
@@ -30,6 +30,8 @@ class UploadedMedia {
     required this.fileSizeBytes,
     required this.type,
     this.isActive = false,
+    this.isDefault = false,
+    this.displayName,
   });
 
   factory UploadedMedia.fromJson(Map<String, dynamic> json) {
@@ -42,6 +44,8 @@ class UploadedMedia {
           : int.tryParse(json['file_size'].toString()) ?? 0,
       type: json['type'] ?? '',
       isActive: json['is_active'] == true || json['is_active'] == 1,
+      isDefault: json['is_default'] == true || json['is_default'] == 1,
+      displayName: json['display_name']?.toString(),
     );
   }
 }
@@ -60,7 +64,11 @@ class MediaUploadService {
   Future<XFile?> pickImage({bool fromCamera = false}) async {
     final XFile? picked = await _picker.pickImage(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
-      imageQuality: 100, 
+      // จำกัดขนาดตั้งแต่ต้นทาง ป้องกัน Android ใช้หน่วยความจำสูงเกินไป
+      // เมื่อผู้ใช้เลือกรูปจากกล้องมือถือที่มีความละเอียดหลายสิบ MP
+      imageQuality: 90,
+      maxWidth: 2048,
+      maxHeight: 2048,
     );
     if (picked == null) return null;
     return picked;
@@ -71,7 +79,7 @@ class MediaUploadService {
       sourcePath: source.path,
       aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
       compressFormat: ImageCompressFormat.jpg,
-      compressQuality: 96,
+      compressQuality: 90,
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Crop profile photo',
@@ -92,9 +100,9 @@ class MediaUploadService {
 
   Future<Uint8List> compressImageBytes(
     XFile image, {
-    int quality = 88,
-    int minWidth = 1600,
-    int minHeight = 1600,
+    int quality = 85,
+    int minWidth = 800,
+    int minHeight = 800,
   }) async {
     final bytes = await image.readAsBytes();
     return FlutterImageCompress.compressWithList(
@@ -113,7 +121,6 @@ class MediaUploadService {
     final original = await pickImage(fromCamera: fromCamera);
     if (original == null) return null;
 
-
     XFile toUpload = original;
     if (!kIsWeb) {
       final cropped = await cropProfileImage(original);
@@ -128,7 +135,6 @@ class MediaUploadService {
     );
   }
 
-
   Future<XFile?> pickVideo({bool fromCamera = false}) async {
     final XFile? picked = await _picker.pickVideo(
       source: fromCamera ? ImageSource.camera : ImageSource.gallery,
@@ -136,7 +142,6 @@ class MediaUploadService {
     if (picked == null) return null;
     return picked;
   }
-
 
   Future<PlatformFile?> pickAudio() async {
     final result = await FilePicker.platform.pickFiles(
@@ -172,7 +177,7 @@ class MediaUploadService {
       keepExif: false,
     );
 
-    if (result == null) return file; 
+    if (result == null) return file;
     return result;
   }
 
@@ -243,8 +248,18 @@ class MediaUploadService {
       final data = jsonDecode(response.body);
       return UploadedMedia.fromJson(data['data'] ?? data);
     }
+
+    String? apiMessage;
+    try {
+      final errorBody = jsonDecode(response.body);
+      apiMessage = errorBody is Map<String, dynamic>
+          ? errorBody['message']?.toString()
+          : null;
+    } catch (_) {
+      // Keep the status-code fallback when the server does not return JSON.
+    }
     throw Exception(
-      'อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode}): ${response.body}',
+      apiMessage ?? 'อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode})',
     );
   }
 
@@ -257,6 +272,27 @@ class MediaUploadService {
         'ตั้งเสียงที่ใช้งานไม่สำเร็จ (${response.statusCode}): ${response.body}',
       );
     }
+  }
+
+  Future<void> deleteMedia(String mediaId) async {
+    final uri = Uri.parse('$_baseUrl/device-media/$mediaId');
+    final response = await http.delete(uri);
+
+    if (response.statusCode == 200 || response.statusCode == 204) return;
+
+    String? apiMessage;
+    try {
+      final errorBody = jsonDecode(response.body);
+      apiMessage = errorBody is Map<String, dynamic>
+          ? errorBody['message']?.toString()
+          : null;
+    } catch (_) {
+      // Keep the status-code fallback when the server does not return JSON.
+    }
+
+    throw Exception(
+      apiMessage ?? 'ลบไฟล์เสียงไม่สำเร็จ (${response.statusCode})',
+    );
   }
 
   /// ดึงรายการไฟล์สื่อทั้งหมดที่เคยอัปโหลดของอุปกรณ์นี้

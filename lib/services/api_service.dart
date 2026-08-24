@@ -249,18 +249,17 @@ class ApiService {
       Uri.parse('$_baseUrl/app/drivers/${_requireDriverId()}/avatar'),
     );
     request.headers['Authorization'] = 'Bearer $_token';
-    request.files.add(http.MultipartFile.fromBytes(
-      'avatar',
-      bytes,
-      filename: fileName,
-    ));
+    request.files.add(
+      http.MultipartFile.fromBytes('avatar', bytes, filename: fileName),
+    );
 
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
     final decoded = _decodeResponse(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(
-        _messageFrom(decoded) ?? 'Avatar upload failed (${response.statusCode}).',
+        _messageFrom(decoded) ??
+            'Avatar upload failed (${response.statusCode}).',
         statusCode: response.statusCode,
       );
     }
@@ -272,7 +271,9 @@ class ApiService {
     _driver = profile;
     final avatarUrl = profile['avatar_url']?.toString();
     if (avatarUrl == null || avatarUrl.isEmpty) {
-      throw const ApiException('Avatar upload succeeded but no URL was returned.');
+      throw const ApiException(
+        'Avatar upload succeeded but no URL was returned.',
+      );
     }
     return avatarUrl;
   }
@@ -372,6 +373,39 @@ class ApiService {
     );
   }
 
+  Future<void> resetDeviceWifi(String ipAddress) async {
+    final cleanIp = ipAddress
+        .trim()
+        .replaceFirst(RegExp(r'^https?://'), '')
+        .split('/')
+        .first
+        .split(':')
+        .first;
+
+    if (cleanIp.isEmpty) {
+      throw const ApiException('ไม่พบ IP Address ของอุปกรณ์');
+    }
+
+    try {
+      final response = await _client
+          .get(Uri.parse('http://$cleanIp:82/wifi/reset'))
+          .timeout(const Duration(seconds: 6));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          'อุปกรณ์ปฏิเสธคำสั่งรีเซ็ต Wi-Fi (${response.statusCode})',
+          statusCode: response.statusCode,
+        );
+      }
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        'ส่งคำสั่งล้าง Wi-Fi ไม่สำเร็จ กรุณาตรวจว่ามือถือกับอุปกรณ์อยู่ Wi-Fi เดียวกันและอุปกรณ์ออนไลน์',
+      );
+    }
+  }
+
   Future<List<Map<String, dynamic>>> trips({dynamic deviceId}) async {
     final response = await _request(
       'GET',
@@ -379,6 +413,50 @@ class ApiService {
       query: {if (deviceId != null) 'device_id': deviceId.toString()},
     );
     return _dataList(response);
+  }
+
+  Future<Map<String, dynamic>> startTrip({dynamic deviceId}) async {
+    final response = await _request(
+      'POST',
+      'app/drivers/${_requireDriverId()}/trips',
+      body: {
+        if (deviceId != null) 'device_id': deviceId.toString(),
+        'start_time': DateTime.now().toUtc().toIso8601String(),
+        'distance': 0,
+        'status': 'active',
+      },
+    );
+    return _dataMap(response);
+  }
+
+  Future<Map<String, dynamic>> addTripLocation({
+    required dynamic tripId,
+    required double latitude,
+    required double longitude,
+    double? speed,
+  }) async {
+    final response = await _request(
+      'POST',
+      'app/drivers/${_requireDriverId()}/trips/$tripId/locations',
+      body: {
+        'latitude': latitude,
+        'longitude': longitude,
+        if (speed != null && speed >= 0) 'speed': speed,
+      },
+    );
+    return _dataMap(response);
+  }
+
+  Future<Map<String, dynamic>> completeTrip(dynamic tripId) async {
+    final response = await _request(
+      'PATCH',
+      'app/drivers/${_requireDriverId()}/trips/$tripId',
+      body: {
+        'end_time': DateTime.now().toUtc().toIso8601String(),
+        'status': 'completed',
+      },
+    );
+    return _dataMap(response);
   }
 
   Future<Map<String, dynamic>> tripDetail(dynamic tripId) async {
@@ -505,10 +583,7 @@ class ApiService {
     await _request(
       'POST',
       'app/drivers/${_requireDriverId()}/fcm-token',
-      body: {
-        'token': token,
-        'platform': platform,
-      },
+      body: {'token': token, 'platform': platform},
     );
   }
 
@@ -583,11 +658,7 @@ class ApiService {
     final response = await _request(
       'GET',
       'nearby-places',
-      query: {
-        'lat': latitude,
-        'lng': longitude,
-        'radius': radiusMeters,
-      },
+      query: {'lat': latitude, 'lng': longitude, 'radius': radiusMeters},
     );
 
     final list = response['data'];
@@ -632,7 +703,11 @@ class ApiService {
           body: encodedBody,
         );
       case 'DELETE':
-        response = await _client.delete(uri, headers: headers, body: encodedBody);
+        response = await _client.delete(
+          uri,
+          headers: headers,
+          body: encodedBody,
+        );
       default:
         throw ApiException('Unsupported request method: $method');
     }

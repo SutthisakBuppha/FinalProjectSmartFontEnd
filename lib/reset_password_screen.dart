@@ -114,12 +114,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             const SizedBox(height: 24),
             Text(
               "ยืนยันรหัสและตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.text),
+              style: GoogleFonts.prompt(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.text),
             ),
             const SizedBox(height: 8),
             Text(
               "กรอกรหัสยืนยัน 6 หลักที่ส่งไปยัง ${widget.email} พร้อมตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.inter(fontSize: 14, color: AppColors.textMuted, height: 1.5),
+              style: GoogleFonts.prompt(fontSize: 14, color: AppColors.textMuted, height: 1.5),
             ),
             const SizedBox(height: 32),
 
@@ -184,7 +184,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       )
                     : Text(
                         "ยืนยันตั้งรหัสผ่านใหม่",
-                        style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: GoogleFonts.prompt(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
               ),
             ),
@@ -199,7 +199,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       padding: const EdgeInsets.only(top: 4, bottom: 0),
       child: Text(
         text,
-        style: GoogleFonts.inter(fontWeight: FontWeight.w600, color: AppColors.text, fontSize: 14),
+        style: GoogleFonts.prompt(fontWeight: FontWeight.w600, color: AppColors.text, fontSize: 14),
       ),
     );
   }
@@ -207,7 +207,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   InputDecoration _inputDecoration({required String hint, required IconData icon, Widget? suffixIcon}) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+      hintStyle: GoogleFonts.prompt(color: Colors.grey.shade400),
       prefixIcon: Icon(icon, color: Colors.grey.shade400),
       suffixIcon: suffixIcon,
       filled: true,

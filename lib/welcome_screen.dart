@@ -168,7 +168,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               Text(
                                 "Smart Drive Guard",
                                 textAlign: TextAlign.center,
-                                style: GoogleFonts.outfit(
+                                style: GoogleFonts.prompt(
                                   fontSize: (32 * scale).clamp(26.0, 38.0),
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.cFF0F284E,
@@ -207,7 +207,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             SizedBox(height: 16 * scale),
                             Text(
                               "POWERED BY AI",
-                              style: GoogleFonts.outfit(
+                              style: GoogleFonts.prompt(
                                 fontSize: 10 * scale,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.cFF94A3B8,

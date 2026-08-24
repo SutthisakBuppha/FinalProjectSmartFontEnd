@@ -150,7 +150,7 @@ class _AlertScreenState extends State<AlertScreen> {
                               color: Colors.white,
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              fontFamily: 'Manrope',
+                              fontFamily: 'Prompt',
                             ),
                           ),
                         ),
@@ -453,7 +453,7 @@ class _AlertScreenState extends State<AlertScreen> {
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Prompt',
                 ),
               ),
             ),

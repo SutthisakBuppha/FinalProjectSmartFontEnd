@@ -1,5 +1,7 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'package:audioplayers/audioplayers.dart';
 
@@ -16,6 +18,10 @@ class AlertScreen extends StatefulWidget {
 }
 
 class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStateMixin {
+  static const MethodChannel _alarmChannel = MethodChannel(
+    'smart_drive_guard/alarm',
+  );
+
   bool _isLoading = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isSoundPlaying = false;
@@ -39,7 +45,29 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
     );
     _entranceController.forward();
 
+    _startAlertVibration();
     _playAlertSound();
+  }
+
+  bool get _isAndroidMobile =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  Future<void> _startAlertVibration() async {
+    if (!_isAndroidMobile) return;
+    try {
+      await _alarmChannel.invokeMethod<void>('startVibration');
+    } catch (e) {
+      debugPrint('เริ่มระบบสั่นแจ้งเตือนไม่สำเร็จ: $e');
+    }
+  }
+
+  Future<void> _stopAlertVibration() async {
+    if (!_isAndroidMobile) return;
+    try {
+      await _alarmChannel.invokeMethod<void>('stopVibration');
+    } catch (e) {
+      debugPrint('หยุดระบบสั่นแจ้งเตือนไม่สำเร็จ: $e');
+    }
   }
 
   Future<void> _playAlertSound() async {
@@ -62,7 +90,13 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       final mediaList = await MediaUploadService.instance.fetchDeviceMedia(
         deviceId.toString(),
       );
-      final match = mediaList.where((m) => m.type == 'audio' && m.isActive).toList();
+      final match = mediaList.where((media) {
+        if (media.type != 'audio') return false;
+        if (!media.isDefault) return media.isActive;
+
+        final defaultName = media.displayName ?? media.fileName;
+        return defaultName == activeTone || media.fileName == activeTone;
+      }).toList();
 
       if (match.isEmpty) {
         debugPrint('ไม่มีไฟล์เสียงที่ถูกเลือก (is_active) -> ไม่เล่นเสียง');
@@ -81,6 +115,22 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       debugPrint('👉 URL ที่กำลังจะเล่นจริงบนมือถือ: $audioUrl');
       debugPrint('=========================================');
 
+      // Web keeps its normal media playback. On Android the sound is routed
+      // through the Alarm stream so it follows the device's alarm volume.
+      if (_isAndroidMobile) {
+        await _audioPlayer.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              isSpeakerphoneOn: true,
+              stayAwake: true,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.alarm,
+              audioFocus: AndroidAudioFocus.gainTransient,
+            ),
+          ),
+        );
+      }
+
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setVolume(volume.clamp(0.0, 1.0).toDouble());
       await _audioPlayer.play(UrlSource(audioUrl));
@@ -94,9 +144,11 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
   }
 
   Future<void> _stopAlertSound() async {
-    if (!_isSoundPlaying) return;
+    await _stopAlertVibration();
     try {
-      await _audioPlayer.stop();
+      if (_isSoundPlaying) {
+        await _audioPlayer.stop();
+      }
     } catch (e) {
       debugPrint('หยุดเสียงแจ้งเตือนไม่สำเร็จ: $e');
     } finally {
@@ -106,6 +158,8 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
 
   @override
   void dispose() {
+    // MethodChannel calls cannot be awaited from dispose.
+    _stopAlertVibration();
     _entranceController.dispose();
     _audioPlayer.dispose();
     super.dispose();
@@ -152,7 +206,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                             color: Colors.white,
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            fontFamily: 'Manrope',
+                            fontFamily: 'Prompt',
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -463,7 +517,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
-                  fontFamily: 'Manrope',
+                  fontFamily: 'Prompt',
                 ),
               ),
             ),

@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'devices_screen.dart'; // เพิ่มเข้ามา เพื่อ navigate ไปหน้ารายการอุปกรณ์หลังเชื่อมต่อสำเร็จ
 
 class WifiProvisioningScreen extends StatefulWidget {
   final String serialNumber; // รับมาจากหน้าลงทะเบียนก่อนหน้า
@@ -18,7 +17,10 @@ class WifiProvisioningScreen extends StatefulWidget {
 class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
   BluetoothDevice? _targetDevice;
   bool _isScanning = false;
+  bool _isStartingScan = false;
   bool _isConnected = false;
+  bool _isSending = false;
+  bool _permissionPermanentlyDenied = false;
   String _statusMessage = "กำลังเตรียมพร้อม...";
 
   final TextEditingController _ssidController = TextEditingController();
@@ -31,8 +33,9 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
 
   // UUID ของ Service และ Characteristic ที่ฝั่ง Hardware (กล้อง) กำหนดไว้
   // (อันนี้ต้องตรงกับที่โปรแกรมเมอร์ฝั่ง Hardware เขียนไว้ในกล้อง)
-  final String SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-  final String CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+  static const String _serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  static const String _characteristicUuid =
+      "beb5483e-36e1-4688-b7f5-ea07361b26a8";
 
   @override
   void initState() {
@@ -55,27 +58,56 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
   // 0. ขอ permission ก่อน แล้วค่อยเริ่มสแกน (สำคัญมาก ถ้าข้ามขั้นนี้จะหาไม่เจอเลย)
   Future<void> _initBleAndScan() async {
     if (!mounted) return;
+
+    // Browsers do not support permission_handler's bluetooth permissions.
+    // Web Bluetooth must be started by a direct user gesture instead.
+    if (kIsWeb) {
+      setState(() {
+        _isScanning = false;
+        _statusMessage =
+            'กด “ลองค้นหาใหม่” เพื่อให้ Chrome เปิดหน้าต่างค้นหาอุปกรณ์ Bluetooth';
+      });
+      return;
+    }
+
     setState(() {
       _isScanning = true;
       _statusMessage = "กำลังขอสิทธิ์ Bluetooth และ Location...";
     });
 
-    final statuses = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
+    Map<Permission, PermissionStatus> statuses;
+    try {
+      statuses = await [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.locationWhenInUse,
+      ].request();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isScanning = false;
+        _statusMessage = 'ขอสิทธิ์ Bluetooth ไม่สำเร็จ: $e';
+      });
+      return;
+    }
 
     debugPrint("Permission statuses: $statuses");
 
-    final allGranted = statuses.values.every((s) => s.isGranted);
+    final bluetoothGranted =
+        statuses[Permission.bluetoothScan]?.isGranted == true &&
+        statuses[Permission.bluetoothConnect]?.isGranted == true;
+    final permanentlyDenied = statuses.values.any(
+      (status) => status.isPermanentlyDenied,
+    );
 
     if (!mounted) return;
 
-    if (!allGranted) {
+    if (!bluetoothGranted) {
       setState(() {
         _isScanning = false;
-        _statusMessage = "กรุณาอนุญาตสิทธิ์ Bluetooth และ Location ในตั้งค่าเครื่อง แล้วลองใหม่";
+        _permissionPermanentlyDenied = permanentlyDenied;
+        _statusMessage =
+            "กรุณาอนุญาตสิทธิ์ Bluetooth ในตั้งค่าเครื่อง แล้วลองใหม่";
       });
       return;
     }
@@ -84,21 +116,43 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
     _adapterStateSub = FlutterBluePlus.adapterState.listen((state) {
       debugPrint("Bluetooth adapter state: $state");
       if (!mounted) return;
-      if (state != BluetoothAdapterState.on) {
+      if (state == BluetoothAdapterState.on) {
+        if (_targetDevice == null && !_isScanning && !_isStartingScan) {
+          _startScan();
+        }
+      } else {
+        _scanTimeoutTimer?.cancel();
+        FlutterBluePlus.stopScan();
         setState(() {
+          _isScanning = false;
           _statusMessage = "กรุณาเปิด Bluetooth บนเครื่องก่อน";
         });
       }
     });
 
-    _startScan();
+    final currentState = await FlutterBluePlus.adapterState.first;
+    if (!mounted) return;
+    if (currentState == BluetoothAdapterState.on) {
+      await _startScan();
+    } else {
+      setState(() {
+        _isScanning = false;
+        _statusMessage = 'กรุณาเปิด Bluetooth บนเครื่องก่อน';
+      });
+    }
   }
 
   // 1. ค้นหากล้องที่มี S/N ตรงกัน
-  void _startScan() async {
-    if (!mounted) return;
+  String _normalizeBleIdentifier(String value) =>
+      value.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+  Future<void> _startScan() async {
+    if (!mounted || _isStartingScan || _isConnected) return;
+    _isStartingScan = true;
     setState(() {
       _isScanning = true;
+      _permissionPermanentlyDenied = false;
+      _targetDevice = null;
       _statusMessage = "กำลังค้นหาบลูทูธของกล้องใกล้คุณ...";
     });
 
@@ -107,46 +161,104 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
     // ยกเลิก subscription เก่าก่อน (กันสมัคร listener ซ้ำเวลากด "ลองค้นหาใหม่")
     await _scanResultsSub?.cancel();
     _scanTimeoutTimer?.cancel();
+    await FlutterBluePlus.stopScan();
 
-    // เริ่มสแกน BLE
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
-
+    // สมัคร listener ก่อนเริ่ม scan เพื่อไม่ให้พลาด advertisement ช่วงแรก
     _scanResultsSub = FlutterBluePlus.scanResults.listen((results) {
       if (!mounted) return;
       debugPrint("จำนวนอุปกรณ์ที่เจอตอนนี้: ${results.length}");
-      for (ScanResult r in results) {
-        debugPrint("Found device: '${r.device.platformName}'");
-        // แนะนำให้ฝั่ง Hardware ตั้งชื่อ Bluetooth ให้มี S/N อยู่ด้วย เช่น "DashCam_SN12345"
-        if (r.device.platformName.contains(widget.serialNumber)) {
-          FlutterBluePlus.stopScan();
-          setState(() {
-            _targetDevice = r.device;
-            _isScanning = false;
-          });
-          _connectToDevice(); // เจอแล้วให้เชื่อมต่อทันที
+      final expectedSerial = _normalizeBleIdentifier(widget.serialNumber);
+      final expectedSuffix = expectedSerial.length > 6
+          ? expectedSerial.substring(expectedSerial.length - 6)
+          : expectedSerial;
+      final serviceCandidates = <ScanResult>[];
+      ScanResult? matchedByName;
+
+      for (final r in results) {
+        final platformName = r.device.platformName;
+        final advertisedName = r.advertisementData.advName;
+        final hasProvisioningService = r.advertisementData.serviceUuids.any(
+          (uuid) => uuid.toString().toLowerCase() == _serviceUuid,
+        );
+        debugPrint(
+          "Found BLE: platform='$platformName', advertised='$advertisedName', provisioning=$hasProvisioningService",
+        );
+        final normalizedNames = _normalizeBleIdentifier(
+          '$platformName$advertisedName',
+        );
+        if (expectedSerial.isNotEmpty &&
+            (normalizedNames.contains(expectedSerial) ||
+                normalizedNames.contains(expectedSuffix))) {
+          matchedByName = r;
           break;
         }
+        if (hasProvisioningService) serviceCandidates.add(r);
+      }
+
+      // UUID fallback supports older firmware whose long BLE name may be
+      // omitted by Android. Only auto-select when exactly one board is found.
+      final match =
+          matchedByName ??
+          (serviceCandidates.length == 1 ? serviceCandidates.first : null);
+      if (match != null) {
+        FlutterBluePlus.stopScan();
+        _scanTimeoutTimer?.cancel();
+        setState(() {
+          _targetDevice = match.device;
+          _isScanning = false;
+        });
+        _connectToDevice();
       }
     });
 
-    // ถ้าสแกนครบเวลาแล้วยังไม่เจอ ให้แจ้ง user
+    // Always stop the loading state, even when the native scan callback stalls.
     _scanTimeoutTimer = Timer(const Duration(seconds: 16), () {
       if (mounted && _targetDevice == null) {
+        FlutterBluePlus.stopScan();
         setState(() {
           _isScanning = false;
-          _statusMessage = "ไม่พบกล้อง กรุณาตรวจสอบว่ากล้องเปิดอยู่และอยู่ใกล้เครื่อง แล้วลองใหม่";
+          _statusMessage =
+              "ไม่พบอุปกรณ์ S/N ${widget.serialNumber}\nกรุณาตรวจว่าบอร์ดแสดง 'BLE Active' ใน Serial Monitor แล้วลองใหม่";
         });
       }
     });
+
+    try {
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isScanning = false;
+        _statusMessage =
+            'เริ่มค้นหา Bluetooth ไม่สำเร็จ กรุณาเปิด Bluetooth และ Location แล้วลองใหม่\n$e';
+      });
+      return;
+    } finally {
+      _isStartingScan = false;
+    }
   }
 
   // 2. เชื่อมต่อ Bluetooth กับกล้อง
   void _connectToDevice() async {
     if (_targetDevice == null) return;
     try {
-      await _targetDevice!.connect();
+      await _targetDevice!
+          .connect(timeout: const Duration(seconds: 12))
+          .timeout(const Duration(seconds: 15));
+      // Wi-Fi JSON is normally longer than the default BLE payload (20 bytes).
+      // Android needs a larger MTU before writing the credentials in one piece.
+      if (!kIsWeb) {
+        try {
+          await _targetDevice!.requestMtu(247);
+        } catch (e) {
+          debugPrint("BLE MTU request was not accepted: $e");
+        }
+      }
       if (!mounted) return;
-      setState(() => _isConnected = true);
+      setState(() {
+        _isConnected = true;
+        _statusMessage = "เชื่อมต่อกับกล้องแล้ว กรุณากรอกข้อมูล Wi-Fi";
+      });
     } catch (e) {
       debugPrint("เชื่อมต่อล้มเหลว: $e");
       if (!mounted) return;
@@ -157,78 +269,131 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
   }
 
   // 3. ส่งข้อมูล Wi-Fi ไปยังกล้อง
-  void _sendWifiCredentials() async {
-    if (_targetDevice == null || !_isConnected) return;
+  Future<void> _sendWifiCredentials() async {
+    if (_targetDevice == null || !_isConnected || _isSending) return;
 
-    // ค้นหา Service และ Characteristic ของกล้อง
-    List<BluetoothService> services = await _targetDevice!.discoverServices();
-    BluetoothCharacteristic? targetCharacteristic;
+    final ssid = _ssidController.text.trim();
+    final password = _passwordController.text;
+    if (ssid.isEmpty) {
+      setState(() => _statusMessage = "กรุณากรอกชื่อ Wi-Fi (SSID)");
+      return;
+    }
 
-    for (BluetoothService s in services) {
-      if (s.uuid.toString() == SERVICE_UUID) {
-        for (BluetoothCharacteristic c in s.characteristics) {
-          if (c.uuid.toString() == CHARACTERISTIC_UUID) {
-            targetCharacteristic = c;
-            break;
+    setState(() {
+      _isSending = true;
+      _statusMessage = "กำลังส่งข้อมูล Wi-Fi ไปยังกล้อง...";
+    });
+
+    StreamSubscription<List<int>>? statusSubscription;
+    try {
+      // ค้นหา Service และ Characteristic ของกล้อง
+      final services = await _targetDevice!
+          .discoverServices()
+          .timeout(const Duration(seconds: 12));
+      BluetoothCharacteristic? targetCharacteristic;
+
+      for (final service in services) {
+        if (service.uuid.toString().toLowerCase() == _serviceUuid) {
+          for (final characteristic in service.characteristics) {
+            if (characteristic.uuid.toString().toLowerCase() ==
+                _characteristicUuid) {
+              targetCharacteristic = characteristic;
+              break;
+            }
           }
         }
       }
-    }
 
-    if (targetCharacteristic != null) {
+      if (targetCharacteristic == null) {
+        throw Exception("ไม่พบช่องทางส่งข้อมูล Wi-Fi บนกล้อง");
+      }
+
+      final connectionResult = Completer<String>();
+      statusSubscription = targetCharacteristic.onValueReceived.listen((value) {
+        final status = utf8.decode(value).trim().toLowerCase();
+        debugPrint("สถานะ Wi-Fi จากกล้อง: $status");
+        if ((status == 'connected' || status == 'failed' || status == 'invalid') &&
+            !connectionResult.isCompleted) {
+          connectionResult.complete(status);
+        }
+      });
+      await targetCharacteristic.setNotifyValue(true);
+
       // จับข้อมูล Wi-Fi มัดรวมเป็น JSON String (ต้องตรงกับฝั่ง ESP32 ที่ parse ด้วย ArduinoJson)
       Map<String, String> wifiData = {
-        "ssid": _ssidController.text,
-        "pass": _passwordController.text,
+        "ssid": ssid,
+        "pass": password,
         "server_ip": "smartdriver.lnw.mn",
       };
       String jsonString = jsonEncode(wifiData);
 
       // แปลงเป็น Bytes แล้วเขียน (Write) ลงตัวกล้องผ่าน BLE
-      await targetCharacteristic.write(utf8.encode(jsonString));
+      await targetCharacteristic
+          .write(utf8.encode(jsonString), withoutResponse: false)
+          .timeout(const Duration(seconds: 12));
+
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              "ส่งข้อมูลแล้ว กำลังรอกล้องทดสอบการเชื่อมต่อ Wi-Fi...";
+        });
+      }
+
+      final connectionStatus = await connectionResult.future.timeout(
+        const Duration(seconds: 25),
+      );
+      if (connectionStatus != 'connected') {
+        throw Exception(
+          connectionStatus == 'failed'
+              ? "กล้องเชื่อมต่อ Wi-Fi ไม่สำเร็จ กรุณาตรวจสอบ SSID และรหัสผ่าน"
+              : "ข้อมูล Wi-Fi ไม่ถูกต้อง",
+        );
+      }
 
       if (!mounted) return;
-      // แสดง Alert บอกลูกค้าว่าส่งข้อมูลเรียบร้อย กำลังรอระบบกล้องต่อเน็ต
-      _showSuccessDialog();
-    } else {
+      setState(() => _statusMessage = "กล้องเชื่อมต่อ Wi-Fi สำเร็จแล้ว");
+      await _showSuccessDialog();
+    } catch (e) {
+      debugPrint("ส่งข้อมูล Wi-Fi ผ่าน BLE ไม่สำเร็จ: $e");
       if (!mounted) return;
       setState(() {
-        _statusMessage = "ไม่พบ Service/Characteristic ที่ถูกต้องบนกล้อง";
+        _statusMessage =
+            "ส่งข้อมูล Wi-Fi ไม่สำเร็จ\nกรุณาอยู่ใกล้กล้องแล้วลองใหม่: $e";
       });
+    } finally {
+      await statusSubscription?.cancel();
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
-  void _showSuccessDialog() {
-    showDialog(
+  Future<void> _showSuccessDialog() async {
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text("ส่งข้อมูลสำเร็จ"),
-        content: const Text("กล้องกำลังทำการเชื่อมต่ออินเทอร์เน็ต กรุณารอประมาณ 1-2 นาที จากนั้นตรวจสอบสถานะที่หน้าหลัก"),
+        title: const Text("เชื่อมต่อสำเร็จ"),
+        content: const Text(
+          "กล้องเชื่อมต่อ Wi-Fi สำเร็จแล้ว เมื่อกดตกลงระบบจะบันทึกอุปกรณ์ลงฐานข้อมูลให้อัตโนมัติ",
+        ),
         actions: [
           TextButton(
             onPressed: () {
-              // ปิด dialog ก่อนเสมอ
               Navigator.of(dialogContext).pop();
-
-              // เด้งไปหน้ารายการอุปกรณ์ตรงๆ พร้อมเคลียร์ stack เก่าทิ้งทั้งหมด
-              // (หน้าใหม่จะโหลดรายการอุปกรณ์ใหม่ทันทีใน initState -> เห็นอุปกรณ์ที่เพิ่งลงทะเบียนขึ้นมาเลย)
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => const DeviceManagementScreen()),
-                (route) => false,
-              );
             },
             child: const Text("ตกลง"),
-          )
+          ),
         ],
       ),
     );
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("ตั้งค่าเครือข่ายกล้อง S/N: ${widget.serialNumber}")),
+      appBar: AppBar(
+        title: Text("ตั้งค่าเครือข่ายกล้อง S/N: ${widget.serialNumber}"),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: _isScanning
@@ -245,7 +410,9 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
             : Column(
                 children: [
                   Text(
-                    _isConnected ? "เชื่อมต่อกับกล้องสำเร็จแล้ว" : _statusMessage,
+                    _isConnected
+                        ? "เชื่อมต่อกับกล้องสำเร็จแล้ว"
+                        : _statusMessage,
                     style: TextStyle(
                       color: _isConnected ? Colors.green : Colors.red,
                       fontWeight: FontWeight.bold,
@@ -254,32 +421,65 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (!_isConnected)
-                    TextButton.icon(
-                      onPressed: _startScan,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text("ลองค้นหาใหม่"),
+                    Column(
+                      children: [
+                        TextButton.icon(
+                          onPressed: _isScanning ? null : _startScan,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text("ลองค้นหาใหม่"),
+                        ),
+                        if (_permissionPermanentlyDenied)
+                          TextButton.icon(
+                            onPressed: openAppSettings,
+                            icon: const Icon(Icons.settings),
+                            label: const Text('เปิดการตั้งค่าแอป'),
+                          ),
+                      ],
                     ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _ssidController,
-                    decoration: const InputDecoration(labelText: "ชื่อ Wi-Fi (SSID)", border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: "ชื่อ Wi-Fi (SSID)",
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
-                    decoration: const InputDecoration(labelText: "รหัสผ่าน Wi-Fi", border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                      labelText: "รหัสผ่าน Wi-Fi",
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: _isConnected ? _sendWifiCredentials : null,
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.cFF0F2647),
-                      child: const Text("ส่งข้อมูลให้กล้องเชื่อมต่อเน็ต", style: TextStyle(color: Colors.white)),
+                      onPressed:
+                          _isConnected && !_isSending
+                              ? _sendWifiCredentials
+                              : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.cFF0F2647,
+                      ),
+                      child: _isSending
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              "ส่งข้อมูลให้กล้องเชื่อมต่อเน็ต",
+                              style: TextStyle(color: Colors.white),
+                            ),
                     ),
-                  )
+                  ),
                 ],
               ),
       ),

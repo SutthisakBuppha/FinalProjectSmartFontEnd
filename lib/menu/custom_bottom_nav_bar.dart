@@ -68,7 +68,7 @@ class CustomBottomNavBar extends StatelessWidget {
               FittedBox(
                 child: Text(
                   label,
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.prompt(
                     fontSize: 10,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
                     color: isActive ? activeColor : Colors.grey.shade400,

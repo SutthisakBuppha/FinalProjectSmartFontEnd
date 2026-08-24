@@ -3,9 +3,11 @@ import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 // --- Import ไฟล์ที่เกี่ยวข้อง ---
-import 'WifiProvisioningScreen.dart'; 
-import '/services/api_service.dart'; 
+import 'WifiProvisioningScreen.dart';
+import 'devices_screen.dart';
+import '/services/api_service.dart';
 import 'qr_scanner_screen.dart';
+import '/services/push_notification_service.dart';
 
 class DeviceRegistrationScreen extends StatefulWidget {
   const DeviceRegistrationScreen({super.key, this.onRegistered});
@@ -13,16 +15,17 @@ class DeviceRegistrationScreen extends StatefulWidget {
   final VoidCallback? onRegistered;
 
   @override
-  State<DeviceRegistrationScreen> createState() => _DeviceRegistrationScreenState();
+  State<DeviceRegistrationScreen> createState() =>
+      _DeviceRegistrationScreenState();
 }
 
 class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
-
   final TextEditingController _serialController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  int _currentIndex = 1; 
-  bool _isLoading = false; 
+  int _currentIndex = 1;
+  bool _isLoading = false;
+  String? _wifiProvisionedSerial;
   bool _isCheckingDevice = true; // สถานะตรวจเช็กข้อมูลเดิมตอนเปิดหน้าแอป
 
   @override
@@ -40,7 +43,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   Future<void> _checkExistingDevices() async {
     try {
       final devices = await ApiService.instance.devices();
-      
+
       if (devices.isNotEmpty && mounted) {
         widget.onRegistered?.call();
         return;
@@ -58,45 +61,62 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
 
   // ฟังก์ชันจัดการการลงทะเบียนอุปกรณ์ชิ้นใหม่
   Future<void> _handleRegistration() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) return;
 
-      try {
-        // ดึง serial number จากกล่องข้อความ
-        final serialNumber = _serialController.text.trim();
+    final serialNumber = _serialController.text.trim();
+    setState(() => _isLoading = true);
 
-        // registerDevice รับ positional parameter และคืนค่าเป็น bool (ไม่ throw)
-        final isSuccess = await ApiService.instance.registerDevice(serialNumber);
-
-        if (!mounted) return;
-
-        if (!isSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("ลงทะเบียนไม่สำเร็จ: S/N นี้อาจถูกใช้ไปแล้ว หรือเซิร์ฟเวอร์มีปัญหา")),
-          );
-          return;
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("ลงทะเบียนอุปกรณ์สำเร็จแล้ว")),
+    try {
+      // Provision Wi-Fi first. If registration fails afterwards, remember the
+      // successful S/N so retrying does not force the user through BLE again.
+      if (_wifiProvisionedSerial != serialNumber) {
+        final connected = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => WifiProvisioningScreen(
+              serialNumber: serialNumber,
+            ),
+          ),
         );
-
-        // เมื่อลงทะเบียนเสร็จสำเร็จ ส่งไปยังหน้ารายการอุปกรณ์
-        widget.onRegistered?.call();
-
-      } catch (e) {
         if (!mounted) return;
+        if (connected != true) return;
+        _wifiProvisionedSerial = serialNumber;
+      }
+
+      final isSuccess = await ApiService.instance.registerDevice(serialNumber);
+
+      if (!mounted) return;
+
+      if (!isSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
+          const SnackBar(
+            content: Text(
+              "กล้องเชื่อมต่อ Wi-Fi แล้ว แต่บันทึกอุปกรณ์ไม่สำเร็จ กรุณากดลองบันทึกอีกครั้ง",
+            ),
+          ),
         );
-      } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("ลงทะเบียนอุปกรณ์สำเร็จแล้ว")),
+      );
+
+      if (widget.onRegistered != null) {
+        widget.onRegistered!.call();
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const DeviceManagementScreen()),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -109,13 +129,33 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     );
 
     if (result != null && result.isNotEmpty && mounted) {
-      setState(() {
-        _serialController.text = result;
-      });
+      final uri = Uri.tryParse(result);
+      final isWebLink =
+          uri != null && (uri.scheme == 'http' || uri.scheme == 'https');
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("สแกนสำเร็จ: $result")),
-      );
+      if (isWebLink) {
+        try {
+          await PushNotificationService.instance.showQrLinkNotification(result);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('ส่งลิงก์จาก QR Code ไปที่แถบการแจ้งเตือนแล้ว'),
+            ),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('สร้างการแจ้งเตือนจาก QR ไม่สำเร็จ: $e')),
+          );
+        }
+        return;
+      }
+
+      setState(() => _serialController.text = result);
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("สแกนสำเร็จ: $result")));
     }
   }
 
@@ -126,7 +166,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       appBar: AppBar(
         title: Text(
           "ตั้งค่าอุปกรณ์",
-          style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
+          style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
         ),
         backgroundColor: AppColors.cFF0F2557,
         foregroundColor: Colors.white,
@@ -141,10 +181,10 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 32),
-                
+
                 Text(
                   "ยินดีต้อนรับ!",
-                  style: GoogleFonts.plusJakartaSans(
+                  style: GoogleFonts.prompt(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: AppColors.cFF0F2557,
@@ -153,7 +193,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 const SizedBox(height: 8),
                 Text(
                   "กรุณาลงทะเบียนอุปกรณ์ของคุณเพื่อเริ่มต้นใช้งานระบบตรวจจับ",
-                  style: GoogleFonts.notoSansThai(
+                  style: GoogleFonts.prompt(
                     fontSize: 15,
                     color: Colors.grey[600],
                     height: 1.5,
@@ -166,17 +206,22 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.cFFFFF7ED,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.cFF9A3412.withOpacity(0.2)),
+                    border: Border.all(
+                      color: AppColors.cFF9A3412.withOpacity(0.2),
+                    ),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: AppColors.cFF9A3412),
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppColors.cFF9A3412,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           "คำแนะนำ: หมายเลข Serial Number จะอยู่บนสติกเกอร์ที่ติดอยู่กับตัวเครื่องโปรดตรวจสอบให้ถูกต้อง",
-                          style: GoogleFonts.notoSansThai(
+                          style: GoogleFonts.prompt(
                             fontSize: 13,
                             color: AppColors.cFF9A3412,
                             height: 1.5,
@@ -190,7 +235,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
 
                 Text(
                   "หมายเลข Serial Number อุปกรณ์",
-                  style: GoogleFonts.notoSansThai(
+                  style: GoogleFonts.prompt(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
@@ -199,12 +244,26 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _serialController,
+                  onChanged: (value) {
+                    if (_wifiProvisionedSerial != null &&
+                        value.trim() != _wifiProvisionedSerial) {
+                      setState(() => _wifiProvisionedSerial = null);
+                    }
+                  },
                   decoration: InputDecoration(
                     hintText: "เช่น SD-AI-2024XXXX",
-                    hintStyle: GoogleFonts.plusJakartaSans(color: Colors.grey[400]),
-                    prefixIcon: const Icon(Icons.qr_code_scanner_rounded, color: AppColors.cFF0F2557),
+                    hintStyle: GoogleFonts.prompt(
+                      color: Colors.grey[400],
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.qr_code_scanner_rounded,
+                      color: AppColors.cFF0F2557,
+                    ),
                     suffixIcon: IconButton(
-                      icon: const Icon(Icons.camera_alt_rounded, color: AppColors.cFF0F2557),
+                      icon: const Icon(
+                        Icons.camera_alt_rounded,
+                        color: AppColors.cFF0F2557,
+                      ),
                       tooltip: "สแกน QR Code",
                       onPressed: _scanQRCode,
                     ),
@@ -220,7 +279,10 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
-                      borderSide: const BorderSide(color: AppColors.cFF0F2557, width: 2),
+                      borderSide: const BorderSide(
+                        color: AppColors.cFF0F2557,
+                        width: 2,
+                      ),
                     ),
                     errorBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -233,34 +295,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     }
                     return null;
                   },
-                ),
-                const SizedBox(height: 24),
-
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: () {
-                      final serialNumber = _serialController.text.trim();
-                      if (serialNumber.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("กรุณากรอก Serial Number ก่อนไปตั้งค่า Wi-Fi")),
-                        );
-                        return;
-                      }
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => WifiProvisioningScreen(serialNumber: serialNumber),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.wifi_rounded, size: 18),
-                    label: Text(
-                      "เชื่อมต่อไวไฟให้อุปกรณ์",
-                      style: GoogleFonts.notoSansThai(fontWeight: FontWeight.bold),
-                    ),
-                    style: TextButton.styleFrom(foregroundColor: AppColors.cFF0F2557),
-                  ),
                 ),
                 const SizedBox(height: 40),
 
@@ -281,8 +315,11 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
-                            "ลงทะเบียนอุปกรณ์",
-                            style: GoogleFonts.plusJakartaSans(
+                            _wifiProvisionedSerial ==
+                                    _serialController.text.trim()
+                                ? "ลองบันทึกอุปกรณ์อีกครั้ง"
+                                : "ลงทะเบียนอุปกรณ์",
+                            style: GoogleFonts.prompt(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
