@@ -314,7 +314,19 @@ class ApiService {
       );
       return true;
     } on ApiException {
-      return false;
+      // The server may have committed the first request while its response was
+      // lost. Verify current state so a retry can continue to the device page.
+      try {
+        final registeredDevices = await devices();
+        final wantedSerial = serialNumber.trim().toUpperCase();
+        return registeredDevices.any(
+          (device) =>
+              device['serial_number']?.toString().trim().toUpperCase() ==
+              wantedSerial,
+        );
+      } catch (_) {
+        return false;
+      }
     }
   }
 
@@ -484,7 +496,7 @@ class ApiService {
       'app/drivers/${_requireDriverId()}/alerts',
       query: {
         if (tripId != null) 'trip_id': tripId.toString(),
-        if (todayOnly) 'today': true,
+        if (todayOnly) 'today': '1',
       },
     );
     return _dataList(response);

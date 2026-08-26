@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'login_screen.dart';
@@ -22,21 +24,35 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   // รายการแจ้งเตือนทั้งหมด (ล่าสุดก่อน)
   List<Map<String, dynamic>> notifications = [];
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     fetchNotificationData();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => fetchNotificationData(silent: true),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   // ดึงข้อมูลจาก backend ผ่าน ApiService (ใช้ token/driver_id ชุดเดียวกับทั้งแอป
   // แทนการอ่าน SharedPreferences ตรงๆ ซึ่งใช้คนละ key กับที่ ApiService บันทึกไว้)
-  Future<void> fetchNotificationData() async {
-    setState(() {
-      isLoading = true;
-      isError = false;
-      isAuthError = false;
-    });
+  Future<void> fetchNotificationData({bool silent = false}) async {
+    if (!mounted) return;
+    if (!silent) {
+      setState(() {
+        isLoading = true;
+        isError = false;
+        isAuthError = false;
+      });
+    }
 
     // ❌ ยังไม่ได้ login หรือ session หลุดไปแล้ว
     if (!ApiService.instance.isLoggedIn) {
@@ -50,15 +66,29 @@ class _NotificationScreenState extends State<NotificationScreen> {
     }
 
     try {
-      // 📡 ยิงพร้อมกัน: รายการแจ้งเตือนทั้งหมด + สรุปวันนี้
+      // Alerts are stored once per buzzer cycle. Only today's alerts are
+      // shown, so a new day automatically starts at zero with an empty list.
       final results = await Future.wait([
-        ApiService.instance.notifications(),
+        ApiService.instance.alerts(todayOnly: true),
         ApiService.instance.notificationsSummary(),
       ]);
 
-      final list = results[0] as List<Map<String, dynamic>>;
+      final alerts = results[0] as List<Map<String, dynamic>>;
       final summary = results[1] as Map<String, dynamic>;
+      final list = alerts.map((alert) {
+        final type = alert['type']?.toString().trim() ?? '';
+        return <String, dynamic>{
+          'noti_id': '',
+          'is_read': true,
+          'created_at': alert['timestamp'],
+          'message': type.isEmpty
+              ? 'ตรวจพบพฤติกรรมเสี่ยงขณะขับขี่'
+              : 'ตรวจพบพฤติกรรมเสี่ยงขณะขับขี่ ($type)',
+          'alert': alert,
+        };
+      }).toList();
 
+      if (!mounted) return;
       setState(() {
         notifications = list;
         todayEventsCount = (summary['today_events'] as num?)?.toInt() ?? 0;
@@ -66,6 +96,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
         isLoading = false;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
+      if (silent && e.statusCode != 401 && e.statusCode != 403) return;
       setState(() {
         isError = true;
         isAuthError = e.statusCode == 401 || e.statusCode == 403;
@@ -75,6 +107,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         isLoading = false;
       });
     } catch (e) {
+      if (!mounted || silent) return;
       setState(() {
         isError = true;
         isAuthError = false;

@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
-import 'main_layout.dart';
 import 'device_setting.dart';
 import 'device_registration_screen.dart';
 import '/services/api_service.dart';
@@ -143,9 +142,16 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
     if (resetWifiRequested == null || !mounted) return;
 
     setState(() => _deletingDeviceId = deviceId);
+    String? wifiResetWarning;
     try {
       if (resetWifiRequested) {
-        await ApiService.instance.resetDeviceWifi(ipAddress);
+        try {
+          await ApiService.instance.resetDeviceWifi(ipAddress);
+        } catch (e) {
+          // ESP32 often restarts before returning the HTTP response. Database
+          // removal must continue even when the Wi-Fi reset request times out.
+          wifiResetWarning = e.toString();
+        }
       }
 
       await ApiService.instance.removeDevice(deviceId);
@@ -179,8 +185,10 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            resetWifiRequested
+            resetWifiRequested && wifiResetWarning == null
                 ? 'ลบอุปกรณ์และล้าง Wi-Fi แล้ว บอร์ดกำลังเข้าสู่โหมด BLE'
+                : wifiResetWarning != null
+                ? 'ลบอุปกรณ์ออกจากบัญชีแล้ว แต่ไม่สามารถยืนยันการล้าง Wi-Fi จากบอร์ดได้'
                 : 'ลบอุปกรณ์ออกจากบัญชีแล้ว',
           ),
         ),
@@ -361,27 +369,6 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            onPressed: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MainLayout(initialIndex: 0),
-                ),
-                (route) => false,
-              );
-            },
-            icon: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: Colors.white,
-              size: 18 * scale,
-            ),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white.withOpacity(0.12),
-              padding: EdgeInsets.all(10 * scale),
-            ),
-          ),
-          SizedBox(width: 12 * scale),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

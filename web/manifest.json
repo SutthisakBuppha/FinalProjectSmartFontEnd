@@ -1,11 +1,11 @@
 {
-    "name": "mockup_project",
-    "short_name": "mockup_project",
+    "name": "Smart Drive Guard",
+    "short_name": "Drive Guard",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "ระบบตรวจจับและแจ้งเตือนพฤติกรรมเสี่ยงของผู้ขับขี่",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

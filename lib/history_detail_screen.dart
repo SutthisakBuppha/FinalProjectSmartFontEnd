@@ -261,27 +261,33 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                           const SizedBox(height: 24),
 
                           // --- Risk Events ---
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final textScale = MediaQuery.textScalerOf(
+                                context,
+                              ).scale(1);
+                              final stack =
+                                  textScale >= 1.3 || constraints.maxWidth < 340;
+                              final title = Text(
                                 "เหตุการณ์ความเสี่ยง",
                                 style: GoogleFonts.prompt(
                                   fontSize: 18,
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.cFF0F2647,
                                 ),
-                              ),
-                              Container(
+                              );
+                              final countBadge = Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: widget.statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  isLoadingAlerts 
-                                      ? "กำลังโหลด..." 
+                                  isLoadingAlerts
+                                      ? "กำลังโหลด..."
                                       : "แจ้งเตือน ${alertsList.length} ครั้ง",
                                   style: GoogleFonts.prompt(
                                     fontSize: 12,
@@ -289,8 +295,29 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                                     color: widget.statusColor,
                                   ),
                                 ),
-                              ),
-                            ],
+                              );
+
+                              if (stack) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    title,
+                                    const SizedBox(height: 8),
+                                    countBadge,
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(child: title),
+                                  const SizedBox(width: 12),
+                                  countBadge,
+                                ],
+                              );
+                            },
                           ),
                           const SizedBox(height: 12),
 
@@ -551,19 +578,24 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                 const SizedBox(height: 2),
                 Text(desc,
                     style: GoogleFonts.prompt(fontSize: 12, color: AppColors.cFF6B7280)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    time,
+                    style: GoogleFonts.prompt(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.cFF1F2937,
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-                color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4)),
-            child: Text(time,
-                style: GoogleFonts.prompt(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.cFF1F2937)),
           ),
         ],
       ),

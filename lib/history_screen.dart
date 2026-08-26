@@ -528,16 +528,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
         num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
     String durationText = '-';
 
-    if (trip['duration'] != null) {
-      durationText = trip['duration'].toString();
-      if (!durationText.contains('นาที') && !durationText.contains('ชม.')) {
-        durationText = "$durationText นาที";
-      }
-    } else if (trip['start_time'] != null && trip['end_time'] != null) {
+    // Prefer calculating from start/end so old records affected by the
+    // UTC/Asia-Bangkok 420-minute bug are displayed correctly too.
+    if (trip['start_time'] != null && trip['end_time'] != null) {
       final start = DateTime.tryParse(trip['start_time'].toString());
       final end = DateTime.tryParse(trip['end_time'].toString());
       if (start != null && end != null) {
-        durationText = "${end.difference(start).inMinutes} นาที";
+        durationText = "${end.difference(start).inMinutes.abs()} นาที";
+      }
+    } else if (trip['duration'] != null) {
+      durationText = trip['duration'].toString();
+      if (!durationText.contains('นาที') && !durationText.contains('ชม.')) {
+        durationText = "$durationText นาที";
       }
     }
 

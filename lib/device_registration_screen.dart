@@ -1,13 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 
 // --- Import ไฟล์ที่เกี่ยวข้อง ---
 import 'WifiProvisioningScreen.dart';
 import 'devices_screen.dart';
 import '/services/api_service.dart';
 import 'qr_scanner_screen.dart';
-import '/services/push_notification_service.dart';
 
 class DeviceRegistrationScreen extends StatefulWidget {
   const DeviceRegistrationScreen({super.key, this.onRegistered});
@@ -135,18 +137,31 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
 
       if (isWebLink) {
         try {
-          await PushNotificationService.instance.showQrLinkNotification(result);
+          setState(() => _isLoading = true);
+          final response = await http.get(uri).timeout(const Duration(seconds: 15));
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw Exception('เว็บไซต์ตอบกลับ HTTP ${response.statusCode}');
+          }
+
+          final content = _extractQrWebContent(response.body);
+          if (content.isEmpty) {
+            throw Exception('ไม่พบข้อมูลในลิงก์ QR Code');
+          }
+
           if (!mounted) return;
+          setState(() => _serialController.text = content);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('ส่งลิงก์จาก QR Code ไปที่แถบการแจ้งเตือนแล้ว'),
+              content: Text('ดึงข้อมูลจากลิงก์มาใส่ในช่องเรียบร้อยแล้ว'),
             ),
           );
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('สร้างการแจ้งเตือนจาก QR ไม่สำเร็จ: $e')),
+            SnackBar(content: Text('ไม่สามารถอ่านข้อมูลจากลิงก์ QR Code ได้: $e')),
           );
+        } finally {
+          if (mounted) setState(() => _isLoading = false);
         }
         return;
       }
@@ -157,6 +172,41 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text("สแกนสำเร็จ: $result")));
     }
+  }
+
+  String _extractQrWebContent(String responseBody) {
+    final body = responseBody.trim();
+    if (body.isEmpty) return '';
+
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        for (final key in const [
+          'serial_number',
+          'serial',
+          'device_serial',
+          'sn',
+          'content',
+          'data',
+        ]) {
+          final value = decoded[key];
+          if (value is String && value.trim().isNotEmpty) {
+            return value.trim();
+          }
+        }
+      } else if (decoded is String) {
+        return decoded.trim();
+      }
+    } catch (_) {
+      // The endpoint may return plain text or a small HTML document.
+    }
+
+    return body
+        .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   @override
