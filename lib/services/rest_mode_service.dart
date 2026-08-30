@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'api_service.dart';
+import 'push_notification_service.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════
 /// RestModeService
@@ -42,6 +44,7 @@ class RestModeService {
   static final RestModeService instance = RestModeService._();
 
   static const _kRestUntilKey = 'rest_mode_until_epoch_ms';
+  static const _kRestReasonKey = 'rest_mode_reason';
 
   // ─────────────────────────────────────────────────────────────────────
   // 🆕 Auto-close จาก GPS: ค่าที่ปรับได้ (tuning)
@@ -61,8 +64,10 @@ class RestModeService {
   /// เวลา (เป็น DateTime) ที่โหมดพักรถจะหมดอายุ
   /// ค่าเป็น null หมายถึง "ไม่ได้เปิดโหมดพักรถอยู่"
   final ValueNotifier<DateTime?> restUntil = ValueNotifier<DateTime?>(null);
+  final ValueNotifier<String?> restReason = ValueNotifier<String?>(null);
 
   Timer? _autoExpireTimer;
+  Timer? _warningTimer;
   bool _initialized = false;
 
   // 🆕 GPS auto-close monitoring state
@@ -87,6 +92,7 @@ class RestModeService {
 
     final prefs = await SharedPreferences.getInstance();
     final savedMs = prefs.getInt(_kRestUntilKey);
+    restReason.value = prefs.getString(_kRestReasonKey);
 
     if (savedMs != null) {
       final saved = DateTime.fromMillisecondsSinceEpoch(savedMs);
@@ -97,18 +103,46 @@ class RestModeService {
       } else {
         // หมดอายุไปแล้วตั้งแต่ตอนปิดแอป -> เคลียร์ทิ้ง
         await prefs.remove(_kRestUntilKey);
+        await prefs.remove(_kRestReasonKey);
       }
     }
+
+    try {
+      final devices = await ApiService.instance.devices();
+      if (devices.isNotEmpty) {
+        final raw = devices.first['rest_mode_until']?.toString();
+        final serverUntil = raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+        if (serverUntil != null && serverUntil.isAfter(DateTime.now())) {
+          restUntil.value = serverUntil;
+          restReason.value = devices.first['rest_mode_reason']?.toString();
+          await _persistLocal();
+          _scheduleAutoExpire();
+          _startMovementMonitoring();
+        }
+      }
+    } catch (_) {
+      // Offline startup continues with the locally persisted state.
+    }
+
   }
 
   /// เปิดโหมดพักรถเป็นระยะเวลา [duration]
   /// เช่น RestModeService.instance.activate(const Duration(minutes: 15))
-  Future<void> activate(Duration duration) async {
+  Future<void> activate(Duration duration, {String reason = 'break'}) async {
+    final devices = await ApiService.instance.devices();
+    if (devices.isEmpty) {
+      throw const ApiException('ไม่พบอุปกรณ์สำหรับเปิดโหมดพักรถ');
+    }
+    await ApiService.instance.activateRestMode(
+      deviceId: devices.first['device_id'],
+      minutes: duration.inMinutes,
+      reason: reason,
+    );
+
     final until = DateTime.now().add(duration);
     restUntil.value = until;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_kRestUntilKey, until.millisecondsSinceEpoch);
+    restReason.value = reason;
+    await _persistLocal();
 
     _scheduleAutoExpire();
     _startMovementMonitoring(); // 🆕 เริ่มจับตาความเร็ว GPS เพื่อ auto-close
@@ -117,28 +151,61 @@ class RestModeService {
   /// ยกเลิกโหมดพักรถก่อนครบเวลา (เช่น ผู้ใช้พร้อมขับต่อแล้ว หรือระบบ
   /// auto-close จาก GPS ตรวจพบว่ารถเคลื่อนที่จริง)
   Future<void> cancel() async {
+    final devices = await ApiService.instance.devices();
+    if (devices.isNotEmpty) {
+      await ApiService.instance.cancelRestMode(
+        deviceId: devices.first['device_id'],
+      );
+    }
     restUntil.value = null;
+    restReason.value = null;
     _autoExpireTimer?.cancel();
-    _stopMovementMonitoring(); // 🆕 เลิก monitor GPS เมื่อไม่ได้พักรถแล้ว (ประหยัดแบตด้วย)
+    _warningTimer?.cancel();
+    _stopMovementMonitoring();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kRestUntilKey);
+    await prefs.remove(_kRestReasonKey);
+  }
+
+  Future<void> _persistLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final until = restUntil.value;
+    if (until != null) {
+      await prefs.setInt(_kRestUntilKey, until.millisecondsSinceEpoch);
+    }
+    final reason = restReason.value;
+    if (reason != null) await prefs.setString(_kRestReasonKey, reason);
   }
 
   /// ตั้งเวลาให้ปิดโหมดพักรถอัตโนมัติเมื่อครบกำหนด โดยไม่ต้องรอ poll
   void _scheduleAutoExpire() {
     _autoExpireTimer?.cancel();
+    _warningTimer?.cancel();
     if (restUntil.value == null) return;
 
     final delay = restUntil.value!.difference(DateTime.now());
     if (delay.isNegative) {
       restUntil.value = null;
+      restReason.value = null;
       return;
+    }
+
+    final warningDelay = delay - const Duration(minutes: 1);
+    if (!warningDelay.isNegative) {
+      _warningTimer = Timer(warningDelay, () {
+        unawaited(PushNotificationService.instance.showRestModeEndingSoon());
+      });
     }
 
     _autoExpireTimer = Timer(delay, () {
       restUntil.value = null;
-      _stopMovementMonitoring(); // 🆕 หมดเวลาแล้ว ไม่ต้อง monitor GPS ต่อ
+      restReason.value = null;
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.remove(_kRestUntilKey);
+        prefs.remove(_kRestReasonKey);
+      });
+      _stopMovementMonitoring();
     });
   }
 
@@ -197,7 +264,7 @@ class RestModeService {
   }
 
   void _onPositionUpdate(Position position) {
-    if (!isActive) return; // เผื่อ race condition ตอนกำลังจะหมดเวลาพอดี
+    if (!isActive) return;
 
     // ทิ้ง reading ที่ไม่แม่นยำพอ (accuracy เป็นเมตร ยิ่งน้อยยิ่งแม่น)
     if (position.accuracy > _maxAcceptableAccuracyMeters) {
@@ -217,7 +284,7 @@ class RestModeService {
           '(${speedKmh.toStringAsFixed(1)} km/h นาน ${movingDuration.inSeconds} วิ) '
           '-> ปิดโหมดพักรถอัตโนมัติ',
         );
-        cancel(); // 🆕 auto-close เท่านั้น ไม่มี auto-open
+        unawaited(cancel());
       }
     } else {
       // ความเร็วตกลงมาต่ำกว่า threshold -> รีเซ็ตตัวจับเวลาความต่อเนื่อง
@@ -227,6 +294,8 @@ class RestModeService {
 
   void dispose() {
     _autoExpireTimer?.cancel();
-    _stopMovementMonitoring();
+    _warningTimer?.cancel();
+      _stopMovementMonitoring();
+      unawaited(PushNotificationService.instance.showRestModeEnded());
   }
 }

@@ -187,6 +187,44 @@ class PushNotificationService {
     );
   }
 
+  Future<void> showRestModeEndingSoon() async {
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
+      'โหมดพักรถใกล้สิ้นสุด',
+      'ระบบจะกลับมาตรวจจับพฤติกรรมและแจ้งเตือนอีกครั้งใน 1 นาที',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'rest_mode_status',
+          'สถานะโหมดพักรถ',
+          icon: 'ic_notification',
+          channelDescription: 'แจ้งเตือนก่อนระบบกลับมาตรวจจับพฤติกรรม',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
+  Future<void> showRestModeEnded() async {
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
+      'กลับมาเปิดระบบตรวจจับแล้ว',
+      'Smart Drive Guard กลับมาตรวจจับพฤติกรรมและแจ้งเตือนตามปกติ',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'rest_mode_status',
+          'สถานะโหมดพักรถ',
+          icon: 'ic_notification',
+          channelDescription: 'แจ้งสถานะการเปิดและปิดโหมดพักรถ',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
   Future<void> _openExternalUrl(String value) async {
     final uri = Uri.tryParse(value);
     if (uri == null) return;

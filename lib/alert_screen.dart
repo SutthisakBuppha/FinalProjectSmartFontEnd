@@ -25,6 +25,8 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
   bool _isLoading = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isSoundPlaying = false;
+  bool _webAudioNeedsInteraction = false;
+  String? _preparedAudioUrl;
   
   // สำหรับ Animation ตอนเปิดหน้า
   late AnimationController _entranceController;
@@ -110,6 +112,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
           100.0;
 
       final audioUrl = match.first.url;
+      _preparedAudioUrl = audioUrl;
 
       debugPrint('=========================================');
       debugPrint('👉 URL ที่กำลังจะเล่นจริงบนมือถือ: $audioUrl');
@@ -136,10 +139,46 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       await _audioPlayer.play(UrlSource(audioUrl));
 
       if (mounted) {
-        setState(() => _isSoundPlaying = true);
+        setState(() {
+          _isSoundPlaying = true;
+          _webAudioNeedsInteraction = false;
+        });
       }
     } catch (e) {
       debugPrint('เล่นเสียงแจ้งเตือนไม่สำเร็จ: $e');
+      // Chrome blocks audio started automatically from initState until the
+      // user interacts with the page. Keep the resolved URL and offer a
+      // one-tap retry that counts as a browser user gesture.
+      if (kIsWeb && _preparedAudioUrl != null && mounted) {
+        setState(() => _webAudioNeedsInteraction = true);
+      }
+    }
+  }
+
+  Future<void> _playPreparedWebAudio() async {
+    final audioUrl = _preparedAudioUrl;
+    if (audioUrl == null) {
+      await _playAlertSound();
+      return;
+    }
+
+    try {
+      // Call play directly from the button callback so Chrome recognizes the
+      // operation as playback requested by the user.
+      await _audioPlayer.play(UrlSource(audioUrl));
+      if (mounted) {
+        setState(() {
+          _isSoundPlaying = true;
+          _webAudioNeedsInteraction = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('เปิดเสียงบน Chrome ไม่สำเร็จ: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chrome ไม่สามารถเล่นเสียงได้: $e')),
+        );
+      }
     }
   }
 
@@ -351,6 +390,14 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                             _buildStatusChip(Icons.vibration_rounded, "ระบบสั่น"),
                           ],
                         ),
+                        if (kIsWeb && _webAudioNeedsInteraction) ...[
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: _playPreparedWebAudio,
+                            icon: const Icon(Icons.volume_up_rounded),
+                            label: const Text('แตะเพื่อเปิดเสียงเตือน'),
+                          ),
+                        ],
                         const SizedBox(height: 32),
 
                         // 🔴 Button

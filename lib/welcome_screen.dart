@@ -152,12 +152,26 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                         ],
                                       ),
                                     ),
-                                    // Image Logo
-                                    Image.asset(
-                                      'assets/images/logo.png', // เปลี่ยน Path ให้ตรงกับไฟล์รูปของคุณ
+                                    // White circular logo surface. ClipOval also
+                                    // hides the square background of logo.png.
+                                    Container(
                                       width: logoImageSize,
                                       height: logoImageSize,
-                                      fit: BoxFit.contain,
+                                      padding: EdgeInsets.all(
+                                        (logoImageSize * 0.12).clamp(8.0, 16.0),
+                                      ),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: ClipOval(
+                                        child: Image.asset(
+                                          'assets/images/logo.png',
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.contain,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),

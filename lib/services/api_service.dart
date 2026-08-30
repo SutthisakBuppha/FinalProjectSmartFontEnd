@@ -614,11 +614,12 @@ class ApiService {
   Future<void> activateRestMode({
     required dynamic deviceId,
     required int minutes,
+    required String reason,
   }) async {
     await _request(
       'POST',
       'app/drivers/${_requireDriverId()}/devices/$deviceId/rest-mode',
-      body: {'minutes': minutes},
+      body: {'minutes': minutes, 'reason': reason},
     );
   }
 

@@ -143,6 +143,24 @@ class _HomeScreenState extends State<HomeScreen>
   // โหมดพักรถ: เปิด bottom sheet ให้เลือกระยะเวลา แล้วสั่ง activate
   // ─────────────────────────────────────────────────────────────────────
   Future<void> _showRestModeSheet() async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(
+          'เลือกเหตุผลที่พักรถ',
+          style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
+        ),
+        children: [
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'sleep'), child: const Text('นอนพักในรถ')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'break'), child: const Text('จอดพักผ่อน')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'pickup'), child: const Text('หยิบของหรือทำธุระ')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'temporary'), child: const Text('จอดรถชั่วคราว')),
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'other'), child: const Text('เหตุผลอื่น')),
+        ],
+      ),
+    );
+    if (reason == null || !mounted) return;
+
     final selected = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
@@ -271,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen>
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            "ระบบยังคงเก็บบันทึกเหตุการณ์ตามปกติ เพียงแต่จะไม่ส่งเสียง/แจ้งเตือนรบกวนในช่วงเวลานี้",
+                            "AI จะหยุดสั่ง Buzzer และไม่บันทึกเหตุการณ์ใหม่จนกว่าโหมดพักจะสิ้นสุด",
                             softWrap: true,
                             style: GoogleFonts.prompt(
                               fontSize: 11,
@@ -292,22 +310,39 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     if (selected != null) {
-      await RestModeService.instance.activate(Duration(minutes: selected));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("เปิดโหมดพักรถแล้ว $selected นาที")),
-      );
+      try {
+        await RestModeService.instance.activate(
+          Duration(minutes: selected),
+          reason: reason,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("เปิดโหมดพักรถแล้ว $selected นาที")),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เปิดโหมดพักรถไม่สำเร็จ: $e')),
+        );
+      }
     }
   }
 
   Future<void> _cancelRestMode() async {
-    await RestModeService.instance.cancel();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("ยกเลิกโหมดพักรถแล้ว กลับมาแจ้งเตือนตามปกติ"),
-      ),
-    );
+    try {
+      await RestModeService.instance.cancel();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("ยกเลิกโหมดพักรถแล้ว กลับมาแจ้งเตือนตามปกติ"),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ยกเลิกโหมดพักรถไม่สำเร็จ: $e')),
+      );
+    }
   }
 
   String _formatRemaining(Duration d) {

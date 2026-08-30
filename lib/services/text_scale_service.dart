@@ -8,17 +8,17 @@ class TextScaleController extends ChangeNotifier {
   static final TextScaleController instance = TextScaleController._();
 
   static const _prefsKey = 'app_text_scale_factor';
-  static const double defaultScale = 1.0;
+  static const double defaultScale = 1.1;
 
   double _scaleFactor = defaultScale;
   double get scaleFactor => _scaleFactor;
 
   /// ตัวเลือกขนาดตัวอักษรที่ให้ผู้ใช้เลือก (label -> scale factor)
   static const Map<String, double> presets = {
-    'เล็ก': 0.85,
-    'ปกติ': 1.0,
-    'ใหญ่': 1.15,
-    'ใหญ่มาก': 1.3,
+    'เล็ก': 1.0,
+    'ปกติ': 1.1,
+    'ใหญ่': 1.25,
+    'ใหญ่มาก': 1.4,
   };
 
   /// เรียกครั้งเดียวตอนแอปเริ่มทำงาน เพื่อโหลดค่าที่เคยบันทึกไว้

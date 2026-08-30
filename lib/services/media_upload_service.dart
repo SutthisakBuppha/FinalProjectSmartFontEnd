@@ -145,7 +145,8 @@ class MediaUploadService {
 
   Future<PlatformFile?> pickAudio() async {
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
+      type: FileType.custom,
+      allowedExtensions: const ['mp3', 'wav', 'm4a', 'aac'],
       withData: true,
     );
     if (result == null || result.files.isEmpty) return null;
@@ -343,6 +344,15 @@ class MediaUploadService {
   Future<UploadedMedia?> pickAndUploadAudio({required String deviceId}) async {
     final platformFile = await pickAudio();
     if (platformFile == null) return null;
+
+    const allowedExtensions = {'mp3', 'wav', 'm4a', 'aac'};
+    final extension = p.extension(platformFile.name).replaceFirst('.', '').toLowerCase();
+    if (!allowedExtensions.contains(extension)) {
+      throw Exception('รองรับเฉพาะไฟล์ MP3, WAV, M4A และ AAC');
+    }
+    if (platformFile.size > 10 * 1024 * 1024) {
+      throw Exception('ไฟล์เสียงต้องมีขนาดไม่เกิน 10 MB');
+    }
 
     final bytes = platformFile.bytes;
     if (bytes == null) {

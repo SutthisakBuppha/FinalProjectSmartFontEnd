@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'main_layout.dart';
 import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
@@ -29,6 +30,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   bool _isLoadingAudio = true;
   bool _isUploadingAudio = false;
   String? _deletingAudioId;
+  final AudioPlayer _previewPlayer = AudioPlayer();
+  String? _previewingAudioId;
 
   String get _deviceId => widget.deviceData['device_id'].toString();
 
@@ -53,6 +56,34 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     super.initState();
     _fetchDeviceConfig();
     _fetchAudioTones();
+    _previewPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _previewingAudioId = null);
+    });
+  }
+
+  @override
+  void dispose() {
+    _previewPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggleAudioPreview(String id, String url) async {
+    try {
+      if (_previewingAudioId == id) {
+        await _previewPlayer.stop();
+        if (mounted) setState(() => _previewingAudioId = null);
+        return;
+      }
+      await _previewPlayer.stop();
+      await _previewPlayer.play(UrlSource(url));
+      if (mounted) setState(() => _previewingAudioId = id);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _previewingAudioId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('ไม่สามารถทดลองฟังไฟล์เสียงนี้ได้: $e')),
+      );
+    }
   }
 
   Future<void> _fetchDeviceConfig() async {
@@ -503,16 +534,19 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           _buildToneOption(
             'เสียงคลาสสิก (Classic)',
             icon: Icons.music_note_rounded,
+            previewUrl: 'https://krzpmhifnpbstikhnbpf.supabase.co/storage/v1/object/public/driver-images/default-audio/classic.mp3',
           ),
           const SizedBox(height: 10),
           _buildToneOption(
             'เสียงสัญญาณสั้น (Beep)',
             icon: Icons.notifications_active_rounded,
+            previewUrl: 'https://krzpmhifnpbstikhnbpf.supabase.co/storage/v1/object/public/driver-images/default-audio/beep.mp3',
           ),
           const SizedBox(height: 10),
           _buildToneOption(
             'เสียงแจ้งเตือนไซเรน (Siren)',
             icon: Icons.warning_amber_rounded,
+            previewUrl: 'https://krzpmhifnpbstikhnbpf.supabase.co/storage/v1/object/public/driver-images/default-audio/siren.mp3',
           ),
 
           if (_isLoadingAudio) ...[
@@ -557,6 +591,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                   audio.fileName,
                   icon: Icons.audiotrack_rounded,
                   mediaId: audio.mediaId,
+                  previewUrl: audio.url,
+                  fileSizeBytes: audio.fileSizeBytes,
                   onDelete: _deletingAudioId == audio.mediaId
                       ? null
                       : () => _confirmDeleteAudio(audio),
@@ -573,6 +609,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     String title, {
     required IconData icon,
     String? mediaId,
+    String? previewUrl,
+    int? fileSizeBytes,
     VoidCallback? onDelete,
   }) {
     final isSelected = _activeTone == title;
@@ -623,17 +661,38 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                title,
-                style: GoogleFonts.prompt(
-                  fontSize: 14,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                  color: isSelected
-                      ? AppColors.cFF0F2557
-                      : Colors.grey.shade800,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.prompt(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? AppColors.cFF0F2557 : Colors.grey.shade800,
+                    ),
+                  ),
+                  if (fileSizeBytes != null)
+                    Text(
+                      '${(fileSizeBytes / 1024 / 1024).toStringAsFixed(2)} MB',
+                      style: GoogleFonts.prompt(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                ],
               ),
             ),
+            if (previewUrl != null)
+              IconButton(
+                tooltip: _previewingAudioId == (mediaId ?? title) ? 'หยุด' : 'ทดลองฟัง',
+                onPressed: () => _toggleAudioPreview(mediaId ?? title, previewUrl),
+                icon: Icon(
+                  _previewingAudioId == (mediaId ?? title)
+                      ? Icons.stop_circle_outlined
+                      : Icons.play_circle_outline_rounded,
+                  color: AppColors.cFF0F2557,
+                ),
+              ),
             if (isSelected)
               const Icon(
                 Icons.check_circle_rounded,
