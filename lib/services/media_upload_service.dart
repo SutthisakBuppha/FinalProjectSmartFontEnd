@@ -146,7 +146,16 @@ class MediaUploadService {
   Future<PlatformFile?> pickAudio() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['mp3', 'wav', 'm4a', 'aac'],
+      allowedExtensions: const [
+        'mp3',
+        'wav',
+        'm4a',
+        'aac',
+        'ogg',
+        'opus',
+        'flac',
+        'mp4',
+      ],
       withData: true,
     );
     if (result == null || result.files.isEmpty) return null;
@@ -345,10 +354,21 @@ class MediaUploadService {
     final platformFile = await pickAudio();
     if (platformFile == null) return null;
 
-    const allowedExtensions = {'mp3', 'wav', 'm4a', 'aac'};
+    const allowedExtensions = {
+      'mp3',
+      'wav',
+      'm4a',
+      'aac',
+      'ogg',
+      'opus',
+      'flac',
+      'mp4',
+    };
     final extension = p.extension(platformFile.name).replaceFirst('.', '').toLowerCase();
     if (!allowedExtensions.contains(extension)) {
-      throw Exception('รองรับเฉพาะไฟล์ MP3, WAV, M4A และ AAC');
+      throw Exception(
+        'รองรับเฉพาะไฟล์ MP3, WAV, M4A, AAC, OGG, OPUS, FLAC และ MP4',
+      );
     }
     if (platformFile.size > 10 * 1024 * 1024) {
       throw Exception('ไฟล์เสียงต้องมีขนาดไม่เกิน 10 MB');

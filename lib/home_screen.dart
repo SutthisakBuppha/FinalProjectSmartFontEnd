@@ -729,7 +729,10 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 2),
                 Text(
                   isResting
-                      ? "ระงับแจ้งเตือนอีก ${_formatRemaining(RestModeService.instance.remaining)}"
+                      ? (RestModeService.instance.restReason.value ==
+                              'auto_stopped'
+                          ? "รถหยุดนิ่งเกิน 3 นาที • พักรถอัตโนมัติ"
+                          : "ระงับแจ้งเตือนอีก ${_formatRemaining(RestModeService.instance.remaining)}")
                       : "จอดพัก/นอน/หยิบของ? กดเปิดเพื่อไม่ให้ระบบรบกวน",
                   style: GoogleFonts.prompt(
                     fontSize: 11.5,

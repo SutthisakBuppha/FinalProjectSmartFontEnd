@@ -225,6 +225,25 @@ class PushNotificationService {
     );
   }
 
+  Future<void> showAutomaticRestModeStarted() async {
+    await _localNotifications.show(
+      DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
+      'เข้าสู่โหมดพักรถอัตโนมัติ',
+      'ตรวจพบว่ารถหยุดนิ่งต่อเนื่อง 3 นาที ระบบระงับ AI, Buzzer และการแจ้งเตือนชั่วคราว',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'rest_mode_status',
+          'สถานะโหมดพักรถ',
+          icon: 'ic_notification',
+          channelDescription: 'แจ้งสถานะการเปิดและปิดโหมดพักรถ',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
   Future<void> _openExternalUrl(String value) async {
     final uri = Uri.tryParse(value);
     if (uri == null) return;
