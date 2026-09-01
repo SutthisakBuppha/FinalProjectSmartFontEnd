@@ -397,18 +397,6 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
               ],
             ),
           ),
-          Material(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(50),
-            child: InkWell(
-              onTap: () {},
-              borderRadius: BorderRadius.circular(50),
-              child: const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Icon(Icons.ios_share_rounded, color: Colors.white, size: 24),
-              ),
-            ),
-          ),
         ],
       ),
     );
