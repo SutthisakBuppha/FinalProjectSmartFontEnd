@@ -323,7 +323,12 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
       Map<String, String> wifiData = {
         "ssid": ssid,
         "pass": password,
+        // Production API host sent to ESP32 via BLE.
         "server_ip": "smartdriver.lnw.mn",
+
+        // Local fallback for a real phone/ESP32 on the same Wi-Fi as the PC.
+        // Replace the production entry above with this entry and change the IP:
+        // "server_ip": "192.168.1.100",
       };
       String jsonString = jsonEncode(wifiData);
 

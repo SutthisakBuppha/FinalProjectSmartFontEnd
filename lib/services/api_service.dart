@@ -37,7 +37,15 @@ class ApiService {
       return _normalizeBaseUrl(fromEnv);
     }
 
-    return 'http://smartdriver.lnw.mn/api';
+    // Production API (default)
+    return 'https://smartdriver.lnw.mn/api';
+
+    // Local fallback for Android Emulator:
+    // return 'http://10.0.2.2:8000/api';
+
+    // Local fallback for a real phone on the same Wi-Fi as the computer.
+    // Replace 192.168.1.100 with the computer's current LAN IPv4 address:
+    // return 'http://192.168.1.100:8000/api';
   }
 
   static String _normalizeBaseUrl(String value) {

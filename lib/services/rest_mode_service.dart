@@ -61,17 +61,6 @@ class RestModeService {
   /// (accuracy สูงกว่าค่านี้) จะไม่นำมาคำนวณ เพื่อกัน noise
   static const double _maxAcceptableAccuracyMeters = 30.0;
 
-  // Automatic rest detection polls GPS instead of waiting for a movement
-  // stream, because Android may stop emitting stream events while stationary.
-  static const Duration _stationaryRequiredDuration = Duration(minutes: 3);
-  static const Duration _stationaryPollInterval = Duration(seconds: 10);
-  // Laravel accepts at most 480 minutes per rest-mode request.
-  // Automatic rest will still end earlier as soon as movement is detected.
-  static const Duration _automaticRestDuration = Duration(hours: 8);
-  static const double _stationarySpeedThresholdKmh = 3.0;
-  static const double _stationaryRadiusMeters = 50.0;
-  static const double _stationaryMaxAccuracyMeters = 50.0;
-
   /// เวลา (เป็น DateTime) ที่โหมดพักรถจะหมดอายุ
   /// ค่าเป็น null หมายถึง "ไม่ได้เปิดโหมดพักรถอยู่"
   final ValueNotifier<DateTime?> restUntil = ValueNotifier<DateTime?>(null);
@@ -84,12 +73,6 @@ class RestModeService {
   // 🆕 GPS auto-close monitoring state
   StreamSubscription<Position>? _positionSubscription;
   DateTime? _movingSince; // เวลาที่เริ่มตรวจพบความเร็วเกิน threshold ต่อเนื่อง
-  Timer? _stationaryPollTimer;
-  bool _stationaryPollBusy = false;
-  bool _automaticRestActivating = false;
-  DateTime? _stationarySince;
-  Position? _stationaryAnchor;
-  int _lastStationaryLogSecond = -1;
 
   /// กำลังอยู่ในโหมดพักรถอยู่หรือไม่ ณ ขณะนี้
   bool get isActive =>
@@ -140,7 +123,6 @@ class RestModeService {
     } catch (_) {
       // Offline startup continues with the locally persisted state.
     }
-    await _startStationaryPolling();
   }
 
   /// เปิดโหมดพักรถเป็นระยะเวลา [duration]
@@ -234,124 +216,6 @@ class RestModeService {
   /// หรือไม่ ระหว่างที่เปิดโหมดพักรถอยู่ ถ้าใช้ GPS ไม่ได้ (permission/
   /// service ปิด หรือ error ใดๆ) จะเงียบๆ ไม่ auto-close ให้ (fail-safe
   /// กลับไปเป็น manual mode เดิม)
-  Future<void> _startStationaryPolling() async {
-    if (_stationaryPollTimer != null) return;
-
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('RestModeService: GPS is disabled; automatic rest is off');
-      return;
-    }
-
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      debugPrint(
-        'RestModeService: location permission denied; automatic rest is off',
-      );
-      return;
-    }
-
-    debugPrint(
-      'RestModeService: automatic rest GPS polling started '
-      '(stationary threshold: 3 minutes)',
-    );
-    unawaited(_pollStationaryPosition());
-    _stationaryPollTimer = Timer.periodic(
-      _stationaryPollInterval,
-      (_) => unawaited(_pollStationaryPosition()),
-    );
-  }
-
-  Future<void> _pollStationaryPosition() async {
-    if (_stationaryPollBusy || _automaticRestActivating) return;
-    _stationaryPollBusy = true;
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-        timeLimit: const Duration(seconds: 8),
-      );
-
-      if (isActive) {
-        _resetStationaryState();
-        return;
-      }
-      if (position.accuracy > _stationaryMaxAccuracyMeters) {
-        debugPrint(
-          'RestModeService: ignore inaccurate GPS '
-          '(${position.accuracy.toStringAsFixed(0)} m)',
-        );
-        return;
-      }
-
-      final speedKmh = position.speed < 0 ? 0.0 : position.speed * 3.6;
-      if (speedKmh > _stationarySpeedThresholdKmh) {
-        _resetStationaryState();
-        return;
-      }
-
-      final now = DateTime.now();
-      final anchor = _stationaryAnchor;
-      if (anchor == null) {
-        _stationaryAnchor = position;
-        _stationarySince = now;
-        _lastStationaryLogSecond = -1;
-        return;
-      }
-
-      final movedMeters = Geolocator.distanceBetween(
-        anchor.latitude,
-        anchor.longitude,
-        position.latitude,
-        position.longitude,
-      );
-      if (movedMeters > _stationaryRadiusMeters) {
-        _stationaryAnchor = position;
-        _stationarySince = now;
-        _lastStationaryLogSecond = -1;
-        return;
-      }
-
-      final since = _stationarySince ?? now;
-      _stationarySince ??= since;
-      final elapsed = now.difference(since);
-      final logSecond = (elapsed.inSeconds ~/ 30) * 30;
-      if (logSecond != _lastStationaryLogSecond) {
-        _lastStationaryLogSecond = logSecond;
-        debugPrint(
-          'RestModeService: stationary ${elapsed.inSeconds}/180 seconds '
-          '(speed ${speedKmh.toStringAsFixed(1)} km/h, '
-          'accuracy ${position.accuracy.toStringAsFixed(0)} m)',
-        );
-      }
-      if (elapsed < _stationaryRequiredDuration) return;
-
-      _automaticRestActivating = true;
-      try {
-        await activate(_automaticRestDuration, reason: 'auto_stopped');
-        await PushNotificationService.instance.showAutomaticRestModeStarted();
-        _resetStationaryState();
-      } finally {
-        _automaticRestActivating = false;
-      }
-    } catch (e) {
-      debugPrint('RestModeService: automatic rest GPS poll failed: $e');
-    } finally {
-      _stationaryPollBusy = false;
-    }
-  }
-
-  void _resetStationaryState() {
-    _stationarySince = null;
-    _stationaryAnchor = null;
-    _lastStationaryLogSecond = -1;
-  }
-
   Future<void> _startMovementMonitoring() async {
     if (_positionSubscription != null) return; // กำลัง monitor อยู่แล้ว
     _movingSince = null;
@@ -430,7 +294,6 @@ class RestModeService {
   void dispose() {
     _autoExpireTimer?.cancel();
     _warningTimer?.cancel();
-    _stationaryPollTimer?.cancel();
     _stopMovementMonitoring();
     unawaited(PushNotificationService.instance.showRestModeEnded());
   }
