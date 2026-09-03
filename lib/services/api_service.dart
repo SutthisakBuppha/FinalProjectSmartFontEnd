@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -239,7 +240,7 @@ class ApiService {
     if (status != null) body['status'] = status;
 
     final response = await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}',
       body: body,
     );
@@ -354,7 +355,7 @@ class ApiService {
     if (isActive != null) body['is_active'] = isActive;
 
     final response = await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}/devices/$deviceId',
       body: body,
     );
@@ -426,6 +427,30 @@ class ApiService {
     }
   }
 
+  /// Immediately silences the physical ESP32 buzzer on the local network.
+  /// Rest mode also stops it from the AI process, but this direct command
+  /// avoids waiting for the next Laravel polling cycle.
+  Future<void> stopDeviceBuzzer(String ipAddress) async {
+    final cleanIp = ipAddress
+        .trim()
+        .replaceFirst(RegExp(r'^https?://'), '')
+        .split('/')
+        .first
+        .split(':')
+        .first;
+    if (cleanIp.isEmpty) return;
+
+    try {
+      await _client
+          .get(Uri.parse('http://$cleanIp:82/buzzer/off'))
+          .timeout(const Duration(seconds: 3));
+    } catch (error) {
+      // The browser may block a local HTTP request from an HTTPS page.
+      // The AI polling loop remains the fallback and retries buzzer/off.
+      debugPrint('Direct buzzer off failed; waiting for AI fallback: $error');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> trips({dynamic deviceId}) async {
     final response = await _request(
       'GET',
@@ -435,7 +460,11 @@ class ApiService {
     return _dataList(response);
   }
 
-  Future<Map<String, dynamic>> startTrip({dynamic deviceId}) async {
+  Future<Map<String, dynamic>> startTrip({
+    dynamic deviceId,
+    String tripType = 'main',
+    String? parentTripId,
+  }) async {
     final response = await _request(
       'POST',
       'app/drivers/${_requireDriverId()}/trips',
@@ -444,6 +473,8 @@ class ApiService {
         'start_time': DateTime.now().toUtc().toIso8601String(),
         'distance': 0,
         'status': 'active',
+        'trip_type': tripType,
+        if (parentTripId != null) 'parent_trip_id': parentTripId,
       },
     );
     return _dataMap(response);
@@ -469,7 +500,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> completeTrip(dynamic tripId) async {
     final response = await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}/trips/$tripId',
       body: {
         'end_time': DateTime.now().toUtc().toIso8601String(),
@@ -531,7 +562,7 @@ class ApiService {
     dynamic notificationId,
   ) async {
     final response = await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}/notifications/$notificationId/read',
     );
     return _dataMap(response);
@@ -539,7 +570,7 @@ class ApiService {
 
   Future<void> markAllNotificationsRead() async {
     await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}/notifications/read-all',
     );
   }
@@ -555,7 +586,7 @@ class ApiService {
     String? password,
   }) async {
     final response = await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}',
       body: {
         'name': name,
@@ -581,7 +612,7 @@ class ApiService {
     required String activeTone,
   }) async {
     final response = await _request(
-      'PATCH',
+      'PUT',
       'app/drivers/${_requireDriverId()}/devices/$deviceId/setting',
       body: {
         'volume_level': volumeLevel,

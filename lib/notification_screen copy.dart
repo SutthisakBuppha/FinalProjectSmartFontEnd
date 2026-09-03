@@ -1,423 +1,508 @@
-import 'package:flutter/material.dart';
-import 'theme/app_theme.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'dart:async';
 
-import 'alert_screen.dart';
-import 'menu/custom_bottom_nav_bar.dart';
+import 'package:flutter/material.dart';
+
+import 'login_screen.dart';
+import 'services/api_service.dart';
 
 class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({super.key});
+  const NotificationScreen({Key? key}) : super(key: key);
 
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  // --- Theme Colors ---
-  // Risk Colors
+  bool isLoading = true;
+  bool isError = false;
+  bool isAuthError = false; // 💡 เช็กว่าเป็น Error เรื่อง Token หรือไม่
+  String errorMessage = '';
+
+  // ตัวแปรเก็บข้อมูลสรุป (ดึงตรงจาก backend)
+  int todayEventsCount = 0;
+  int maxRiskLevel = 1;
+
+  // รายการแจ้งเตือนทั้งหมด (ล่าสุดก่อน)
+  List<Map<String, dynamic>> notifications = [];
+  Timer? _refreshTimer;
 
   @override
-  Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    double scale = screenWidth / 375.0;
-    scale = scale.clamp(0.85, 1.25);
-    final horizontalPadding = (screenWidth * 0.06).clamp(16.0, 32.0);
-
-    return Scaffold(
-      backgroundColor: AppColors.surfaceMuted,
-      extendBody: true,
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              _buildHeader(context, scale, horizontalPadding),
-
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(horizontalPadding, 24 * scale, horizontalPadding, 120 * scale),
-                    child: Column(
-                      children: [
-                        _buildDivider("วันนี้", scale),
-
-                        _buildRiskAlertCard(
-                          eventType: "หลับตา",
-                          durationSeconds: 65,
-                          time: "14:32 น.",
-                          statusText: "ส่งเสียงแจ้งเตือนต่อเนื่อง",
-                          scale: scale,
-                        ),
-                        
-                        SizedBox(height: 16 * scale),
-
-                        _buildRiskAlertCard(
-                          eventType: "เหม่อลอย",
-                          durationSeconds: 45,
-                          time: "11:15 น.",
-                          statusText: "สั่นเตือนแรง",
-                          scale: scale,
-                        ),
-
-                        SizedBox(height: 16 * scale),
-
-                        _buildRiskAlertCard(
-                          eventType: "เหม่อลอย",
-                          durationSeconds: 5,
-                          time: "09:45 น.",
-                          statusText: "แจ้งเตือนด้วยเสียงเบา",
-                          scale: scale,
-                        ),
-
-                        SizedBox(height: 8 * scale),
-                        _buildDivider("เมื่อวาน", scale),
-
-                        Opacity(
-                          opacity: 0.8,
-                          child: _buildRiskAlertCard(
-                            eventType: "หลับตา",
-                            durationSeconds: 8,
-                            time: "18:20 น.",
-                            statusText: "บันทึกเหตุการณ์",
-                            scale: scale,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+  void initState() {
+    super.initState();
+    fetchNotificationData();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => fetchNotificationData(silent: true),
     );
   }
 
-  Map<String, dynamic> _getRiskDetails(int seconds) {
-    if (seconds >= 60) {
-      return {
-        'level': 3,
-        'label': 'ความเสี่ยงสูง',
-        'color': AppColors.danger,
-        'icon': Icons.warning_rounded,
-        'desc': 'อันตรายมาก! กรุณาจอดพักทันที'
-      };
-    } else if (seconds >= 30) {
-      return {
-        'level': 2,
-        'label': 'ความเสี่ยงปานกลาง',
-        'color': AppColors.cFFF97316,
-        'icon': Icons.info_outline_rounded,
-        'desc': 'เริ่มมีอาการเหนื่อยล้า'
-      };
-    } else {
-      return {
-        'level': 1,
-        'label': 'ความเสี่ยงต่ำ',
-        'color': AppColors.cFFEAB308,
-        'icon': Icons.remove_red_eye_rounded,
-        'desc': 'ตรวจพบอาการเล็กน้อย'
-      };
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  // ดึงข้อมูลจาก backend ผ่าน ApiService (ใช้ token/driver_id ชุดเดียวกับทั้งแอป
+  // แทนการอ่าน SharedPreferences ตรงๆ ซึ่งใช้คนละ key กับที่ ApiService บันทึกไว้)
+  Future<void> fetchNotificationData({bool silent = false}) async {
+    if (!mounted) return;
+    if (!silent) {
+      setState(() {
+        isLoading = true;
+        isError = false;
+        isAuthError = false;
+      });
+    }
+
+    // ❌ ยังไม่ได้ login หรือ session หลุดไปแล้ว
+    if (!ApiService.instance.isLoggedIn) {
+      setState(() {
+        isError = true;
+        isAuthError = true;
+        errorMessage = 'ไม่พบข้อมูลการเข้าสู่ระบบ กรุณาล็อกอินใหม่อีกครั้ง';
+        isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      // Alerts are stored once per buzzer cycle. Only today's alerts are
+      // shown, so a new day automatically starts at zero with an empty list.
+      final results = await Future.wait([
+        ApiService.instance.alerts(todayOnly: true),
+        ApiService.instance.notificationsSummary(),
+      ]);
+
+      final alerts = results[0] as List<Map<String, dynamic>>;
+      final summary = results[1] as Map<String, dynamic>;
+      final list = alerts.map((alert) {
+        final type = alert['type']?.toString().trim() ?? '';
+        return <String, dynamic>{
+          'noti_id': '',
+          'is_read': true,
+          'created_at': alert['timestamp'],
+          'message': type.isEmpty
+              ? 'ตรวจพบพฤติกรรมเสี่ยงขณะขับขี่'
+              : 'ตรวจพบพฤติกรรมเสี่ยงขณะขับขี่ ($type)',
+          'alert': alert,
+        };
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        notifications = list;
+        todayEventsCount = (summary['today_events'] as num?)?.toInt() ?? 0;
+        maxRiskLevel = (summary['max_risk'] as num?)?.toInt() ?? 1;
+        isLoading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (silent && e.statusCode != 401 && e.statusCode != 403) return;
+      setState(() {
+        isError = true;
+        isAuthError = e.statusCode == 401 || e.statusCode == 403;
+        errorMessage = isAuthError
+            ? 'เซสชันหมดอายุ กรุณาล็อกอินใหม่อีกครั้ง'
+            : e.message;
+        isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted || silent) return;
+      setState(() {
+        isError = true;
+        isAuthError = false;
+        errorMessage = 'ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง';
+        isLoading = false;
+      });
     }
   }
 
-  Widget _buildRiskAlertCard({
-    required String eventType,
-    required int durationSeconds,
-    required String time,
-    required String statusText,
-    required double scale,
-  }) {
-    final riskData = _getRiskDetails(durationSeconds);
-    final int level = riskData['level'];
-    final Color color = riskData['color'];
-    final String label = riskData['label'];
-    final IconData icon = riskData['icon'];
+  // ฟังก์ชันจัดการเมื่อกดปุ่ม "ลองใหม่" / "เข้าสู่ระบบใหม่"
+  Future<void> handleRetryOrLogout() async {
+    if (isAuthError) {
+      // 🔒 ถ้า Token มีปัญหา -> เคลียร์ session แล้วส่งกลับหน้า Login
+      ApiService.instance.clearSession();
 
-    String durationText = "$durationSeconds วินาที";
-    if (durationSeconds >= 60) {
-      int m = durationSeconds ~/ 60;
-      int s = durationSeconds % 60;
-      durationText = "$m นาที ${s > 0 ? '$s วินาที' : ''}";
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } else {
+      // 🔄 ถ้าแค่เน็ตหลุด/ระบบขัดข้อง -> ลองดึงข้อมูลใหม่อีกรอบ
+      fetchNotificationData();
     }
+  }
 
-    return Container(
-      padding: EdgeInsets.all(16 * scale),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: color, width: 6 * scale)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  String _formatDate(String? raw) {
+    final dt = DateTime.tryParse(raw ?? '');
+    if (dt == null) return '-';
+    final local = dt.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(local.day)}/${two(local.month)}/${local.year} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F6F9),
+      body: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, color: color, size: 24 * scale),
-                  SizedBox(width: 10 * scale),
-                  Text(
-                    eventType,
-                    style: GoogleFonts.prompt(
-                      fontSize: 18 * scale,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.cFF1F2937,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10 * scale, vertical: 4 * scale),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: color.withOpacity(0.3)),
-                ),
-                child: Text(
-                  "ระดับ $level",
-                  style: GoogleFonts.prompt(
-                    fontSize: 12 * scale,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          SizedBox(height: 12 * scale),
-          
-          Row(
-            children: [
-              SizedBox(width: 34 * scale),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // ==================== ส่วน Header สีน้ำเงิน ====================
+          Container(
+            padding: const EdgeInsets.only(
+              top: 50,
+              left: 20,
+              right: 20,
+              bottom: 30,
+            ),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1B3258),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    RichText(
-                      text: TextSpan(
-                        style: GoogleFonts.prompt(fontSize: 14 * scale, color: AppColors.cFF6B7280),
+                    const Expanded(
+                      child: Text(
+                        'ประวัติการแจ้งเตือน',
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      onPressed: isLoading ? null : fetchNotificationData,
+                    ),
+                  ],
+                ),
+                const Text(
+                  'ตรวจสอบระดับความเสี่ยงย้อนหลัง',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                const SizedBox(height: 20),
+
+                // Cards แสดงสถิติด้านบน
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final textScale = MediaQuery.textScalerOf(context).scale(1);
+                    final stackCards =
+                        textScale >= 1.3 || constraints.maxWidth < 340;
+                    final cardWidth = stackCards
+                        ? constraints.maxWidth
+                        : (constraints.maxWidth - 12) / 2;
+
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        // การ์ดวันนี้
+                        SizedBox(
+                          width: cardWidth,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: const [
+                                    Expanded(
+                                      child: Text(
+                                        'วันนี้',
+                                        softWrap: true,
+                                        style: TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Color(0xFFE8ECEF),
+                                      child: Icon(
+                                        Icons.notifications,
+                                        size: 14,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                RichText(
+                                  text: TextSpan(
+                                    children: [
+                                      TextSpan(
+                                        text: '$todayEventsCount ',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1B3258),
+                                        ),
+                                      ),
+                                      const TextSpan(
+                                        text: 'เหตุการณ์',
+                                        style: TextStyle(
+                                          color: Colors.black87,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // การ์ดความเสี่ยงสูงสุด
+                        SizedBox(
+                          width: cardWidth,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: const [
+                                    Expanded(
+                                      child: Text(
+                                        'ความเสี่ยงสูงสุด',
+                                        softWrap: true,
+                                        style: TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(width: 8),
+                                    CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Color(0xFFFFF3E0),
+                                      child: Icon(
+                                        Icons.warning_amber_rounded,
+                                        size: 14,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                RichText(
+                                  text: TextSpan(
+                                    children: [
+                                      const TextSpan(
+                                        text: 'ระดับ ',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                      TextSpan(
+                                        text: '$maxRiskLevel ',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.orange,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          // ==================== ส่วนแสดงเนื้อหา / Error / List ====================
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : isError
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const TextSpan(text: "ระยะเวลา: "),
-                          TextSpan(
-                            text: durationText,
+                          Text(
+                            errorMessage,
+                            textAlign: TextAlign.center,
                             style: const TextStyle(
-                              color: AppColors.cFF1F2937,
-                              fontWeight: FontWeight.w600,
+                              color: Colors.red,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B3258),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 36,
+                                vertical: 10,
+                              ),
+                            ),
+                            onPressed: handleRetryOrLogout,
+                            child: Text(
+                              isAuthError ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                     Text(
-                      label,
-                      style: GoogleFonts.prompt(
-                        fontSize: 12 * scale,
-                        color: color,
+                  )
+                : notifications.isEmpty
+                ? const Center(child: Text('ยังไม่มีการแจ้งเตือน'))
+                : RefreshIndicator(
+                    onRefresh: fetchNotificationData,
+                    child: ListView.builder(
+                      // MainLayout ใช้ BottomNavigationBar แบบลอยทับเนื้อหา
+                      // จึงต้องเผื่อพื้นที่ท้ายรายการ เพื่อให้การ์ดใบสุดท้าย
+                      // เลื่อนขึ้นมาเหนือเมนูและมองเห็นได้ทั้งหมด
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        16,
+                        16,
+                        MediaQuery.paddingOf(context).bottom + 120,
                       ),
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: notifications.length,
+                      itemBuilder: (context, index) {
+                        final n = notifications[index];
+                        final bool isRead =
+                            n['is_read'] == true || n['is_read'] == 1;
+                        final String message = n['message']?.toString() ?? '';
+                        final alertData = n['alert'];
+                        final String type = alertData is Map
+                            ? (alertData['type']?.toString() ?? '')
+                            : '';
+                        final String time = _formatDate(
+                          n['created_at']?.toString(),
+                        );
+                        final String notiId = n['noti_id']?.toString() ?? '';
+
+                        return InkWell(
+                          onTap: isRead || notiId.isEmpty
+                              ? null
+                              : () async {
+                                  try {
+                                    await ApiService.instance
+                                        .markNotificationRead(notiId);
+                                    if (!mounted) return;
+                                    setState(() {
+                                      n['is_read'] = true;
+                                    });
+                                  } catch (_) {
+                                    // เงียบไว้ ไม่ต้อง block UI ถ้า mark read ไม่สำเร็จ
+                                  }
+                                },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: isRead
+                                    ? Colors.transparent
+                                    : Colors.orange.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: isRead
+                                      ? const Color(0xFFE8ECEF)
+                                      : const Color(0xFFFFF3E0),
+                                  child: Icon(
+                                    Icons.warning_amber_rounded,
+                                    size: 18,
+                                    color: isRead
+                                        ? Colors.black45
+                                        : Colors.orange,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      if (type.isNotEmpty)
+                                        Text(
+                                          type,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        message,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        time,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.black45,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  ],
-                ),
-              ),
-              Text(
-                time,
-                style: GoogleFonts.prompt(
-                  fontSize: 12 * scale,
-                  color: Colors.grey.shade400,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-
-          SizedBox(height: 12 * scale),
-          
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 12 * scale, vertical: 8 * scale),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle_outline, size: 16 * scale, color: Colors.green.shade400),
-                SizedBox(width: 8 * scale),
-                Text(
-                  statusText,
-                  style: GoogleFonts.prompt(
-                    fontSize: 12 * scale,
-                    color: AppColors.cFF6B7280,
                   ),
-                ),
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context, double scale, double padding) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.cFF0F2647, AppColors.cFF1A3B66],
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4)),
-        ],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            // นำ Mock Status Bar ออกแล้ว
-            SizedBox(height: 16 * scale),
-            Padding(
-              padding: EdgeInsets.fromLTRB(padding, 0, padding, 32 * scale),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        icon: Icon(Icons.notifications_rounded, color: Colors.white, size: 28 * scale),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const AlertScreen()),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 24 * scale),
-                  
-                  Text(
-                    "ประวัติการแจ้งเตือน",
-                    style: GoogleFonts.prompt(
-                      color: Colors.white,
-                      fontSize: 30 * scale,
-                      fontWeight: FontWeight.bold,
-                      height: 1.1,
-                    ),
-                  ),
-                  SizedBox(height: 4 * scale),
-                  Text(
-                    "ตรวจสอบระดับความเสี่ยงล่าสุดของคุณ",
-                    style: GoogleFonts.prompt(
-                      color: Colors.blue.shade100.withOpacity(0.9),
-                      fontSize: 14 * scale,
-                    ),
-                  ),
-
-                  SizedBox(height: 24 * scale),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildHeaderSummaryCard(
-                          label: "วันนี้",
-                          value: "3",
-                          subLabel: "เหตุการณ์",
-                          scale: scale,
-                        ),
-                      ),
-                      SizedBox(width: 16 * scale),
-                      Expanded(
-                        child: _buildHeaderSummaryCard(
-                          label: "ความเสี่ยงสูงสุด",
-                          value: "ระดับ 3",
-                          subLabel: "อันตราย",
-                          valueColor: AppColors.danger,
-                          scale: scale,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderSummaryCard({required String label, required String value, required String subLabel, Color? valueColor, required double scale}) {
-    return Container(
-      padding: EdgeInsets.all(12 * scale),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.prompt(
-              color: Colors.blue.shade100,
-              fontSize: 10 * scale,
-              fontWeight: FontWeight.w600,
-            ),
           ),
-          SizedBox(height: 4 * scale),
-          Text(
-            value,
-            style: GoogleFonts.prompt(
-              color: valueColor ?? Colors.white,
-              fontSize: 24 * scale,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            subLabel,
-            style: GoogleFonts.prompt(
-              color: Colors.blue.shade200,
-              fontSize: 10 * scale,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDivider(String text, double scale) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 8.0 * scale),
-      child: Row(
-        children: [
-          Expanded(child: Container(height: 1, color: Colors.grey.shade300)),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0 * scale),
-            child: Text(
-              text,
-              style: GoogleFonts.prompt(
-                color: AppColors.cFF6B7280,
-                fontSize: 12 * scale,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Expanded(child: Container(height: 1, color: Colors.grey.shade300)),
         ],
       ),
     );

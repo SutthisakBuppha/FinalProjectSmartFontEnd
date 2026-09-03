@@ -209,8 +209,8 @@ class PushNotificationService {
   Future<void> showRestModeEnded() async {
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-      'กลับมาเปิดระบบตรวจจับแล้ว',
-      'Smart Drive Guard กลับมาตรวจจับพฤติกรรมและแจ้งเตือนตามปกติ',
+      'หมดเวลาพักรถแล้ว',
+      'ถึงเวลาตื่นและเตรียมพร้อมเดินทาง ระบบกลับมาตรวจจับตามปกติแล้ว',
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'rest_mode_status',
@@ -219,8 +219,9 @@ class PushNotificationService {
           channelDescription: 'แจ้งสถานะการเปิดและปิดโหมดพักรถ',
           importance: Importance.high,
           priority: Priority.high,
+          playSound: false,
         ),
-        iOS: DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(presentSound: false),
       ),
     );
   }

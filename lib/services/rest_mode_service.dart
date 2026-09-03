@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
+import 'media_upload_service.dart';
 import 'push_notification_service.dart';
+import 'trip_tracking_service.dart';
 
 /// ═══════════════════════════════════════════════════════════════════════
 /// RestModeService
@@ -65,9 +68,11 @@ class RestModeService {
   /// ค่าเป็น null หมายถึง "ไม่ได้เปิดโหมดพักรถอยู่"
   final ValueNotifier<DateTime?> restUntil = ValueNotifier<DateTime?>(null);
   final ValueNotifier<String?> restReason = ValueNotifier<String?>(null);
+  final ValueNotifier<bool> wakeUpAlarmActive = ValueNotifier<bool>(false);
 
   Timer? _autoExpireTimer;
   Timer? _warningTimer;
+  final AudioPlayer _wakeUpPlayer = AudioPlayer();
   bool _initialized = false;
 
   // 🆕 GPS auto-close monitoring state
@@ -98,6 +103,7 @@ class RestModeService {
       final saved = DateTime.fromMillisecondsSinceEpoch(savedMs);
       if (saved.isAfter(DateTime.now())) {
         restUntil.value = saved;
+        await TripTrackingService.instance.pause();
         _scheduleAutoExpire();
         _startMovementMonitoring(); // 🆕 กลับมา monitor GPS ต่อด้วย ถ้ายังอยู่ในช่วงพักรถ
       } else {
@@ -115,6 +121,7 @@ class RestModeService {
         if (serverUntil != null && serverUntil.isAfter(DateTime.now())) {
           restUntil.value = serverUntil;
           restReason.value = devices.first['rest_mode_reason']?.toString();
+          await TripTrackingService.instance.pause();
           await _persistLocal();
           _scheduleAutoExpire();
           _startMovementMonitoring();
@@ -128,6 +135,7 @@ class RestModeService {
   /// เปิดโหมดพักรถเป็นระยะเวลา [duration]
   /// เช่น RestModeService.instance.activate(const Duration(minutes: 15))
   Future<void> activate(Duration duration, {String reason = 'break'}) async {
+    await stopWakeUpAlarm();
     final devices = await ApiService.instance.devices();
     if (devices.isEmpty) {
       throw const ApiException('ไม่พบอุปกรณ์สำหรับเปิดโหมดพักรถ');
@@ -138,9 +146,15 @@ class RestModeService {
       reason: reason,
     );
 
+    final deviceIp = devices.first['ip_address']?.toString();
+    if (deviceIp != null && deviceIp.isNotEmpty) {
+      unawaited(ApiService.instance.stopDeviceBuzzer(deviceIp));
+    }
+
     final until = DateTime.now().add(duration);
     restUntil.value = until;
     restReason.value = reason;
+    await TripTrackingService.instance.pause();
     await _persistLocal();
 
     _scheduleAutoExpire();
@@ -150,6 +164,7 @@ class RestModeService {
   /// ยกเลิกโหมดพักรถก่อนครบเวลา (เช่น ผู้ใช้พร้อมขับต่อแล้ว หรือระบบ
   /// auto-close จาก GPS ตรวจพบว่ารถเคลื่อนที่จริง)
   Future<void> cancel() async {
+    await stopWakeUpAlarm();
     final devices = await ApiService.instance.devices();
     if (devices.isNotEmpty) {
       await ApiService.instance.cancelRestMode(
@@ -165,6 +180,7 @@ class RestModeService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kRestUntilKey);
     await prefs.remove(_kRestReasonKey);
+    TripTrackingService.instance.resume();
   }
 
   Future<void> _persistLocal() async {
@@ -197,15 +213,81 @@ class RestModeService {
       });
     }
 
-    _autoExpireTimer = Timer(delay, () {
-      restUntil.value = null;
-      restReason.value = null;
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.remove(_kRestUntilKey);
-        prefs.remove(_kRestReasonKey);
-      });
-      _stopMovementMonitoring();
-    });
+    _autoExpireTimer = Timer(delay, () => unawaited(_handleTimeExpired()));
+  }
+
+  Future<void> _handleTimeExpired() async {
+    restUntil.value = null;
+    restReason.value = null;
+    _stopMovementMonitoring();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kRestUntilKey);
+    await prefs.remove(_kRestReasonKey);
+
+    TripTrackingService.instance.resume();
+    wakeUpAlarmActive.value = true;
+    await PushNotificationService.instance.showRestModeEnded();
+    await _playSelectedWakeUpSound();
+  }
+
+  /// Stops the rest-mode wake-up alarm after the driver acknowledges it.
+  Future<void> stopWakeUpAlarm() async {
+    wakeUpAlarmActive.value = false;
+    await _wakeUpPlayer.stop();
+  }
+
+  Future<void> _playSelectedWakeUpSound() async {
+    try {
+      final devices = await ApiService.instance.devices();
+      if (devices.isEmpty) return;
+
+      final deviceId = devices.first['device_id']?.toString();
+      if (deviceId == null || deviceId.isEmpty) return;
+
+      final setting = await ApiService.instance.deviceSetting(deviceId);
+      final soundEnabled = setting?['sound_enabled'] == true ||
+          setting?['sound_enabled'] == 1;
+      final activeTone = setting?['active_tone']?.toString();
+      if (!soundEnabled || activeTone == null || activeTone.isEmpty) return;
+
+      final media = await MediaUploadService.instance.fetchDeviceMedia(deviceId);
+      final matches = media.where((item) {
+        if (item.type != 'audio') return false;
+        if (!item.isDefault) return item.isActive || item.fileName == activeTone;
+        final defaultName = item.displayName ?? item.fileName;
+        return defaultName == activeTone || item.fileName == activeTone;
+      }).toList();
+      if (matches.isEmpty || matches.first.url.isEmpty) return;
+
+      final rawVolume = setting?['volume_level'] ?? 100;
+      final volumeLevel = rawVolume is num
+          ? rawVolume.toDouble()
+          : double.tryParse(rawVolume.toString()) ?? 100;
+
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await _wakeUpPlayer.setAudioContext(
+          AudioContext(
+            android: const AudioContextAndroid(
+              isSpeakerphoneOn: true,
+              stayAwake: true,
+              contentType: AndroidContentType.sonification,
+              usageType: AndroidUsageType.alarm,
+              audioFocus: AndroidAudioFocus.gainTransient,
+            ),
+          ),
+        );
+      }
+
+      await _wakeUpPlayer.stop();
+      await _wakeUpPlayer.setReleaseMode(ReleaseMode.loop);
+      await _wakeUpPlayer.setVolume(
+        (volumeLevel / 100).clamp(0.0, 1.0).toDouble(),
+      );
+      await _wakeUpPlayer.play(UrlSource(matches.first.url));
+    } catch (error) {
+      debugPrint('RestModeService: เล่นเสียงปลุกที่เลือกไม่สำเร็จ: $error');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -295,6 +377,6 @@ class RestModeService {
     _autoExpireTimer?.cancel();
     _warningTimer?.cancel();
     _stopMovementMonitoring();
-    unawaited(PushNotificationService.instance.showRestModeEnded());
+    unawaited(_wakeUpPlayer.dispose());
   }
 }

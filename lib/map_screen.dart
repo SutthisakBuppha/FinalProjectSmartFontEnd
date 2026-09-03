@@ -16,7 +16,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'menu/custom_bottom_nav_bar.dart';
 import 'main_layout.dart';
 import '/services/api_service.dart';
+import '/services/rest_mode_service.dart';
 import '/services/trip_tracking_service.dart';
+
+enum _PostNavigationAction { rest, continueTrip, finishTrip }
 
 /// โมเดลข้อมูลสถานที่ใกล้เคียง (ปั๊มน้ำมัน / จุดพักรถ) ที่ได้จาก Overpass API
 class NearbyPlace {
@@ -97,14 +100,14 @@ class _MapScreenState extends State<MapScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused &&
-        TripTrackingService.instance.isTracking) {
+        TripTrackingService.instance.isRestStopTracking) {
       _navigationWasBackgrounded = true;
       return;
     }
 
     if (state == AppLifecycleState.resumed &&
         _navigationWasBackgrounded &&
-        TripTrackingService.instance.isTracking) {
+        TripTrackingService.instance.isRestStopTracking) {
       _navigationWasBackgrounded = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _askToFinishTrip();
@@ -113,27 +116,39 @@ class _MapScreenState extends State<MapScreen>
   }
 
   Future<void> _askToFinishTrip() async {
-    if (_isShowingFinishDialog || !TripTrackingService.instance.isTracking) {
+    if (_isShowingFinishDialog ||
+        !TripTrackingService.instance.isRestStopTracking) {
       return;
     }
     _isShowingFinishDialog = true;
 
-    final shouldFinish = await showDialog<bool>(
+    final action = await showDialog<_PostNavigationAction>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('สิ้นสุดการเดินทางหรือยัง?'),
+        title: const Text('คุณถึงจุดพักรถแล้วหรือยัง?'),
         content: Text(
           'กำลังบันทึกเส้นทางไปยัง '
-          '${TripTrackingService.instance.destinationName ?? 'จุดหมาย'}',
+          '${TripTrackingService.instance.destinationName ?? 'จุดหมาย'}\n'
+          'ปุ่มจบด้านล่างจะจบเฉพาะเส้นทางไปจุดพัก ทริปหลักยังเดินทางต่อ',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _PostNavigationAction.continueTrip,
+            ),
             child: const Text('เดินทางต่อ'),
           ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _PostNavigationAction.rest,
+            ),
+            child: const Text('เปิดโหมดพักรถ'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
+            onPressed: () => Navigator.of(dialogContext).pop(
+              _PostNavigationAction.finishTrip,
+            ),
             child: const Text('จบทริป'),
           ),
         ],
@@ -141,16 +156,41 @@ class _MapScreenState extends State<MapScreen>
     );
     _isShowingFinishDialog = false;
 
-    if (shouldFinish != true || !mounted) return;
+    if (!mounted || action == null) return;
+    if (action == _PostNavigationAction.continueTrip) return;
+
+    if (action == _PostNavigationAction.rest) {
+      final minutes = await _selectRestDuration();
+      if (!mounted || minutes == null) return;
+      try {
+        await TripTrackingService.instance.finishRestStopTrip();
+        await RestModeService.instance.activate(
+          Duration(minutes: minutes),
+          reason: 'break',
+        );
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MainLayout(initialIndex: 0)),
+          (route) => false,
+        );
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เปิดโหมดพักรถไม่สำเร็จ: $error')),
+        );
+      }
+      return;
+    }
+
     try {
-      final trip = await TripTrackingService.instance.finish();
+      final trip = await TripTrackingService.instance.finishRestStopTrip();
       if (!mounted) return;
       final distance =
           num.tryParse(trip?['distance']?.toString() ?? '')?.toDouble() ?? 0;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'บันทึกการเดินทางสำเร็จ ระยะทาง ${distance.toStringAsFixed(2)} กม.',
+            'จบเฉพาะเส้นทางไปจุดพักแล้ว ระยะทาง ${distance.toStringAsFixed(2)} กม. ทริปหลักยังทำงานอยู่',
           ),
         ),
       );
@@ -160,6 +200,38 @@ class _MapScreenState extends State<MapScreen>
         SnackBar(content: Text('จบทริปไม่สำเร็จ กรุณาลองใหม่: $error')),
       );
     }
+  }
+
+  Future<int?> _selectRestDuration() {
+    return showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'เลือกระยะเวลาพักรถ',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              for (final minutes in const [5, 10, 15])
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(minutes),
+                    child: Text('พัก $minutes นาที'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -356,6 +428,9 @@ class _MapScreenState extends State<MapScreen>
     );
 
     try {
+      final initialPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
       if (!TripTrackingService.instance.isTracking) {
         if (Theme.of(context).platform == TargetPlatform.android) {
           final backgroundStatus = await Permission.locationAlways.status;
@@ -364,9 +439,6 @@ class _MapScreenState extends State<MapScreen>
           }
         }
 
-        final initialPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
         await TripTrackingService.instance.start(
           initialPosition: initialPosition,
           destinationName: place.name,
@@ -374,16 +446,21 @@ class _MapScreenState extends State<MapScreen>
         if (mounted) setState(() {});
       }
 
+      await TripTrackingService.instance.startRestStopTrip(
+        initialPosition: initialPosition,
+        destinationName: place.name,
+      );
       final launched = await launchUrl(
         googleMapsUrl,
         mode: LaunchMode.externalApplication,
       );
 
       if (!launched) {
-        await TripTrackingService.instance.finish();
+        await TripTrackingService.instance.finishRestStopTrip();
         throw Exception('ไม่สามารถเปิด Google Maps ได้');
       }
     } catch (e) {
+      await TripTrackingService.instance.endRestStopNavigation();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('เปิด Google Maps ไม่สำเร็จ: $e')),
@@ -567,7 +644,7 @@ class _MapScreenState extends State<MapScreen>
             ),
           ),
 
-          if (TripTrackingService.instance.isTracking)
+          if (TripTrackingService.instance.isRestStopTracking)
             Positioned(
               top: 120,
               left: 16,
@@ -578,7 +655,7 @@ class _MapScreenState extends State<MapScreen>
                   foregroundColor: Colors.white,
                 ),
                 icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('จบทริป'),
+                label: const Text('จบเส้นทางไปจุดพัก'),
               ),
             ),
 

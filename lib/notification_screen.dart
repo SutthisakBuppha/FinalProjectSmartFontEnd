@@ -20,7 +20,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   // ตัวแปรเก็บข้อมูลสรุป (ดึงตรงจาก backend)
   int todayEventsCount = 0;
-  int maxRiskLevel = 1;
+  int maxRiskLevel = 0;
 
   // รายการแจ้งเตือนทั้งหมด (ล่าสุดก่อน)
   List<Map<String, dynamic>> notifications = [];
@@ -68,13 +68,16 @@ class _NotificationScreenState extends State<NotificationScreen> {
     try {
       // Alerts are stored once per buzzer cycle. Only today's alerts are
       // shown, so a new day automatically starts at zero with an empty list.
-      final results = await Future.wait([
-        ApiService.instance.alerts(todayOnly: true),
-        ApiService.instance.notificationsSummary(),
-      ]);
-
-      final alerts = results[0] as List<Map<String, dynamic>>;
-      final summary = results[1] as Map<String, dynamic>;
+      final allAlerts = await ApiService.instance.alerts();
+      final now = DateTime.now();
+      final alerts = allAlerts.where((alert) {
+        final raw = (alert['timestamp'] ?? alert['created_at'])?.toString();
+        final localTime = DateTime.tryParse(raw ?? '')?.toLocal();
+        return localTime != null &&
+            localTime.year == now.year &&
+            localTime.month == now.month &&
+            localTime.day == now.day;
+      }).toList();
       final list = alerts.map((alert) {
         final type = alert['type']?.toString().trim() ?? '';
         return <String, dynamic>{
@@ -91,8 +94,10 @@ class _NotificationScreenState extends State<NotificationScreen> {
       if (!mounted) return;
       setState(() {
         notifications = list;
-        todayEventsCount = (summary['today_events'] as num?)?.toInt() ?? 0;
-        maxRiskLevel = (summary['max_risk'] as num?)?.toInt() ?? 1;
+        // Use the exact same daily list displayed below. This avoids a
+        // timezone mismatch with the server summary around midnight.
+        todayEventsCount = alerts.length;
+        maxRiskLevel = alerts.length >= 3 ? 3 : alerts.length;
         isLoading = false;
       });
     } on ApiException catch (e) {
@@ -184,7 +189,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   ],
                 ),
                 const Text(
-                  'ตรวจสอบระดับความเสี่ยงย้อนหลัง',
+                  'ตรวจสอบระดับความเสี่ยงย้อนหลังและเหตุการณ์ที่เกิดขึ้นในวันนี้',
                   style: TextStyle(color: Colors.white70, fontSize: 13),
                 ),
                 const SizedBox(height: 20),

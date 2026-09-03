@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 
 // Import ส่วนประกอบต่างๆ ของแอปพลิเคชันคุณ
 import '/services/api_service.dart';
 import 'utils/device_status.dart';
 import '/services/rest_mode_service.dart';
+import '/services/trip_tracking_service.dart';
 import 'main_layout.dart';
 
 void main() {
@@ -26,6 +28,8 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   bool _isMonitoring = false;
+  bool _isStartingTrip = false;
+  bool _isEndingTrip = false;
 
   // Polling สถานะไฟเลี้ยงของอุปกรณ์ (ออนไลน์/ออฟไลน์) เพื่อเริ่ม/หยุดการตรวจจับอัตโนมัติ
   Timer? _deviceStatusTimer;
@@ -38,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen>
   // จึงต้องมี Timer ท้องถิ่นของหน้านี้ไว้ refresh ข้อความนับถอยหลังเฉยๆ)
   // ─────────────────────────────────────────────────────────────────────
   Timer? _restCountdownTicker;
+  bool _isWakeUpDialogVisible = false;
 
   // ---------------------------------------------------------------------
   // หมายเหตุ: ลอจิกทั้งหมดด้านล่างนี้ "ไม่ถูกแก้ไข" ตามที่ขอ (คงความสามารถเดิม)
@@ -59,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     // เริ่ม polling สถานะอุปกรณ์ทันที: พอจ่ายไฟ (ออนไลน์) ให้เริ่มตรวจจับเอง
     // พอถอดไฟ/บอร์ดขาดการเชื่อมต่อ (ออฟไลน์) ให้หยุดตรวจจับเองเช่นกัน
-    _checkDeviceStatus();
+    _restoreTripAndCheckDevice();
     _deviceStatusTimer = Timer.periodic(_deviceStatusPollInterval, (_) {
       _checkDeviceStatus();
     });
@@ -72,11 +77,84 @@ class _HomeScreenState extends State<HomeScreen>
 
     // อัปเดต UI ทุกครั้งที่สถานะโหมดพักรถเปลี่ยน (เปิด/ยกเลิก/หมดอายุเอง)
     RestModeService.instance.restUntil.addListener(_onRestModeChanged);
+    RestModeService.instance.wakeUpAlarmActive.addListener(
+      _onWakeUpAlarmChanged,
+    );
+  }
+
+  Future<void> _restoreTripAndCheckDevice() async {
+    await TripTrackingService.instance.restore();
+    if (mounted) setState(() {});
+    await _checkDeviceStatus();
   }
 
   void _onRestModeChanged() {
     if (mounted) setState(() {});
     _syncRestCountdownTicker();
+  }
+
+  void _onWakeUpAlarmChanged() {
+    if (!mounted ||
+        !RestModeService.instance.wakeUpAlarmActive.value ||
+        _isWakeUpDialogVisible) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showWakeUpAlarmDialog();
+    });
+  }
+
+  Future<void> _showWakeUpAlarmDialog() async {
+    if (_isWakeUpDialogVisible ||
+        !RestModeService.instance.wakeUpAlarmActive.value) {
+      return;
+    }
+    _isWakeUpDialogVisible = true;
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
+
+    try {
+      await showDialog<void>(
+        context: rootNavigator.context,
+        useRootNavigator: true,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          icon: const Icon(
+            Icons.alarm_rounded,
+            color: AppColors.primary,
+            size: 48,
+          ),
+          title: Text(
+            'หมดเวลาพักรถแล้ว',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.prompt(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            'ถึงเวลากลับมาเดินทางต่อ กดปุ่มด้านล่างเพื่อปิดเสียงปลุก',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.prompt(),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            FilledButton.icon(
+              onPressed: () async {
+                Navigator.of(dialogContext, rootNavigator: true).pop();
+                await RestModeService.instance.stopWakeUpAlarm();
+              },
+              icon: const Icon(Icons.volume_off_rounded),
+              label: Text(
+                'ปิดเสียงปลุก',
+                style: GoogleFonts.prompt(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _isWakeUpDialogVisible = false;
+    }
   }
 
   // เปิด/ปิด ticker นับถอยหลังให้ตรงกับสถานะโหมดพักรถปัจจุบัน
@@ -98,6 +176,9 @@ class _HomeScreenState extends State<HomeScreen>
     _deviceStatusTimer?.cancel();
     _restCountdownTicker?.cancel();
     RestModeService.instance.restUntil.removeListener(_onRestModeChanged);
+    RestModeService.instance.wakeUpAlarmActive.removeListener(
+      _onWakeUpAlarmChanged,
+    );
     _controller.dispose();
     super.dispose();
   }
@@ -139,9 +220,197 @@ class _HomeScreenState extends State<HomeScreen>
     _setMonitoring(!_isMonitoring);
   }
 
+  Future<void> _startTrip() async {
+    if (_isStartingTrip || TripTrackingService.instance.isTracking) return;
+    _isStartingTrip = true;
+    if (mounted) setState(() {});
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      await TripTrackingService.instance.start(
+        initialPosition: position,
+        destinationName: 'การเดินทางปัจจุบัน',
+      );
+      if (mounted) setState(() {});
+    } catch (error) {
+      debugPrint('Trip start failed: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เริ่มบันทึกทริปไม่สำเร็จ: $error')),
+        );
+      }
+    } finally {
+      _isStartingTrip = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _handleTripButton() async {
+    if (_isStartingTrip || _isEndingTrip) return;
+
+    if (!TripTrackingService.instance.isTracking) {
+      await _startTrip();
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('ยืนยันจบทริป'),
+        content: const Text(
+          'ระบบจะหยุดบันทึกตำแหน่งและสรุประยะทางของทริปนี้ลงใน History',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('เดินทางต่อ'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('ยืนยันจบทริป'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    _isEndingTrip = true;
+    setState(() {});
+    try {
+      final trip = await TripTrackingService.instance.finish();
+      if (!mounted) return;
+      final distance =
+          num.tryParse(trip?['distance']?.toString() ?? '')?.toDouble() ?? 0;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'จบทริปและบันทึกลง History แล้ว ระยะทาง ${distance.toStringAsFixed(2)} กม.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('จบทริปไม่สำเร็จ: $error')),
+        );
+      }
+    } finally {
+      _isEndingTrip = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────
   // โหมดพักรถ: เปิด bottom sheet ให้เลือกระยะเวลา แล้วสั่ง activate
   // ─────────────────────────────────────────────────────────────────────
+  String _restReasonLabel(String? reason) {
+    if (reason == null || reason.isEmpty) return '';
+    if (reason.startsWith('other:')) {
+      return reason.substring('other:'.length).trim();
+    }
+    return const {
+          'sleep': 'นอนพักในรถ',
+          'break': 'จอดพักผ่อน',
+          'pickup': 'หยิบของหรือทำธุระ',
+          'temporary': 'จอดรถชั่วคราว',
+        }[reason] ??
+        reason;
+  }
+
+  String _formatRestChoice(int minutes) {
+    if (minutes >= 60 && minutes % 60 == 0) {
+      return '${minutes ~/ 60} ชั่วโมง';
+    }
+    return '$minutes นาที';
+  }
+
+  Future<Map<String, dynamic>?> _showCustomRestDialog() async {
+    final reasonController = TextEditingController();
+    final durationController = TextEditingController();
+    String unit = 'minutes';
+    String? errorText;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('กำหนดเหตุผลและเวลา', style: GoogleFonts.prompt(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: reasonController,
+                  maxLength: 200,
+                  decoration: const InputDecoration(
+                    labelText: 'เหตุผลที่พักรถ',
+                    hintText: 'เช่น รอรับผู้โดยสาร',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: durationController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'ระยะเวลา',
+                          errorText: errorText,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 115,
+                      child: DropdownButtonFormField<String>(
+                        value: unit,
+                        decoration: const InputDecoration(labelText: 'หน่วย', border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'minutes', child: Text('นาที')),
+                          DropdownMenuItem(value: 'hours', child: Text('ชั่วโมง')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) setDialogState(() => unit = value);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('ยกเลิก')),
+            FilledButton(
+              onPressed: () {
+                final value = int.tryParse(durationController.text.trim());
+                final minutes = value == null ? null : (unit == 'hours' ? value * 60 : value);
+                if (reasonController.text.trim().isEmpty || minutes == null || minutes < 1 || minutes > 480) {
+                  setDialogState(() => errorText = 'กำหนดเวลา 1–480 นาที (สูงสุด 8 ชั่วโมง)');
+                  return;
+                }
+                Navigator.pop(dialogContext, {
+                  'reason': 'other:${reasonController.text.trim()}',
+                  'minutes': minutes,
+                });
+              },
+              child: const Text('เปิดโหมดพักรถ'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reasonController.dispose();
+    durationController.dispose();
+    return result;
+  }
+
   Future<void> _showRestModeSheet() async {
     final reason = await showDialog<String>(
       context: context,
@@ -161,7 +430,23 @@ class _HomeScreenState extends State<HomeScreen>
     );
     if (reason == null || !mounted) return;
 
-    final selected = await showModalBottomSheet<int>(
+    var activationReason = reason;
+    int? customMinutes;
+    if (reason == 'other') {
+      final custom = await _showCustomRestDialog();
+      if (custom == null || !mounted) return;
+      activationReason = custom['reason'] as String;
+      customMinutes = custom['minutes'] as int;
+    }
+
+    final durationOptions = <String, List<int>>{
+      'temporary': [5, 10, 15],
+      'pickup': [5, 10, 20],
+      'break': [15, 30, 60],
+      'sleep': [60, 120, 180],
+    };
+
+    final selected = customMinutes ?? await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -233,7 +518,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ],
                   ),
                   const SizedBox(height: 14),
-                  ...[10, 15, 30, 60].map(
+                  ...(durationOptions[reason] ?? [10, 15, 30]).map(
                     (minutes) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: InkWell(
@@ -258,7 +543,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                minutes < 60 ? "$minutes นาที" : "1 ชั่วโมง",
+                                _formatRestChoice(minutes),
                                 style: GoogleFonts.prompt(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -313,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen>
       try {
         await RestModeService.instance.activate(
           Duration(minutes: selected),
-          reason: reason,
+          reason: activationReason,
         );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -409,7 +694,11 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
-                  children: [_buildControlButton(scale)],
+                  children: [
+                    _buildTripButton(scale),
+                    const SizedBox(height: 10),
+                    _buildControlButton(scale),
+                  ],
                 ),
               ),
             ),
@@ -729,7 +1018,7 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 2),
                 Text(
                   isResting
-                      ? "ระงับแจ้งเตือนอีก ${_formatRemaining(RestModeService.instance.remaining)}"
+                      ? "${_restReasonLabel(RestModeService.instance.restReason.value)} • เหลือ ${_formatRemaining(RestModeService.instance.remaining)}"
                       : "จอดพัก/นอน/หยิบของ? กดเปิดเพื่อไม่ให้ระบบรบกวน",
                   style: GoogleFonts.prompt(
                     fontSize: 11.5,
@@ -793,6 +1082,60 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ---------- Control Button ----------
+  Widget _buildTripButton(double scale) {
+    final hasActiveTrip = TripTrackingService.instance.isTracking;
+    return Container(
+      width: double.infinity,
+      height: (64 * scale).clamp(56.0, 72.0),
+      decoration: BoxDecoration(
+        color: hasActiveTrip ? AppColors.cFFFF4D4D : AppColors.cFF059669,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: (hasActiveTrip ? Colors.red : AppColors.cFF059669)
+                .withOpacity(0.28),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _handleTripButton,
+          borderRadius: BorderRadius.circular(22),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                TripTrackingService.instance.isTracking
+                    ? Icons.stop_circle_rounded
+                    : Icons.play_circle_fill_rounded,
+                color: Colors.white,
+                size: 28 * scale,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                _isEndingTrip
+                    ? "กำลังจบทริป..."
+                    : _isStartingTrip
+                    ? "กำลังเริ่มทริป..."
+                    : TripTrackingService.instance.isTracking
+                    ? "จบทริป"
+                    : "เริ่มทริป",
+                style: GoogleFonts.prompt(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildControlButton(double scale) {
     return Container(
       width: double.infinity,

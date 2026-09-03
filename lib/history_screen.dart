@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +7,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'menu/custom_bottom_nav_bar.dart';
 import 'history_detail_screen.dart';
 import '/services/api_service.dart';
+
+enum _HistoryPeriod { all, week, month, custom }
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -23,18 +27,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // --- Summary Variables ---
   int _totalAlerts = 0;
   double _totalDistance = 0.0;
+  _HistoryPeriod _selectedPeriod = _HistoryPeriod.all;
+  DateTimeRange? _customDateRange;
+  Timer? _refreshTimer;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     _fetchHistoryData();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _fetchHistoryData(silent: true),
+    );
   }
 
-  Future<void> _fetchHistoryData() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchHistoryData({bool silent = false}) async {
+    if (!mounted || _isRefreshing) return;
+    _isRefreshing = true;
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = '';
+      });
+    }
 
     try {
       final results = await Future.wait([
@@ -43,27 +65,57 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ]);
       final fetchedTrips = results[0] as List<Map<String, dynamic>>;
       final fetchedAlerts = results[1] as List<Map<String, dynamic>>;
+      final completedTrips = fetchedTrips
+          .where((trip) {
+            return trip['status']?.toString() == 'completed' ||
+                trip['end_time'] != null;
+          })
+          .map((trip) {
+            final tripId = (trip['trip_id'] ?? trip['id'])?.toString();
+            final alertCount = fetchedAlerts.where((alert) {
+              return alert['trip_id']?.toString() == tripId;
+            }).length;
+            final serverAlertCount =
+                num.tryParse(trip['alerts_count']?.toString() ?? '')
+                    ?.toInt() ??
+                0;
+            return <String, dynamic>{
+              ...trip,
+              'alerts_count': alertCount > serverAlertCount
+                  ? alertCount
+                  : serverAlertCount,
+            };
+          })
+          .toList();
 
       double distanceSum = 0.0;
 
-      for (var trip in fetchedTrips) {
+      for (var trip in completedTrips) {
+        if (trip['trip_type']?.toString() == 'rest_stop') continue;
         final distance =
             num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
         distanceSum += distance;
       }
 
+      if (!mounted) return;
       setState(() {
-        _trips = fetchedTrips;
+        _trips = completedTrips;
+        // Header means every alert belonging to this driver, including
+        // alerts that pre-date trip tracking or were not linked to a trip.
         _totalAlerts = fetchedAlerts.length;
         _totalDistance = distanceSum;
         _alerts = fetchedAlerts;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
+      if (mounted && !silent) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -98,8 +150,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   String _formatDateTime(String? dateStr) {
     if (dateStr == null) return '-';
-    final dateTime = DateTime.tryParse(dateStr);
-    if (dateTime == null) return dateStr;
+    final parsedDateTime = DateTime.tryParse(dateStr);
+    if (parsedDateTime == null) return dateStr;
+    final dateTime = parsedDateTime.toLocal();
 
     final months = [
       'ม.ค.',
@@ -223,10 +276,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   ],
                                 ),
                               ),
+                              SizedBox(height: 10 * scale),
+                              _buildHistoryFilters(scale, horizontalPadding),
                               SizedBox(height: 16 * scale),
 
                               // รายการทริป
-                              if (_trips.isEmpty)
+                              if (_filteredTrips.isEmpty)
                                 Padding(
                                   padding: EdgeInsets.all(40 * scale),
                                   child: Center(
@@ -252,10 +307,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     physics:
                                         const NeverScrollableScrollPhysics(),
                                     padding: EdgeInsets.zero,
-                                    itemCount: _trips.length,
+                                    itemCount: _filteredTrips.length,
                                     itemBuilder: (context, index) {
                                       return _buildModernTripCard(
-                                        _trips[index],
+                                        _filteredTrips[index],
                                         scale,
                                       );
                                     },
@@ -316,7 +371,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               Expanded(
                 child: _buildHeaderStatWidget(
                   title: "ระยะทางรวม",
-                  value: _totalDistance.toStringAsFixed(1),
+                  value: _formatDistance(_totalDistance),
                   unit: "กม.",
                   icon: Icons.route_rounded,
                   scale: 1,
@@ -501,23 +556,212 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   // ฟังก์ชันแยกเวลาเพื่อแสดงผลสั้นๆ ในการ์ด AI
   String _formatTimeOnly(String dateStr) {
-    final dateTime = DateTime.tryParse(dateStr);
-    if (dateTime == null) return '-';
+    final parsedDateTime = DateTime.tryParse(dateStr);
+    if (parsedDateTime == null) return '-';
+    final dateTime = parsedDateTime.toLocal();
     String hour = dateTime.hour.toString().padLeft(2, '0');
     String minute = dateTime.minute.toString().padLeft(2, '0');
     return '$hour:$minute น.';
   }
 
+  DateTime? _tripLocalDate(Map<String, dynamic> trip) {
+    final raw = (trip['start_time'] ?? trip['created_at'])?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.toLocal();
+  }
+
+  List<Map<String, dynamic>> get _filteredTrips {
+    if (_selectedPeriod == _HistoryPeriod.all) return _trips;
+
+    final now = DateTime.now();
+    late DateTime start;
+    late DateTime endExclusive;
+
+    switch (_selectedPeriod) {
+      case _HistoryPeriod.week:
+        final today = DateTime(now.year, now.month, now.day);
+        start = today.subtract(Duration(days: now.weekday - 1));
+        endExclusive = today.add(const Duration(days: 1));
+        break;
+      case _HistoryPeriod.month:
+        start = DateTime(now.year, now.month);
+        endExclusive = DateTime(now.year, now.month + 1);
+        break;
+      case _HistoryPeriod.custom:
+        final range = _customDateRange;
+        if (range == null) return _trips;
+        start = DateTime(range.start.year, range.start.month, range.start.day);
+        endExclusive = DateTime(
+          range.end.year,
+          range.end.month,
+          range.end.day,
+        ).add(const Duration(days: 1));
+        break;
+      case _HistoryPeriod.all:
+        return _trips;
+    }
+
+    return _trips.where((trip) {
+      final date = _tripLocalDate(trip);
+      return date != null &&
+          !date.isBefore(start) &&
+          date.isBefore(endExclusive);
+    }).toList();
+  }
+
+  Future<void> _selectCustomDateRange() async {
+    final now = DateTime.now();
+    final selected = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange:
+          _customDateRange ??
+          DateTimeRange(
+            start: DateTime(now.year, now.month, now.day),
+            end: DateTime(now.year, now.month, now.day),
+          ),
+      helpText: 'เลือกช่วงวันที่เดินทาง',
+      saveText: 'ใช้ตัวกรอง',
+      cancelText: 'ยกเลิก',
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(
+              primary: const Color(0xFF2563EB),
+              onPrimary: Colors.white,
+            ),
+            // The fullscreen date-range picker (used on web and phones)
+            // renders its top-right save action from TextButtonTheme rather
+            // than DatePickerTheme.confirmButtonStyle.
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: const Color(0xFF2563EB),
+                disabledForegroundColor: Colors.white,
+                minimumSize: const Size(112, 44),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                textStyle: GoogleFonts.prompt(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            datePickerTheme: theme.datePickerTheme.copyWith(
+              confirmButtonStyle: TextButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: const Color(0xFF2563EB),
+                disabledForegroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                textStyle: GoogleFonts.prompt(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              rangePickerHeaderBackgroundColor: const Color(0xFF2563EB),
+              rangePickerHeaderForegroundColor: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _customDateRange = selected;
+      _selectedPeriod = _HistoryPeriod.custom;
+    });
+  }
+
+  String _shortDate(DateTime date) =>
+      '${date.day}/${date.month}/${date.year + 543}';
+
+  Widget _buildHistoryFilters(double scale, double horizontalPadding) {
+    final customLabel = _customDateRange == null
+        ? 'กำหนดวันที่'
+        : '${_shortDate(_customDateRange!.start)} - ${_shortDate(_customDateRange!.end)}';
+
+    Widget chip(String label, _HistoryPeriod period, {VoidCallback? onTap}) {
+      return ChoiceChip(
+        label: Text(label, style: GoogleFonts.prompt(fontSize: 12 * scale)),
+        selected: _selectedPeriod == period,
+        onSelected: (_) {
+          if (onTap != null) {
+            onTap();
+          } else {
+            setState(() => _selectedPeriod = period);
+          }
+        },
+        selectedColor: AppColors.cFF0F2647,
+        labelStyle: GoogleFonts.prompt(
+          color: _selectedPeriod == period ? Colors.white : AppColors.cFF1F2937,
+          fontWeight: FontWeight.w600,
+        ),
+        backgroundColor: Colors.white,
+        side: BorderSide(
+          color: _selectedPeriod == period
+              ? AppColors.cFF0F2647
+              : AppColors.cFFE5E7EB,
+        ),
+        showCheckmark: false,
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          chip('ทั้งหมด', _HistoryPeriod.all),
+          chip('สัปดาห์นี้', _HistoryPeriod.week),
+          chip('เดือนนี้', _HistoryPeriod.month),
+          chip(
+            customLabel,
+            _HistoryPeriod.custom,
+            onTap: _selectCustomDateRange,
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDistance(double distanceKm) {
+    return distanceKm < 1
+        ? distanceKm.toStringAsFixed(2)
+        : distanceKm.toStringAsFixed(1);
+  }
+
   Widget _buildModernTripCard(Map<String, dynamic> trip, double scale) {
+    final isRestStopTrip = trip['trip_type']?.toString() == 'rest_stop';
+    final routeColor = isRestStopTrip ? AppColors.danger : AppColors.success;
     final alertsCount =
         num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ?? 0;
     final statusData = _getSafetyStatus(alertsCount);
 
     final tripId = (trip['trip_id'] ?? trip['id'] ?? '').toString();
+    final displayDate = (trip['created_at'] ?? trip['start_time'])?.toString();
     final startLoc = trip['start_location']?.toString() ?? '';
     final endLoc = trip['end_location']?.toString() ?? '';
 
-    String tripTitle = "การเดินทาง #$tripId";
+    String tripTitle = isRestStopTrip
+        ? "เส้นทางไปจุดพัก #$tripId"
+        : "การเดินทางหลัก #$tripId";
     if (startLoc.isNotEmpty && endLoc.isNotEmpty) {
       tripTitle = "$startLoc  ➔  $endLoc";
     } else if (endLoc.isNotEmpty) {
@@ -550,6 +794,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16 * scale),
+        border: Border.all(color: routeColor, width: 2),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -570,12 +815,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 builder: (context) => HistoryDetailScreen(
                   tripId: tripId,
                   title: tripTitle,
-                  date: _formatDateTime(trip['start_time']),
-                  distance: "${distanceVal.toStringAsFixed(1)} กม.",
+                  date: _formatDateTime(displayDate),
+                  distance: "${_formatDistance(distanceVal)} กม.",
                   duration: durationText,
                   alerts: alertsCount.toString(),
                   status: statusData['text'],
                   statusColor: statusColor,
+                  routeColor: routeColor,
                 ),
               ),
             );
@@ -597,7 +843,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         SizedBox(width: 6 * scale),
                         Text(
-                          _formatDateTime(trip['start_time']),
+                          _formatDateTime(displayDate),
                           style: GoogleFonts.prompt(
                             fontSize: 13 * scale,
                             color: AppColors.cFF6B7280,
@@ -648,8 +894,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
-                        Icons.directions_car_filled_rounded,
-                        color: AppColors.cFF0F2647,
+                        isRestStopTrip
+                            ? Icons.local_gas_station_rounded
+                            : Icons.directions_car_filled_rounded,
+                        color: routeColor,
                         size: 20 * scale,
                       ),
                     ),
@@ -687,7 +935,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       _buildTripMetric(
                         "ระยะทาง",
-                        "${distanceVal.toStringAsFixed(1)} กม.",
+                        "${_formatDistance(distanceVal)} กม.",
                         scale,
                       ),
                       _buildTripMetric("เวลา", durationText, scale),
@@ -698,6 +946,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         valueColor: alertsCount > 0
                             ? statusColor
                             : AppColors.success,
+                        onTap: () => _showTripAlertBreakdown(tripId),
                       ),
                     ],
                   ),
@@ -715,8 +964,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     String value,
     double scale, {
     Color? valueColor,
+    VoidCallback? onTap,
   }) {
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -737,6 +987,95 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
       ],
     );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: content,
+      ),
+    );
+  }
+
+  Future<void> _showTripAlertBreakdown(String tripId) async {
+    try {
+      final alerts = await ApiService.instance.alerts(tripId: tripId);
+      if (!mounted) return;
+
+      int count(String type) => alerts.where((alert) {
+        final alertType = alert['type']?.toString();
+        if (type == 'เหม่อลอย') {
+          return alertType == 'เหม่อลอย' ||
+              alertType == 'ไม่กระพริบตาเป็นเวลานาน';
+        }
+        return alertType == type;
+      }).length;
+
+      final items = <(String, int, IconData, Color)>[
+        ('ง่วงนอน', count('ง่วงนอน'), Icons.bedtime_rounded, Colors.orange),
+        (
+          'ไม่มองทาง',
+          count('ไม่มองถนน'),
+          Icons.visibility_off_rounded,
+          Colors.red,
+        ),
+        ('เหม่อลอย', count('เหม่อลอย'), Icons.blur_on_rounded, Colors.purple),
+      ];
+
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'รายละเอียดการแจ้งเตือน',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.prompt(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.cFF1F2937,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ทริป #$tripId • รวม ${alerts.length} ครั้ง',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.prompt(color: AppColors.cFF6B7280),
+                ),
+                const SizedBox(height: 16),
+                for (final item in items)
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: item.$4.withOpacity(0.12),
+                      child: Icon(item.$3, color: item.$4),
+                    ),
+                    title: Text(item.$1, style: GoogleFonts.prompt()),
+                    trailing: Text(
+                      '${item.$2} ครั้ง',
+                      style: GoogleFonts.prompt(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: item.$4,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('โหลดรายละเอียดแจ้งเตือนไม่สำเร็จ: $error')),
+      );
+    }
   }
 
   Widget _buildErrorState(double scale) {

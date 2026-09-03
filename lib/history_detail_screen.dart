@@ -9,7 +9,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 // สมมติว่ามี ApiService สำหรับดึง baseUrl หรือ Token ของระบบอยู่แล้ว
-import '/services/api_service.dart'; 
+import '/services/api_service.dart';
 
 class HistoryDetailScreen extends StatefulWidget {
   // 1. รับข้อมูลจากหน้า List (เพิ่ม tripId เข้ามาเพื่อดึงข้อมูลจุดพิกัดและการแจ้งเตือนเฉพาะของทริปนี้)
@@ -21,6 +21,7 @@ class HistoryDetailScreen extends StatefulWidget {
   final String alerts;
   final String status;
   final Color statusColor;
+  final Color routeColor;
 
   const HistoryDetailScreen({
     super.key,
@@ -32,6 +33,7 @@ class HistoryDetailScreen extends StatefulWidget {
     required this.alerts,
     required this.status,
     required this.statusColor,
+    this.routeColor = AppColors.primary,
   });
 
   // --- Theme Colors ---
@@ -42,8 +44,9 @@ class HistoryDetailScreen extends StatefulWidget {
 class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   // เก็บข้อมูลจริงที่ดึงมาจาก API หลังบ้าน
   List<LatLng> routePoints = [];
+  List<List<LatLng>> restStopRouteSegments = [];
   List<dynamic> alertsList = [];
-  
+
   bool isLoadingMap = true;
   bool isLoadingAlerts = true;
   String? mapError;
@@ -59,20 +62,51 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   // 1. ดึงพิกัดเส้นทางการเดินทางจาก TripLocationController
   Future<void> _fetchRoutePoints() async {
     try {
-      final locations = await ApiService.instance.tripLocations(widget.tripId);
+      final results = await Future.wait([
+        ApiService.instance.tripLocations(widget.tripId),
+        ApiService.instance.tripDetail(widget.tripId),
+      ]);
+      final locations = results[0] as List<Map<String, dynamic>>;
+      final trip = results[1] as Map<String, dynamic>;
+      final restStopTrips = trip['rest_stop_trips'] is List
+          ? trip['rest_stop_trips'] as List
+          : const [];
       if (!mounted) return;
       setState(() {
         routePoints = locations
-            .where((item) => item['latitude'] != null && item['longitude'] != null)
-            .map((item) => LatLng(
+            .where(
+              (item) => item['latitude'] != null && item['longitude'] != null,
+            )
+            .map(
+              (item) => LatLng(
+                double.parse(item['latitude'].toString()),
+                double.parse(item['longitude'].toString()),
+              ),
+            )
+            .toList();
+        restStopRouteSegments = restStopTrips.map<List<LatLng>>((child) {
+          final childLocations = child is Map && child['locations'] is List
+              ? child['locations'] as List
+              : const [];
+          return childLocations
+              .where(
+                (item) =>
+                    item is Map &&
+                    item['latitude'] != null &&
+                    item['longitude'] != null,
+              )
+              .map(
+                (item) => LatLng(
                   double.parse(item['latitude'].toString()),
                   double.parse(item['longitude'].toString()),
-                ))
-            .toList();
+                ),
+              )
+              .toList();
+        }).where((segment) => segment.isNotEmpty).toList();
         isLoadingMap = false;
       });
       return;
-      final baseUrl = ApiService.instance.baseUrl; 
+      final baseUrl = ApiService.instance.baseUrl;
       final response = await http.get(
         Uri.parse('$baseUrl/trips/${widget.tripId}/locations'),
         headers: {'Accept': 'application/json'},
@@ -82,7 +116,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         final decoded = json.decode(response.body);
         if (decoded['success'] == true && decoded['data'] != null) {
           final List<dynamic> locations = decoded['data'];
-          
+
           setState(() {
             routePoints = locations.map((item) {
               return LatLng(
@@ -110,7 +144,50 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   // 2. ดึงรายการแจ้งเตือนความเสี่ยงเฉพาะของทริปนี้
   Future<void> _fetchTripAlerts() async {
     try {
-      final alerts = await ApiService.instance.alerts(tripId: widget.tripId);
+      final results = await Future.wait([
+        ApiService.instance.alerts(),
+        ApiService.instance.tripDetail(widget.tripId),
+      ]);
+      final allAlerts = results[0] as List<Map<String, dynamic>>;
+      final trip = results[1] as Map<String, dynamic>;
+      final relatedTripIds = <String>{widget.tripId};
+      final restStopTrips = trip['rest_stop_trips'];
+      if (restStopTrips is List) {
+        for (final child in restStopTrips) {
+          if (child is Map && child['trip_id'] != null) {
+            relatedTripIds.add(child['trip_id'].toString());
+          }
+        }
+      }
+
+      final start = DateTime.tryParse(trip['start_time']?.toString() ?? '');
+      final end = DateTime.tryParse(trip['end_time']?.toString() ?? '');
+      final alerts = allAlerts.where((alert) {
+        final alertTripId = alert['trip_id']?.toString();
+        if (alertTripId != null && relatedTripIds.contains(alertTripId)) {
+          return true;
+        }
+
+        // รองรับ Alert เก่าที่ AI บันทึกระหว่างทริปแต่ trip_id เป็น null
+        if (alertTripId != null || start == null || end == null) return false;
+        final timestamp = DateTime.tryParse(
+          (alert['timestamp'] ?? alert['created_at'])?.toString() ?? '',
+        );
+        return timestamp != null &&
+            !timestamp.isBefore(start) &&
+            !timestamp.isAfter(end);
+      }).toList();
+      alerts.sort((a, b) {
+        final aTime = DateTime.tryParse(
+          (a['timestamp'] ?? a['created_at'])?.toString() ?? '',
+        );
+        final bTime = DateTime.tryParse(
+          (b['timestamp'] ?? b['created_at'])?.toString() ?? '',
+        );
+        return (bTime ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+          aTime ?? DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      });
       if (!mounted) return;
       setState(() {
         alertsList = alerts;
@@ -128,9 +205,11 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         final decoded = json.decode(response.body);
         if (decoded['success'] == true && decoded['data'] != null) {
           final List<dynamic> allAlerts = decoded['data'];
-          
+
           // ทำการกรองเอาเฉพาะ alert_id ที่ตรงกับทริปนี้ (กรณี API ดึงรวมมาทั้งหมด)
-          final filteredAlerts = allAlerts.where((alert) => alert['trip_id'] == widget.tripId).toList();
+          final filteredAlerts = allAlerts
+              .where((alert) => alert['trip_id'] == widget.tripId)
+              .toList();
 
           setState(() {
             alertsList = filteredAlerts;
@@ -228,105 +307,100 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  // --- Stats Card (เลื่อนขึ้นไปทับ Header นิดหน่อย) ---
-                  Transform.translate(
-                    offset: const Offset(0, -32),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: _buildStatsCard(),
-                    ),
+                  // Keep the summary fully inside the scrollable area. A
+                  // negative offset gets clipped by the viewport on shorter
+                  // screens, making the header cover distance and duration.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: _buildStatsCard(),
                   ),
 
                   // Content
-                  Transform.translate(
-                    offset: const Offset(0, -16),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "ภาพรวมเส้นทาง",
-                            style: GoogleFonts.prompt(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.cFF0F2647,
-                            ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "ภาพรวมเส้นทาง",
+                          style: GoogleFonts.prompt(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.cFF0F2647,
                           ),
-                          const SizedBox(height: 12),
+                        ),
+                        const SizedBox(height: 12),
 
-                          // ส่วนแสดงแผนที่ดึงจากหลังบ้าน
-                          _buildRealMapSection(),
+                        // ส่วนแสดงแผนที่ดึงจากหลังบ้าน
+                        _buildRealMapSection(),
 
-                          const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-                          // --- Risk Events ---
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              final textScale = MediaQuery.textScalerOf(
-                                context,
-                              ).scale(1);
-                              final stack =
-                                  textScale >= 1.3 || constraints.maxWidth < 340;
-                              final title = Text(
-                                "เหตุการณ์ความเสี่ยง",
+                        // --- Risk Events ---
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final textScale = MediaQuery.textScalerOf(
+                              context,
+                            ).scale(1);
+                            final stack =
+                                textScale >= 1.3 || constraints.maxWidth < 340;
+                            final title = Text(
+                              "เหตุการณ์ความเสี่ยง",
+                              style: GoogleFonts.prompt(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.cFF0F2647,
+                              ),
+                            );
+                            final countBadge = Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: widget.statusColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isLoadingAlerts
+                                    ? "กำลังโหลด..."
+                                    : "แจ้งเตือน ${alertsList.length} ครั้ง",
                                 style: GoogleFonts.prompt(
-                                  fontSize: 18,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: AppColors.cFF0F2647,
+                                  color: widget.statusColor,
                                 ),
-                              );
-                              final countBadge = Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: widget.statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  isLoadingAlerts
-                                      ? "กำลังโหลด..."
-                                      : "แจ้งเตือน ${alertsList.length} ครั้ง",
-                                  style: GoogleFonts.prompt(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: widget.statusColor,
-                                  ),
-                                ),
-                              );
+                              ),
+                            );
 
-                              if (stack) {
-                                return Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    title,
-                                    const SizedBox(height: 8),
-                                    countBadge,
-                                  ],
-                                );
-                              }
-
-                              return Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                            if (stack) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(child: title),
-                                  const SizedBox(width: 12),
+                                  title,
+                                  const SizedBox(height: 8),
                                   countBadge,
                                 ],
                               );
-                            },
-                          ),
-                          const SizedBox(height: 12),
+                            }
 
-                          // รายการความเสี่ยงแบบ Dynamic จาก API หลังบ้าน
-                          _buildDynamicRiskEventsList(),
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(child: title),
+                                const SizedBox(width: 12),
+                                countBadge,
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
 
-                          const SizedBox(height: 40),
-                        ],
-                      ),
+                        // รายการความเสี่ยงแบบ Dynamic จาก API หลังบ้าน
+                        _buildDynamicRiskEventsList(),
+
+                        const SizedBox(height: 40),
+                      ],
                     ),
                   ),
                 ],
@@ -355,7 +429,11 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         ),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
         boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
         ],
       ),
       child: Row(
@@ -368,7 +446,11 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
               borderRadius: BorderRadius.circular(50),
               child: const Padding(
                 padding: EdgeInsets.all(8.0),
-                child: Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
+                child: Icon(
+                  Icons.arrow_back_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
               ),
             ),
           ),
@@ -412,26 +494,44 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 5)),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
         ],
       ),
       child: IntrinsicHeight(
         child: Row(
           children: [
             _buildStatItem(
-                "ระยะทาง", widget.distance.replaceAll(" km", ""), "กม.", AppColors.cFF1F2937),
-            VerticalDivider(color: Colors.grey.shade200, width: 1, thickness: 1),
+              "ระยะทาง",
+              widget.distance.replaceAll(" km", ""),
+              "กม.",
+              AppColors.cFF1F2937,
+            ),
+            VerticalDivider(
+              color: Colors.grey.shade200,
+              width: 1,
+              thickness: 1,
+            ),
             _buildStatItem(
-                "ระยะเวลา", widget.duration.replaceAll(" min", ""), "นาที", AppColors.cFF1F2937),
+              "ระยะเวลา",
+              widget.duration.replaceAll(" min", ""),
+              "นาที",
+              AppColors.cFF1F2937,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatItem(String label, String value, String unit, Color valueColor) {
+  Widget _buildStatItem(
+    String label,
+    String value,
+    String unit,
+    Color valueColor,
+  ) {
     return Expanded(
       child: Column(
         children: [
@@ -488,7 +588,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text(alertsError!, style: GoogleFonts.prompt(color: AppColors.danger)),
+          child: Text(
+            alertsError!,
+            style: GoogleFonts.prompt(color: AppColors.danger),
+          ),
         ),
       );
     }
@@ -540,9 +643,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         border: Border(left: BorderSide(color: color, width: 4)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 4,
-              offset: const Offset(0, 2))
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Row(
@@ -550,7 +654,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: 16),
@@ -558,17 +665,28 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: GoogleFonts.prompt(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.cFF1F2937)),
+                Text(
+                  title,
+                  style: GoogleFonts.prompt(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.cFF1F2937,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(desc,
-                    style: GoogleFonts.prompt(fontSize: 12, color: AppColors.cFF6B7280)),
+                Text(
+                  desc,
+                  style: GoogleFonts.prompt(
+                    fontSize: 12,
+                    color: AppColors.cFF6B7280,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(4),
@@ -599,7 +717,9 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           color: Colors.grey.shade200,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Center(child: CircularProgressIndicator(color: AppColors.cFF0F2647)),
+        child: const Center(
+          child: CircularProgressIndicator(color: AppColors.cFF0F2647),
+        ),
       );
     }
 
@@ -612,7 +732,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           border: Border.all(color: Colors.grey.shade300),
         ),
         child: Center(
-          child: Text(mapError!, style: GoogleFonts.prompt(color: AppColors.danger)),
+          child: Text(
+            mapError!,
+            style: GoogleFonts.prompt(color: AppColors.danger),
+          ),
         ),
       );
     }
@@ -626,7 +749,10 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           border: Border.all(color: Colors.grey.shade300),
         ),
         child: Center(
-          child: Text("ไม่มีข้อมูลเส้นทางการเดินทางเก็บไว้", style: GoogleFonts.prompt(color: AppColors.cFF6B7280)),
+          child: Text(
+            "ไม่มีข้อมูลเส้นทางการเดินทางเก็บไว้",
+            style: GoogleFonts.prompt(color: AppColors.cFF6B7280),
+          ),
         ),
       );
     }
@@ -648,7 +774,8 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
         borderRadius: BorderRadius.circular(16),
         child: FlutterMap(
           options: MapOptions(
-            initialCenter: routePoints.first, // ตั้งจุดกลางเริ่มต้นที่พิกัดแรกของทริปจริง
+            initialCenter:
+                routePoints.first, // ตั้งจุดกลางเริ่มต้นที่พิกัดแรกของทริปจริง
             initialZoom: 15.0,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
@@ -667,26 +794,74 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                 Polyline(
                   points: routePoints,
                   strokeWidth: 5.0,
-                  color: AppColors.cFF0F2647,
+                  color: AppColors.success,
+                ),
+                ...restStopRouteSegments.map(
+                  (segment) => Polyline(
+                    points: segment,
+                    strokeWidth: 6.0,
+                    color: AppColors.danger,
+                  ),
                 ),
               ],
             ),
 
-            // 3. Marker Layer (ปักหมุด จุดเริ่ม / จุดจบ จริง)
+            // 3. จุดเริ่มสีน้ำเงิน จุดจบสีเขียว และ Alert สีแดง
             MarkerLayer(
               markers: [
                 Marker(
                   point: routePoints.first,
                   width: 40,
                   height: 40,
-                  child: const Icon(Icons.trip_origin, color: AppColors.cFF0F2647, size: 30),
+                  child: const Icon(
+                    Icons.trip_origin,
+                    color: AppColors.cFF0F2647,
+                    size: 30,
+                  ),
                 ),
                 Marker(
                   point: routePoints.last,
                   width: 40,
                   height: 40,
-                  child: const Icon(Icons.location_on_rounded, color: Colors.red, size: 36),
+                  child: const Icon(
+                    Icons.location_on_rounded,
+                    color: AppColors.cFF059669,
+                    size: 36,
+                  ),
                 ),
+                ...alertsList.map<Marker?>((alert) {
+                  final latitude = double.tryParse(
+                    alert['latitude']?.toString() ?? '',
+                  );
+                  final longitude = double.tryParse(
+                    alert['longitude']?.toString() ?? '',
+                  );
+                  if (latitude == null || longitude == null) return null;
+                  final type = alert['type']?.toString() ?? 'เหตุการณ์เสี่ยง';
+                  return Marker(
+                    point: LatLng(latitude, longitude),
+                    width: 44,
+                    height: 44,
+                    child: Tooltip(
+                      message: type,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black26, blurRadius: 6),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.warning_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  );
+                }).whereType<Marker>(),
               ],
             ),
           ],

@@ -275,7 +275,7 @@ class MediaUploadService {
 
   Future<void> selectMedia(String mediaId) async {
     final uri = Uri.parse('$_baseUrl/device-media/$mediaId/select');
-    final response = await http.patch(uri);
+    final response = await http.put(uri);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(

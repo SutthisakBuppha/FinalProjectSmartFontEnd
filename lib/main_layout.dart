@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '/services/api_service.dart';
 import '/services/rest_mode_service.dart';
+import '/services/trip_tracking_service.dart';
 import '/services/push_notification_service.dart';
 import 'alert_screen.dart';
 import 'home_screen.dart';
@@ -27,8 +28,8 @@ class _MainLayoutState extends State<MainLayout> {
 
   Timer? _pollingTimer;
   bool _isShowingAlert = false;
-  dynamic
-  _lastSeenAlertId; // เก็บ id ของ alert ล่าสุดที่เคยเห็นแล้ว (กันเด้งซ้ำ/เด้งของเก่า)
+  dynamic _lastSeenNotificationId;
+  bool _notificationBaselineReady = false;
 
   final List<Widget> _screens = [
     const HomeScreen(), // Index 0
@@ -45,6 +46,7 @@ class _MainLayoutState extends State<MainLayout> {
     _selectedIndex = widget.initialIndex;
     // โหลดสถานะโหมดพักรถที่เคย persist ไว้ (เผื่อผู้ใช้ปิด-เปิดแอประหว่างพักรถ)
     RestModeService.instance.ensureInitialized();
+    unawaited(TripTrackingService.instance.restore());
     unawaited(PushNotificationService.instance.registerTokenWithBackend());
     _startNotificationPolling();
   }
@@ -71,31 +73,45 @@ class _MainLayoutState extends State<MainLayout> {
       if (!ApiService.instance.isLoggedIn) return;
 
       try {
-        final alert = await ApiService.instance.latestAlert();
-        if (alert == null) return;
+        final notifications = await ApiService.instance.notifications();
+        final notification = notifications.isEmpty ? null : notifications.first;
+        final notificationId = notification?['noti_id'];
 
-        final alertId = alert['alert_id'];
-        if (alertId == null) return;
-
-        if (_lastSeenAlertId == null) {
-          // ดึงมาเป็นครั้งแรก -> แค่จำ id ไว้เฉยๆ ยังไม่เด้งจอ
-          // (กันไม่ให้ alert เก่าที่เคยเกิดไปแล้วก่อนเปิดแอปมาเด้งซ้ำ)
-          _lastSeenAlertId = alertId;
+        if (!_notificationBaselineReady) {
+          // Remember the state that existed before this app session so an old
+          // critical notification does not reopen AlertScreen.
+          _lastSeenNotificationId = notificationId;
+          _notificationBaselineReady = true;
           return;
         }
 
-        if (alertId == _lastSeenAlertId) return;
+        if (notificationId == null ||
+            notificationId == _lastSeenNotificationId) {
+          return;
+        }
 
-        // มี alert ใหม่จริง -> จำ id ไว้เสมอไม่ว่าจะอยู่ในโหมดพักรถหรือไม่
-        // (กันไม่ให้ alert นี้ค้างมาเด้งซ้ำทันทีที่โหมดพักรถหมดอายุ)
-        _lastSeenAlertId = alertId;
+        _lastSeenNotificationId = notificationId;
+        final alert = notification?['alert'];
+        if (alert is! Map) return;
+        final alertData = Map<String, dynamic>.from(alert);
+
+        // While Google Maps is guiding the driver to a selected rest stop,
+        // keep recording the event but never stack another AlertScreen over
+        // the navigation flow.
+        if (TripTrackingService.instance.isNavigatingToRestStop) {
+          debugPrint(
+            'กำลังนำทางไปจุดพักรถ -> ไม่เปิด AlertScreen ซ้ำ '
+            '(notification_id=$notificationId)',
+          );
+          return;
+        }
 
         // 🆕 ถ้ากำลังอยู่ในโหมดพักรถ -> ระงับการเด้ง AlertScreen ไว้ก่อน
         // (ยังคงมาร์คว่าเห็น alert นี้แล้วเหมือนเดิม เพื่อไม่ให้เด้งซ้ำภายหลัง)
         if (RestModeService.instance.isActive) {
           debugPrint(
             "Rest Mode กำลังทำงานอยู่ (เหลือ ${RestModeService.instance.remaining.inMinutes} นาที) "
-            "-> ระงับการแจ้งเตือน alert_id=$alertId ไว้ก่อน",
+            "-> ระงับการแจ้งเตือน notification_id=$notificationId ไว้ก่อน",
           );
           return;
         }
@@ -112,7 +128,7 @@ class _MainLayoutState extends State<MainLayout> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => AlertScreen(deviceId: alert['device_id']),
+            builder: (_) => AlertScreen(deviceId: alertData['device_id']),
           ),
         );
 

@@ -18,8 +18,9 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
   static const backgroundOffwhite = AppColors.surfaceMuted;
 
   int _currentIndex = 1;
-  String _selectedFilter = 'รายเดือน';
-  final _filterOptions = const ['รายสัปดาห์', 'รายเดือน', 'รายปี'];
+  String _selectedFilter = 'รายสัปดาห์';
+  final _filterOptions = const ['รายสัปดาห์', 'รายเดือน', 'กำหนดเอง'];
+  DateTimeRange? _customRange;
   
   List<Map<String, dynamic>> _alerts = [];
   bool _isLoading = true;
@@ -57,6 +58,60 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
 
   DateTime _day(DateTime time) => DateTime(time.year, time.month, time.day);
 
+  String _shortDate(DateTime date) => '${date.day}/${date.month}';
+
+  Future<void> _pickCustomRange() async {
+    final now = DateTime.now();
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange:
+          _customRange ?? DateTimeRange(start: _day(now), end: _day(now)),
+      helpText: 'เลือกช่วงวันที่วิเคราะห์ความเสี่ยง',
+      saveText: 'ใช้ตัวกรอง',
+      cancelText: 'ยกเลิก',
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        final actionStyle = TextButton.styleFrom(
+          backgroundColor: const Color(0xFF2563EB),
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: const Color(0xFF2563EB),
+          disabledForegroundColor: Colors.white,
+          minimumSize: const Size(112, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          textStyle: GoogleFonts.prompt(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        );
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(
+              primary: const Color(0xFF2563EB),
+              onPrimary: Colors.white,
+            ),
+            textButtonTheme: TextButtonThemeData(style: actionStyle),
+            datePickerTheme: theme.datePickerTheme.copyWith(
+              confirmButtonStyle: actionStyle,
+              rangePickerHeaderBackgroundColor: const Color(0xFF2563EB),
+              rangePickerHeaderForegroundColor: Colors.white,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (range == null || !mounted) return;
+    setState(() {
+      _customRange = range;
+      _selectedFilter = 'กำหนดเอง';
+    });
+  }
+
   _ChartData _chartData() {
     final now = DateTime.now();
     final labels = <String>[];
@@ -65,26 +120,52 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
 
     if (_selectedFilter == 'รายสัปดาห์') {
       final today = _day(now);
-      for (var i = 6; i >= 0; i--) {
-        final start = today.subtract(Duration(days: i));
+      final weekStart = today.subtract(Duration(days: now.weekday - 1));
+      for (var i = 0; i < 7; i++) {
+        final start = weekStart.add(Duration(days: i));
         starts.add(start);
         ends.add(start.add(const Duration(days: 1)));
         labels.add(const ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'][start.weekday - 1]);
       }
     } else if (_selectedFilter == 'รายเดือน') {
-      final end = _day(now).add(const Duration(days: 1));
-      for (var i = 4; i >= 0; i--) {
-        final start = end.subtract(Duration(days: (i + 1) * 7));
+      final monthStart = DateTime(now.year, now.month, 1);
+      final monthEnd = DateTime(now.year, now.month + 1, 1);
+      var start = monthStart;
+      var weekNumber = 1;
+      while (start.isBefore(monthEnd)) {
+        final proposedEnd = start.add(const Duration(days: 7));
+        final end = proposedEnd.isAfter(monthEnd) ? monthEnd : proposedEnd;
         starts.add(start);
-        ends.add(start.add(const Duration(days: 7)));
-        labels.add('สัปดาห์ ${5 - i}');
+        ends.add(end);
+        labels.add('สัปดาห์\nที่ $weekNumber');
+        weekNumber++;
+        start = end;
       }
     } else {
-      for (var i = 11; i >= 0; i--) {
-        final start = DateTime(now.year, now.month - i, 1);
-        starts.add(start);
-        ends.add(DateTime(start.year, start.month + 1, 1));
-        labels.add('${start.month}/${(start.year % 100).toString().padLeft(2, '0')}');
+      final range = _customRange;
+      if (range == null) {
+        final today = _day(now);
+        starts.add(today);
+        ends.add(today.add(const Duration(days: 1)));
+        labels.add(_shortDate(today));
+      } else {
+        final rangeStart = _day(range.start);
+        final rangeEnd = _day(range.end).add(const Duration(days: 1));
+        final totalDays = rangeEnd.difference(rangeStart).inDays;
+        final bucketDays = totalDays <= 14 ? 1 : (totalDays / 8).ceil();
+        var start = rangeStart;
+        while (start.isBefore(rangeEnd)) {
+          final proposedEnd = start.add(Duration(days: bucketDays));
+          final end = proposedEnd.isAfter(rangeEnd) ? rangeEnd : proposedEnd;
+          starts.add(start);
+          ends.add(end);
+          labels.add(
+            bucketDays == 1
+                ? _shortDate(start)
+                : '${_shortDate(start)}-${_shortDate(end.subtract(const Duration(days: 1)))}',
+          );
+          start = end;
+        }
       }
     }
 
@@ -104,9 +185,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
 
   Map<String, int> _breakdown(_ChartData data) {
     final result = <String, int>{};
-    for (final alert in _alerts) {
-      final time = _alertTime(alert);
-      if (time == null || time.isBefore(data.start) || !time.isBefore(data.end)) continue;
+    for (final alert in _alertsInRange(data)) {
       final type = (alert['type']?.toString().trim().isNotEmpty ?? false)
           ? alert['type'].toString()
           : 'ไม่ระบุประเภท';
@@ -114,6 +193,15 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
     }
     final entries = result.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     return Map.fromEntries(entries);
+  }
+
+  List<Map<String, dynamic>> _alertsInRange(_ChartData data) {
+    return _alerts.where((alert) {
+      final time = _alertTime(alert);
+      return time != null &&
+          !time.isBefore(data.start) &&
+          time.isBefore(data.end);
+    }).toList();
   }
 
   // --- UI ---
@@ -156,7 +244,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                         // หัวข้อรายละเอียด
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                          child: _buildRiskBreakdownHeader(scale),
+                          child: _buildRiskBreakdownHeader(chart, scale),
                         ),
                         
                         SizedBox(height: 16 * scale),
@@ -220,7 +308,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'สถิติและภาพรวมการแจ้งเตือน',
+                  'กราฟสถิติและรายละเอียดความเสี่ยงจากการขับขี่',
                   style: GoogleFonts.prompt(
                     color: Colors.white.withOpacity(0.8),
                     fontSize: 13,
@@ -271,7 +359,13 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                 final isSelected = _selectedFilter == option;
                 return Expanded(
                   child: GestureDetector(
-                    onTap: () => setState(() => _selectedFilter = option),
+                    onTap: () {
+                      if (option == 'กำหนดเอง') {
+                        _pickCustomRange();
+                      } else {
+                        setState(() => _selectedFilter = option);
+                      }
+                    },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       padding: EdgeInsets.symmetric(vertical: 8 * scale),
@@ -314,31 +408,72 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
           
           // Labels
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: data.labels.map((label) {
-              return Flexible(
-                child: Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.prompt(fontSize: 10 * scale, color: Colors.grey.shade500),
+              return Expanded(
+                child: Center(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.prompt(
+                      fontSize: 10 * scale,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
                 ),
               );
             }).toList(),
+          ),
+          SizedBox(height: 12 * scale),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(10 * scale),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              'แกน X: ช่วงวันที่เกิดเหตุการณ์  •  แกน Y: จำนวนการแจ้งเตือน (ครั้ง)',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.prompt(
+                fontSize: 11 * scale,
+                color: const Color(0xFF1D4ED8),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRiskBreakdownHeader(double scale) {
-    return Text(
-      'รายละเอียดความเสี่ยง',
-      style: GoogleFonts.prompt(
-        fontSize: 18 * scale,
-        fontWeight: FontWeight.bold,
-        color: primary,
-      ),
+  Widget _buildRiskBreakdownHeader(_ChartData data, double scale) {
+    final inclusiveEnd = data.end.subtract(const Duration(days: 1));
+    final filteredCount = _alertsInRange(data).length;
+    final rangeText =
+        '${data.start.day}/${data.start.month}/${data.start.year + 543} - '
+        '${inclusiveEnd.day}/${inclusiveEnd.month}/${inclusiveEnd.year + 543}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'รายละเอียดความเสี่ยง',
+          style: GoogleFonts.prompt(
+            fontSize: 18 * scale,
+            fontWeight: FontWeight.bold,
+            color: primary,
+          ),
+        ),
+        SizedBox(height: 4 * scale),
+        Text(
+          'ข้อมูลตามตัวกรอง: $rangeText  •  รวม $filteredCount ครั้ง',
+          style: GoogleFonts.prompt(
+            fontSize: 12 * scale,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
     );
   }
 
@@ -528,54 +663,50 @@ class _TrendPainter extends CustomPainter {
 
     final maxValue = values.reduce((a, b) => a > b ? a : b);
     final maxY = maxValue == 0 ? 1 : maxValue;
-    
-    // คำนวณจุดเชื่อม
-    final points = <Offset>[
-      for (var i = 0; i < values.length; i++)
+
+    final slotWidth = size.width / values.length;
+    final barWidth = (slotWidth * 0.56).clamp(6.0, 38.0).toDouble();
+    const topSpace = 24.0;
+    const bottomSpace = 4.0;
+    final usableHeight = size.height - topSpace - bottomSpace;
+    final barPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [color.withOpacity(0.82), color],
+      ).createShader(Offset.zero & size);
+
+    for (var i = 0; i < values.length; i++) {
+      final centerX = slotWidth * i + slotWidth / 2;
+      final height = values[i] == 0 ? 0.0 : (values[i] / maxY) * usableHeight;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          centerX - barWidth / 2,
+          size.height - bottomSpace - height,
+          barWidth,
+          height,
+        ),
+        const Radius.circular(7),
+      );
+      canvas.drawRRect(rect, barPaint);
+
+      final valueText = TextPainter(
+        text: TextSpan(
+          text: '${values[i]}',
+          style: TextStyle(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      valueText.paint(
+        canvas,
         Offset(
-          values.length == 1 ? size.width / 2 : size.width * i / (values.length - 1),
-          size.height - (values[i] / maxY) * (size.height - 20) - 10,
-        )
-    ];
-
-    final path = Path()..moveTo(points.first.dx, points.first.dy);
-    for (final point in points.skip(1)) {
-      path.lineTo(point.dx, point.dy);
-    }
-
-    // วาด Gradient พื้นหลังกราฟ
-    final fillPath = Path.from(path)
-      ..lineTo(points.last.dx, size.height)
-      ..lineTo(points.first.dx, size.height)
-      ..close();
-      
-    final gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [color.withOpacity(0.3), color.withOpacity(0.0)],
-    ).createShader(Offset.zero & size);
-    
-    canvas.drawPath(fillPath, Paint()..shader = gradient);
-
-    // วาดเส้นกราฟ
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = 3.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    canvas.drawPath(path, linePaint);
-
-    // วาดจุดเชื่อมต่อบนเส้นกราฟ
-    for (final point in points) {
-      canvas.drawCircle(point, 5, Paint()..color = Colors.white);
-      canvas.drawCircle(
-        point,
-        5,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5,
+          centerX - valueText.width / 2,
+          size.height - bottomSpace - height - valueText.height - 3,
+        ),
       );
     }
   }
