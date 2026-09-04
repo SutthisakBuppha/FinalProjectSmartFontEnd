@@ -59,6 +59,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
 
     try {
+      // บน Flutter Web อาจมีการ refresh/hot restart ขณะที่ MainLayout ยังเปิดอยู่
+      // ทำให้ token ในหน่วยความจำหายไปชั่วคราว ให้กู้จาก local storage ก่อนยิง API
+      if (!ApiService.instance.isLoggedIn) {
+        final restored = await ApiService.instance.restoreSession();
+        if (!restored) {
+          if (mounted) {
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil('/login', (route) => false);
+          }
+          return;
+        }
+      }
+
       final results = await Future.wait([
         ApiService.instance.trips(),
         ApiService.instance.alerts(),
@@ -108,6 +122,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      if (e is ApiException &&
+          (e.statusCode == 401 || !ApiService.instance.isLoggedIn)) {
+        ApiService.instance.clearSession();
+        if (mounted) {
+          Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
+        return;
+      }
       if (mounted && !silent) {
         setState(() {
           _errorMessage = e.toString();

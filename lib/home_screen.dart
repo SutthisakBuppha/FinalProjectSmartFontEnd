@@ -18,7 +18,14 @@ void main() {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool autoOpenSleepRestMode;
+  final VoidCallback? onAutoRestModeConsumed;
+
+  const HomeScreen({
+    super.key,
+    this.autoOpenSleepRestMode = false,
+    this.onAutoRestModeConsumed,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -43,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen>
   // ─────────────────────────────────────────────────────────────────────
   Timer? _restCountdownTicker;
   bool _isWakeUpDialogVisible = false;
+  bool _didAutoOpenSleepRestMode = false;
 
   // ---------------------------------------------------------------------
   // หมายเหตุ: ลอจิกทั้งหมดด้านล่างนี้ "ไม่ถูกแก้ไข" ตามที่ขอ (คงความสามารถเดิม)
@@ -73,6 +81,16 @@ class _HomeScreenState extends State<HomeScreen>
     RestModeService.instance.ensureInitialized().then((_) {
       if (mounted) setState(() {});
       _syncRestCountdownTicker();
+      if (mounted &&
+          widget.autoOpenSleepRestMode &&
+          !_didAutoOpenSleepRestMode &&
+          !RestModeService.instance.isActive) {
+        _didAutoOpenSleepRestMode = true;
+        widget.onAutoRestModeConsumed?.call();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showRestModeSheet(presetReason: 'sleep');
+        });
+      }
     });
 
     // อัปเดต UI ทุกครั้งที่สถานะโหมดพักรถเปลี่ยน (เปิด/ยกเลิก/หมดอายุเอง)
@@ -411,8 +429,8 @@ class _HomeScreenState extends State<HomeScreen>
     return result;
   }
 
-  Future<void> _showRestModeSheet() async {
-    final reason = await showDialog<String>(
+  Future<void> _showRestModeSheet({String? presetReason}) async {
+    final reason = presetReason ?? await showDialog<String>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
         title: Text(
@@ -450,6 +468,8 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      isDismissible: presetReason == null,
+      enableDrag: presetReason == null,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final screenHeight = MediaQuery.sizeOf(sheetContext).height;
@@ -506,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen>
                               ),
                             ),
                             Text(
-                              "ระบบจะไม่แจ้งเตือนชั่วคราวตามเวลาที่เลือก",
+                              "${_restReasonLabel(reason)} • ระบบจะไม่แจ้งเตือนตามเวลาที่เลือก",
                               style: GoogleFonts.prompt(
                                 fontSize: 12,
                                 color: Colors.grey[600],

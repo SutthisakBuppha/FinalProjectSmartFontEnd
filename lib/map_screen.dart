@@ -16,10 +16,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'menu/custom_bottom_nav_bar.dart';
 import 'main_layout.dart';
 import '/services/api_service.dart';
-import '/services/rest_mode_service.dart';
 import '/services/trip_tracking_service.dart';
-
-enum _PostNavigationAction { rest, continueTrip, finishTrip }
 
 /// โมเดลข้อมูลสถานที่ใกล้เคียง (ปั๊มน้ำมัน / จุดพักรถ) ที่ได้จาก Overpass API
 class NearbyPlace {
@@ -122,7 +119,7 @@ class _MapScreenState extends State<MapScreen>
     }
     _isShowingFinishDialog = true;
 
-    final action = await showDialog<_PostNavigationAction>(
+    final shouldRest = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
@@ -130,108 +127,38 @@ class _MapScreenState extends State<MapScreen>
         content: Text(
           'กำลังบันทึกเส้นทางไปยัง '
           '${TripTrackingService.instance.destinationName ?? 'จุดหมาย'}\n'
-          'ปุ่มจบด้านล่างจะจบเฉพาะเส้นทางไปจุดพัก ทริปหลักยังเดินทางต่อ',
+          'เมื่อถึงจุดพักแล้ว ให้เปิดโหมดพักรถเพื่อหยุด AI การแจ้งเตือน และเสียง Buzzer ชั่วคราว',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(
-              _PostNavigationAction.continueTrip,
-            ),
-            child: const Text('เดินทางต่อ'),
-          ),
-          OutlinedButton(
-            onPressed: () => Navigator.of(dialogContext).pop(
-              _PostNavigationAction.rest,
-            ),
-            child: const Text('เปิดโหมดพักรถ'),
-          ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(
-              _PostNavigationAction.finishTrip,
-            ),
-            child: const Text('จบทริป'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('เปิดโหมดพักรถ'),
           ),
         ],
       ),
     );
     _isShowingFinishDialog = false;
 
-    if (!mounted || action == null) return;
-    if (action == _PostNavigationAction.continueTrip) return;
-
-    if (action == _PostNavigationAction.rest) {
-      final minutes = await _selectRestDuration();
-      if (!mounted || minutes == null) return;
-      try {
-        await TripTrackingService.instance.finishRestStopTrip();
-        await RestModeService.instance.activate(
-          Duration(minutes: minutes),
-          reason: 'break',
-        );
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainLayout(initialIndex: 0)),
-          (route) => false,
-        );
-      } catch (error) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เปิดโหมดพักรถไม่สำเร็จ: $error')),
-        );
-      }
-      return;
-    }
+    if (!mounted || shouldRest != true) return;
 
     try {
-      final trip = await TripTrackingService.instance.finishRestStopTrip();
+      await TripTrackingService.instance.finishRestStopTrip();
       if (!mounted) return;
-      final distance =
-          num.tryParse(trip?['distance']?.toString() ?? '')?.toDouble() ?? 0;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'จบเฉพาะเส้นทางไปจุดพักแล้ว ระยะทาง ${distance.toStringAsFixed(2)} กม. ทริปหลักยังทำงานอยู่',
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const MainLayout(
+            initialIndex: 0,
+            openSleepRestMode: true,
           ),
         ),
+        (route) => false,
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('จบทริปไม่สำเร็จ กรุณาลองใหม่: $error')),
+        SnackBar(content: Text('เปิดหน้าพักรถไม่สำเร็จ กรุณาลองใหม่: $error')),
       );
     }
-  }
-
-  Future<int?> _selectRestDuration() {
-    return showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'เลือกระยะเวลาพักรถ',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 16),
-              for (final minutes in const [5, 10, 15])
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(sheetContext).pop(minutes),
-                    child: Text('พัก $minutes นาที'),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -415,6 +342,7 @@ class _MapScreenState extends State<MapScreen>
   Future<void> _navigateTo(NearbyPlace place) async {
     if (_isStartingNavigation) return;
     _isStartingNavigation = true;
+    if (mounted) setState(() {});
     final destination =
         '${place.location.latitude},${place.location.longitude}';
 
@@ -467,6 +395,7 @@ class _MapScreenState extends State<MapScreen>
       );
     } finally {
       _isStartingNavigation = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -715,41 +644,6 @@ class _MapScreenState extends State<MapScreen>
                 ],
               ),
               child: const Icon(Icons.close_rounded, color: AppColors.cFF1E293B, size: 20),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // แถบค้นหาแบบเรียบ พื้นขาว ตามโทนดีไซน์ใหม่
-          Expanded(
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: AppColors.cFF94A3B8, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _isLoadingPlaces ? "กำลังค้นหาจุดพักรถ..." : "ค้นหาจุดพักรถ...",
-                      style: GoogleFonts.prompt(
-                        color: AppColors.cFF94A3B8,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const Icon(Icons.mic, color: AppColors.cFF94A3B8, size: 20),
-                ],
-              ),
             ),
           ),
         ],
@@ -1083,27 +977,40 @@ class _MapScreenState extends State<MapScreen>
           const SizedBox(width: 8),
 
           // ปุ่มนำทาง สไตล์ปุ่ม action หลักของดีไซน์ใหม่ (พื้นน้ำเงิน)
-          GestureDetector(
-            onTap: () => _navigateTo(place),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.secondary,
-                borderRadius: BorderRadius.circular(10),
+          SizedBox(
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: _isStartingNavigation
+                  ? null
+                  : () => _navigateTo(place),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(104, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                backgroundColor: AppColors.secondary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.secondary.withOpacity(0.65),
+                disabledForegroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                tapTargetSize: MaterialTapTargetSize.padded,
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.directions, color: Colors.white, size: 16),
-                  SizedBox(width: 4),
-                  Text(
-                    "นำทาง",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+              icon: _isStartingNavigation
+                  ? const SizedBox(
+                      width: 17,
+                      height: 17,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.directions, size: 19),
+              label: Text(
+                _isStartingNavigation ? "กำลังเปิด..." : "นำทาง",
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),

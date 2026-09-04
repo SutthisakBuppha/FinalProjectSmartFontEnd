@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -243,25 +244,58 @@ class MediaUploadService {
   }) async {
     final uri = Uri.parse('$_baseUrl/device-media/upload');
     final request = http.MultipartRequest('POST', uri);
+    request.headers['Accept'] = 'application/json';
+    request.followRedirects = false;
 
     request.fields['device_id'] = deviceId;
     request.fields['type'] = type;
 
+    final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
+    final audioContentTypes = <String, String>{
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'm4a': 'audio/mp4',
+      'mp4': 'audio/mp4',
+      'aac': 'audio/aac',
+      'ogg': 'audio/ogg',
+      'opus': 'audio/opus',
+      'flac': 'audio/flac',
+    };
+    final contentType = type == 'audio' ? audioContentTypes[extension] : null;
+
     request.files.add(
-      http.MultipartFile.fromBytes('file', bytes, filename: fileName),
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: fileName,
+        contentType: contentType == null ? null : MediaType.parse(contentType),
+      ),
     );
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
 
+    final responseContentType =
+        response.headers['content-type']?.toLowerCase() ?? '';
+    final body = utf8.decode(response.bodyBytes);
+    final isJsonResponse = responseContentType.contains('application/json') ||
+        body.trimLeft().startsWith('{') ||
+        body.trimLeft().startsWith('[');
+
     if (response.statusCode == 200 || response.statusCode == 201) {
-      final data = jsonDecode(response.body);
+      if (!isJsonResponse) {
+        throw Exception(
+          'เซิร์ฟเวอร์ไม่ได้ตอบกลับเป็น JSON กรุณาตรวจสอบ route '
+          'POST /api/device-media/upload บนเซิร์ฟเวอร์',
+        );
+      }
+      final data = jsonDecode(body);
       return UploadedMedia.fromJson(data['data'] ?? data);
     }
 
     String? apiMessage;
     try {
-      final errorBody = jsonDecode(response.body);
+      final errorBody = isJsonResponse ? jsonDecode(body) : null;
       apiMessage = errorBody is Map<String, dynamic>
           ? errorBody['message']?.toString()
           : null;
@@ -269,7 +303,10 @@ class MediaUploadService {
       // Keep the status-code fallback when the server does not return JSON.
     }
     throw Exception(
-      apiMessage ?? 'อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode})',
+      apiMessage ??
+          (response.statusCode >= 300 && response.statusCode < 400
+              ? 'เซิร์ฟเวอร์เปลี่ยนเส้นทางคำขออัปโหลด (${response.statusCode}) กรุณาตรวจสอบ API URL และ route'
+              : 'อัปโหลดไฟล์ไม่สำเร็จ (${response.statusCode})'),
     );
   }
 

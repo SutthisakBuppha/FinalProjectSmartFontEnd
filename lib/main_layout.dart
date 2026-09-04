@@ -16,8 +16,13 @@ import 'menu/custom_bottom_nav_bar.dart';
 
 class MainLayout extends StatefulWidget {
   final int initialIndex;
+  final bool openSleepRestMode;
 
-  const MainLayout({super.key, this.initialIndex = 0});
+  const MainLayout({
+    super.key,
+    this.initialIndex = 0,
+    this.openSleepRestMode = false,
+  });
 
   @override
   State<MainLayout> createState() => _MainLayoutState();
@@ -25,25 +30,53 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _selectedIndex = 0;
+  bool _sessionReady = false;
 
   Timer? _pollingTimer;
   bool _isShowingAlert = false;
   dynamic _lastSeenNotificationId;
   bool _notificationBaselineReady = false;
 
-  final List<Widget> _screens = [
-    const HomeScreen(), // Index 0
-    const HistoryScreen(), // Index 1
-    const NotificationScreen(), // Index 2
-    const DeviceSection(), // Index 3
-    const RiskTrendsScreen(), // Index 4
-    const ProfileScreen(), // Index 5
-  ];
+  late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
+    _screens = [
+      HomeScreen(
+        autoOpenSleepRestMode: widget.openSleepRestMode,
+        onAutoRestModeConsumed: _consumeAutoSleepRestMode,
+      ), // Index 0
+      const HistoryScreen(), // Index 1
+      const NotificationScreen(), // Index 2
+      const DeviceSection(), // Index 3
+      const RiskTrendsScreen(), // Index 4
+      const ProfileScreen(), // Index 5
+    ];
+    _initializeAuthenticatedLayout();
+  }
+
+  void _consumeAutoSleepRestMode() {
+    // คำสั่งจากหน้า Map ใช้ได้เพียงครั้งเดียว หากผู้ใช้สลับเมนูแล้วกลับ Home
+    // จะสร้าง HomeScreen ปกติและไม่เปิดตัวเลือกเวลาพักซ้ำอีก
+    _screens[0] = const HomeScreen();
+  }
+
+  Future<void> _initializeAuthenticatedLayout() async {
+    final hasSession = ApiService.instance.isLoggedIn ||
+        await ApiService.instance.restoreSession();
+
+    if (!mounted) return;
+    if (!hasSession) {
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil('/login', (route) => false);
+      return;
+    }
+
+    setState(() => _sessionReady = true);
+
     // โหลดสถานะโหมดพักรถที่เคย persist ไว้ (เผื่อผู้ใช้ปิด-เปิดแอประหว่างพักรถ)
     RestModeService.instance.ensureInitialized();
     unawaited(TripTrackingService.instance.restore());
@@ -155,6 +188,12 @@ class _MainLayoutState extends State<MainLayout> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_sessionReady) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       extendBody: true,
       body: _screens[_selectedIndex],
