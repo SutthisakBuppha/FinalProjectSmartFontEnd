@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -55,6 +57,8 @@ class MediaUploadService {
   MediaUploadService._();
   static final MediaUploadService instance = MediaUploadService._();
   static String get _baseUrl => ApiService.instance.baseUrl;
+  static const Duration _uploadTimeout = Duration(seconds: 90);
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   final ImagePicker _picker = ImagePicker();
 
@@ -145,18 +149,26 @@ class MediaUploadService {
   }
 
   Future<PlatformFile?> pickAudio() async {
+    // Android file managers do not always map custom extensions (especially
+    // M4A/AAC) to the MIME types supplied by file_picker. In that case valid
+    // audio files appear disabled and cannot be selected. Let Android filter
+    // with audio/*, then validate the real extension before upload below.
+    final useAndroidAudioFilter =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const [
-        'mp3',
-        'wav',
-        'm4a',
-        'aac',
-        'ogg',
-        'opus',
-        'flac',
-        'mp4',
-      ],
+      type: useAndroidAudioFilter ? FileType.audio : FileType.custom,
+      allowedExtensions: useAndroidAudioFilter
+          ? null
+          : const [
+              'mp3',
+              'wav',
+              'm4a',
+              'aac',
+              'ogg',
+              'opus',
+              'flac',
+              'mp4',
+            ],
       withData: true,
     );
     if (result == null || result.files.isEmpty) return null;
@@ -272,13 +284,14 @@ class MediaUploadService {
       ),
     );
 
-    final streamedResponse = await request.send();
+    final streamedResponse = await request.send().timeout(_uploadTimeout);
     final response = await http.Response.fromStream(streamedResponse);
 
     final responseContentType =
         response.headers['content-type']?.toLowerCase() ?? '';
     final body = utf8.decode(response.bodyBytes);
-    final isJsonResponse = responseContentType.contains('application/json') ||
+    final isJsonResponse =
+        responseContentType.contains('application/json') ||
         body.trimLeft().startsWith('{') ||
         body.trimLeft().startsWith('[');
 
@@ -312,7 +325,7 @@ class MediaUploadService {
 
   Future<void> selectMedia(String mediaId) async {
     final uri = Uri.parse('$_baseUrl/device-media/$mediaId/select');
-    final response = await http.put(uri);
+    final response = await http.put(uri).timeout(_requestTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(
@@ -323,7 +336,7 @@ class MediaUploadService {
 
   Future<void> deleteMedia(String mediaId) async {
     final uri = Uri.parse('$_baseUrl/device-media/$mediaId');
-    final response = await http.delete(uri);
+    final response = await http.delete(uri).timeout(_requestTimeout);
 
     if (response.statusCode == 200 || response.statusCode == 204) return;
 
@@ -345,7 +358,7 @@ class MediaUploadService {
   /// ดึงรายการไฟล์สื่อทั้งหมดที่เคยอัปโหลดของอุปกรณ์นี้
   Future<List<UploadedMedia>> fetchDeviceMedia(String deviceId) async {
     final uri = Uri.parse('$_baseUrl/device-media/$deviceId');
-    final response = await http.get(uri);
+    final response = await http.get(uri).timeout(_requestTimeout);
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -401,7 +414,10 @@ class MediaUploadService {
       'flac',
       'mp4',
     };
-    final extension = p.extension(platformFile.name).replaceFirst('.', '').toLowerCase();
+    final extension = p
+        .extension(platformFile.name)
+        .replaceFirst('.', '')
+        .toLowerCase();
     if (!allowedExtensions.contains(extension)) {
       throw Exception(
         'รองรับเฉพาะไฟล์ MP3, WAV, M4A, AAC, OGG, OPUS, FLAC และ MP4',

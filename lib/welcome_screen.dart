@@ -116,7 +116,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 480),
                   child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: horizontalPadding,
+                    ),
                     child: Column(
                       children: [
                         SizedBox(height: isCompactHeight ? 12 : 24),
@@ -142,10 +144,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                       height: logoBoxSize,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: AppColors.primaryLight.withOpacity(0.1),
+                                        color: AppColors.primaryLight
+                                            .withOpacity(0.1),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: AppColors.primaryLight.withOpacity(0.1),
+                                            color: AppColors.primaryLight
+                                                .withOpacity(0.1),
                                             blurRadius: 24,
                                             spreadRadius: 5,
                                           ),
@@ -176,10 +180,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   ],
                                 ),
                               ),
-                              SizedBox(height: (isCompactHeight ? 20 : 32) * scale),
+                              SizedBox(
+                                height: (isCompactHeight ? 20 : 32) * scale,
+                              ),
 
                               // Text Content
-                              Text(
+                              AppText(
                                 "Smart Drive Guard",
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.prompt(
@@ -191,7 +197,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                 ),
                               ),
                               SizedBox(height: 8 * scale),
-                              Text(
+                              AppText(
                                 "สำหรับผู้ขับรถ",
                                 style: GoogleFonts.prompt(
                                   fontSize: 13 * scale,
@@ -219,7 +225,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               ),
                             ),
                             SizedBox(height: 16 * scale),
-                            Text(
+                            AppText(
                               "POWERED BY AI",
                               style: GoogleFonts.prompt(
                                 fontSize: 10 * scale,

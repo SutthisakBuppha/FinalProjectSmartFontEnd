@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'profile_edit_screen.dart';
 import 'login_screen.dart';
 import '/services/api_service.dart';
+import '/services/text_scale_service.dart';
+import '/services/language_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,7 +16,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _profileData;
-  List<Map<String, dynamic>> _alerts = [];
   double _totalDistance = 0;
   int _totalDrivingMinutes = 0;
   bool _isLoading = true;
@@ -29,34 +30,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final results = await Future.wait([
         ApiService.instance.driverProfile(),
-        ApiService.instance.alerts(),
         ApiService.instance.trips(),
       ]);
       if (!mounted) return;
       setState(() {
         _profileData = results[0] as Map<String, dynamic>;
-        _alerts = results[1] as List<Map<String, dynamic>>;
-        final trips = results[2] as List<Map<String, dynamic>>;
-        _totalDistance = trips.fold<double>(0, (sum, trip) {
+        final trips = results[1] as List<Map<String, dynamic>>;
+        final mainTrips = trips.where((trip) {
+          return (trip['trip_type']?.toString() ?? 'main') == 'main';
+        }).toList();
+        final completedTrips = mainTrips.where((trip) {
+          return trip['status']?.toString() == 'completed' ||
+              trip['end_time'] != null;
+        }).toList();
+        _totalDistance = completedTrips.fold<double>(0, (sum, trip) {
           return sum +
               (double.tryParse(trip['distance']?.toString() ?? '') ?? 0);
         });
-        _totalDrivingMinutes = trips.fold<int>(0, (sum, trip) {
-          final start = DateTime.tryParse(trip['start_time']?.toString() ?? '');
-          final end = DateTime.tryParse(trip['end_time']?.toString() ?? '');
-          return sum +
-              (start != null && end != null
-                  ? end.difference(start).inMinutes
-                  : 0);
+        _totalDrivingMinutes = completedTrips.fold<int>(0, (sum, trip) {
+          return sum + _tripDurationMinutes(trip);
         });
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('โหลดข้อมูลโปรไฟล์ล้มเหลว: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText('โหลดข้อมูลโปรไฟล์ล้มเหลว: $e')),
+      );
     }
   }
 
@@ -92,11 +93,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
+        title: AppText(
           "ยืนยันการออกจากระบบ",
           style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
         ),
-        content: Text(
+        content: AppText(
           "คุณต้องการออกจากระบบใช่หรือไม่?",
           style: GoogleFonts.prompt(),
         ),
@@ -104,7 +105,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text("ยกเลิก", style: GoogleFonts.prompt(color: Colors.grey)),
+            child: AppText(
+              "ยกเลิก",
+              style: GoogleFonts.prompt(color: Colors.grey),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -120,7 +124,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 debugPrint("Logout API error (ไม่กระทบผู้ใช้): $e");
               });
             },
-            child: Text(
+            child: AppText(
               "ออกจากระบบ",
               style: GoogleFonts.prompt(color: Colors.red),
             ),
@@ -157,61 +161,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             110,
                           ),
                           child: Column(
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    "ประวัติการขับขี่ล่าสุด",
-                                    style: GoogleFonts.prompt(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.text,
-                                    ),
-                                  ),
-                                  // Text(
-                                  //   "ดูทั้งหมด",
-                                  //   style: GoogleFonts.prompt(
-                                  //     fontSize: 12,
-                                  //     fontWeight: FontWeight.w600,
-                                  //     color: AppColors.secondary,
-                                  //   ),
-                                  // ),
-                                ],
-                              ),
-                              SizedBox(height: isCompact ? 8 : 12),
-                              _buildLogCard(
-                                icon: Icons.bedtime_rounded,
-                                iconColor: AppColors.cFF60A5FA,
-                                iconBg: AppColors.cFFEFF6FF,
-                                title: "เดินทางไปทำงาน",
-                                tag: "ยอดเยี่ยม",
-                                tagColor: AppColors.cFF047857,
-                                tagBg: AppColors.cFFD1FAE5,
-                                subtitle: "วันนี้ • 20 กม. • 28 นาที",
-                              ),
-                              _buildLogCard(
-                                icon: Icons.blur_on_rounded,
-                                iconColor: AppColors.cFF818CF8,
-                                iconBg: AppColors.cFFEEF2FF,
-                                title: "ซื้อของเข้าบ้าน",
-                                tag: "ดีมาก",
-                                tagColor: AppColors.cFF1D4ED8,
-                                tagBg: AppColors.cFFDBEAFE,
-                                subtitle: "เมื่อวาน • 6.7 กม. • 15 นาที",
-                              ),
-                              _buildLogCard(
-                                icon: Icons.visibility_off_rounded,
-                                iconColor: AppColors.cFFEA580C,
-                                iconBg: AppColors.cFFFFEDD5,
-                                title: '',
-                                tag: '',
-                                tagColor: AppColors.cFFEA580C,
-                                tagBg: AppColors.cFFFFEDD5,
-                                subtitle: '',
-                              ),
-                            ],
+                            children: [_buildDisplaySettings(isCompact)],
                           ),
                         ),
                       ),
@@ -261,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: AppText(
                       "โปรไฟล์",
                       style: GoogleFonts.prompt(
                         color: Colors.white,
@@ -288,7 +238,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     },
                   ),
                   IconButton(
-                    tooltip: 'ออกจากระบบ',
+                    tooltip: appTr('ออกจากระบบ'),
                     onPressed: _handleLogout,
                     icon: const Icon(
                       Icons.logout_rounded,
@@ -316,7 +266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : null,
             ),
             SizedBox(height: isCompact ? 6 : 10),
-            Text(
+            AppText(
               name,
               style: GoogleFonts.prompt(
                 color: Colors.white,
@@ -324,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            Text(
+            AppText(
               "@$username",
               style: GoogleFonts.prompt(
                 color: Colors.white70,
@@ -341,7 +291,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: isActive ? AppColors.cFF4ADE80 : AppColors.cFFDC2626,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
+              child: AppText(
                 status,
                 style: GoogleFonts.prompt(
                   color: Colors.white,
@@ -358,7 +308,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               padding: EdgeInsets.symmetric(vertical: isCompact ? 9 : 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -385,7 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatItem(String label, String value) {
     return Column(
       children: [
-        Text(
+        AppText(
           value,
           style: GoogleFonts.prompt(
             color: Colors.white,
@@ -394,7 +344,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
+        AppText(
           label,
           style: GoogleFonts.prompt(color: Colors.white70, fontSize: 12),
         ),
@@ -402,124 +352,238 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  String _alertTypeForIcon(IconData icon) {
-    if (icon == Icons.bedtime_rounded) return 'ง่วงนอน';
-    if (icon == Icons.blur_on_rounded) return 'เหม่อลอย';
-    return 'ไม่มองถนน';
+  int _tripDurationMinutes(Map<String, dynamic> trip) {
+    final start = DateTime.tryParse(trip['start_time']?.toString() ?? '');
+    final end = DateTime.tryParse(trip['end_time']?.toString() ?? '');
+    if (start != null && end != null) {
+      return end.difference(start).inMinutes.abs();
+    }
+    return num.tryParse(trip['duration']?.toString() ?? '')?.toInt() ?? 0;
   }
 
-  List<Map<String, dynamic>> _alertsForType(String type) {
-    final matches = _alerts.where((alert) {
-      final alertType = alert['type']?.toString();
+  Widget _buildDisplaySettings(bool isCompact) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        TextScaleController.instance,
+        LanguageController.instance,
+      ]),
+      builder: (context, _) {
+        final controller = TextScaleController.instance;
+        final languageController = LanguageController.instance;
 
-      // AI บันทึกการลืมตาค้างโดยใช้ชื่อประเภทนี้ในฐานข้อมูล
-      // แต่หน้า Profile แสดงชื่อที่อ่านง่ายว่า "เหม่อลอย"
-      if (type == 'เหม่อลอย') {
-        return alertType == 'เหม่อลอย' ||
-            alertType == 'ไม่กระพริบตาเป็นเวลานาน';
-      }
-
-      return alertType == type;
-    }).toList();
-    matches.sort((a, b) {
-      final aTime =
-          DateTime.tryParse(
-            (a['timestamp'] ?? a['created_at'] ?? '').toString(),
-          ) ??
-          DateTime(0);
-      final bTime =
-          DateTime.tryParse(
-            (b['timestamp'] ?? b['created_at'] ?? '').toString(),
-          ) ??
-          DateTime(0);
-      return bTime.compareTo(aTime);
-    });
-    return matches;
-  }
-
-  String _latestAlertText(List<Map<String, dynamic>> alerts) {
-    if (alerts.isEmpty) return 'ยังไม่พบประวัติการแจ้งเตือน';
-    final rawTime = alerts.first['timestamp'] ?? alerts.first['created_at'];
-    final time = DateTime.tryParse(rawTime?.toString() ?? '')?.toLocal();
-    if (time == null) return 'พบการแจ้งเตือนล่าสุด';
-    return 'ล่าสุด ${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year + 543} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} น.';
-  }
-
-  Widget _buildLogCard({
-    required IconData icon,
-    required Color iconColor,
-    required Color iconBg,
-    required String title,
-    required String tag,
-    required Color tagColor,
-    required Color tagBg,
-    required String subtitle,
-  }) {
-    final alertType = _alertTypeForIcon(icon);
-    final alerts = _alertsForType(alertType);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-            child: Icon(icon, color: iconColor, size: 24),
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(isCompact ? 16 : 20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      alertType,
-                      style: GoogleFonts.prompt(
-                        color: AppColors.text,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.cFFEFF6FF,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: tagBg,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${alerts.length} ครั้ง',
-                        style: GoogleFonts.prompt(
-                          color: tagColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+                    child: const Icon(
+                      Icons.text_fields_rounded,
+                      color: AppColors.cFF1D4ED8,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppText(
+                          'การตั้งค่าการแสดงผล',
+                          style: GoogleFonts.prompt(
+                            color: AppColors.text,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 2),
+                        AppText(
+                          'เลือกขนาดตัวอักษรที่อ่านสบายตา',
+                          style: GoogleFonts.prompt(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                ],
+              ),
+              SizedBox(height: isCompact ? 14 : 18),
+              AppText(
+                'ขนาดตัวอักษร',
+                style: GoogleFonts.prompt(
+                  color: AppColors.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _latestAlertText(alerts),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: TextScaleController.presets.entries.map((entry) {
+                  final isSelected =
+                      (controller.scaleFactor - entry.value).abs() < 0.01;
+
+                  return ChoiceChip(
+                    label: AppText(entry.key),
+                    selected: isSelected,
+                    showCheckmark: false,
+                    selectedColor: AppColors.primaryLight,
+                    backgroundColor: AppColors.surface,
+                    side: BorderSide(
+                      color: isSelected
+                          ? AppColors.primaryLight
+                          : AppColors.border,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    labelStyle: GoogleFonts.prompt(
+                      color: isSelected ? Colors.white : AppColors.text,
+                      fontSize: 12,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                    onSelected: (_) async {
+                      if (isSelected) return;
+                      try {
+                        await controller.setScale(entry.value);
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: AppText(
+                              'บันทึกขนาดตัวอักษรไม่สำเร็จ: $error',
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: AppText(
+                  'ตัวอย่างข้อความในแอป',
+                  textAlign: TextAlign.center,
                   style: GoogleFonts.prompt(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
+                    color: AppColors.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 18),
+              const Divider(height: 1, color: AppColors.border),
+              const SizedBox(height: 16),
+              AppText(
+                'ภาษา',
+                style: GoogleFonts.prompt(
+                  color: AppColors.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              AppText(
+                'เลือกภาษาที่ใช้ในแอป',
+                style: GoogleFonts.prompt(
+                  color: AppColors.textMuted,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children:
+                    const [
+                      ('th', 'ไทย', Icons.language_rounded),
+                      ('en', 'English', Icons.translate_rounded),
+                    ].map((option) {
+                      final isSelected =
+                          languageController.languageCode == option.$1;
+                      return ChoiceChip(
+                        avatar: Icon(
+                          option.$3,
+                          size: 17,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textMuted,
+                        ),
+                        label: AppText(option.$2),
+                        selected: isSelected,
+                        showCheckmark: false,
+                        selectedColor: AppColors.primaryLight,
+                        backgroundColor: AppColors.surface,
+                        side: BorderSide(
+                          color: isSelected
+                              ? AppColors.primaryLight
+                              : AppColors.border,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        labelStyle: GoogleFonts.prompt(
+                          color: isSelected ? Colors.white : AppColors.text,
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                        onSelected: (_) async {
+                          if (isSelected) return;
+                          try {
+                            await languageController.setLanguage(option.$1);
+                          } catch (error) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: AppText('บันทึกภาษาไม่สำเร็จ: $error'),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    }).toList(),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

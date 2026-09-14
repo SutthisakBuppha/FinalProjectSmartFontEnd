@@ -1,5 +1,7 @@
 import 'dart:developer';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'theme/app_theme.dart';
@@ -7,6 +9,7 @@ import 'welcome_screen.dart';
 import 'splash_screen.dart';
 import 'main_layout.dart';
 import 'services/text_scale_service.dart';
+import 'services/language_service.dart';
 import 'services/push_notification_service.dart';
 
 // 💡 ต้องแน่ใจว่า firebaseMessagingBackgroundHandler เป็น Top-level function สั่งงานนอก Class
@@ -29,6 +32,10 @@ void main() async {
 }
 
 Future<void> _initializeServices() async {
+  // Polling-based alerts also need navigation on Flutter Web, even when
+  // Firebase initialization is unavailable or fails.
+  PushNotificationService.instance.attachNavigator(navigatorKey);
+  if (kIsWeb) return;
   try {
     await Firebase.initializeApp();
 
@@ -38,7 +45,10 @@ Future<void> _initializeServices() async {
       navigatorKey: navigatorKey,
     );
   } catch (e, stackTrace) {
-    log('Firebase/Notification Initialization Error: $e', stackTrace: stackTrace);
+    log(
+      'Firebase/Notification Initialization Error: $e',
+      stackTrace: stackTrace,
+    );
   }
 }
 
@@ -54,19 +64,30 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     TextScaleController.instance.load();
+    LanguageController.instance.load();
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: TextScaleController.instance,
+      listenable: Listenable.merge([
+        TextScaleController.instance,
+        LanguageController.instance,
+      ]),
       builder: (context, _) {
         return MaterialApp(
           navigatorKey: navigatorKey,
           title: 'SaveDriveAi',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
-          
+          locale: LanguageController.instance.locale,
+          supportedLocales: LanguageController.supportedLocales,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+
           // 🏠 หน้าเริ่มต้นเมื่อเปิดแอป
           // ⚠️ ต้องเป็น SplashScreen เพื่อให้ restoreSession() ถูกเรียกก่อนเสมอ
           // ถ้าใช้ WelcomeScreen ตรงๆ แอปจะไม่มีโอกาสอ่าน token เก่าจาก
@@ -75,7 +96,8 @@ class _MyAppState extends State<MyApp> {
 
           // 🟢 [เพิ่มจุดนี้] ลงทะเบียนเส้นทาง (Routes) ของระบบ
           routes: {
-            '/login': (context) => const WelcomeScreen(), // หากมีหน้า LoginScreen แยก สามารถเปลี่ยนเป็น LoginScreen() ได้
+            '/login': (context) =>
+                const WelcomeScreen(), // หากมีหน้า LoginScreen แยก สามารถเปลี่ยนเป็น LoginScreen() ได้
             '/main': (context) => const MainLayout(),
           },
 

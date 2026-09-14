@@ -6,7 +6,11 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'api_service.dart';
+import 'language_service.dart';
 import '/alert_screen.dart';
+import '/risk_event_dialog.dart';
+import 'rest_mode_service.dart';
+import 'trip_tracking_service.dart';
 
 class PushNotificationService {
   PushNotificationService._();
@@ -19,21 +23,69 @@ class PushNotificationService {
       FlutterLocalNotificationsPlugin();
 
   GlobalKey<NavigatorState>? _navigatorKey;
+  bool _isShowingEventDialog = false;
+  String? _lastHandledCriticalNotificationId;
+  String? _lastHandledAlertId;
 
-  static const AndroidNotificationChannel _alertChannel =
-      AndroidNotificationChannel(
-        'drive_guard_alerts',
-        'แจ้งเตือนความเสี่ยงขณะขับขี่',
-        description: 'แจ้งเตือนเมื่อพบพฤติกรรมเสี่ยงครบตามเงื่อนไข',
-        importance: Importance.max,
-        playSound: true,
-        enableVibration: true,
-      );
+  bool wasCriticalNotificationHandled(dynamic notificationId) =>
+      notificationId != null &&
+      notificationId.toString() == _lastHandledCriticalNotificationId;
+
+  bool wasAlertHandled(dynamic alertId) =>
+      alertId != null && alertId.toString() == _lastHandledAlertId;
+
+  /// Attach navigation independently from Firebase. Flutter Web may not have
+  /// Firebase configured, but API polling must still be able to show alerts.
+  void attachNavigator(GlobalKey<NavigatorState> navigatorKey) {
+    _navigatorKey = navigatorKey;
+  }
+
+  Future<void> showRiskEventFromPolling({
+    required String alertId,
+    required String deviceId,
+    required String type,
+    required int eventCount,
+  }) {
+    return _showRiskEventDialog({
+      'alert_id': alertId,
+      'device_id': deviceId,
+      'type': type,
+      'event_count': eventCount.toString(),
+      'alert_level': 'event',
+    });
+  }
+
+  Future<void> showCriticalFromPolling({
+    required String notificationId,
+    required String alertId,
+    required String deviceId,
+    required String type,
+  }) {
+    return _showCriticalSequence({
+      'notification_id': notificationId,
+      'alert_id': alertId,
+      'device_id': deviceId,
+      'type': type,
+      'event_count': '3',
+      'alert_level': 'critical',
+    });
+  }
+
+  String _tr(String source) => LanguageController.instance.translate(source);
+
+  AndroidNotificationChannel get _alertChannel => AndroidNotificationChannel(
+    'drive_guard_alerts',
+    _tr('แจ้งเตือนความเสี่ยงขณะขับขี่'),
+    description: _tr('แจ้งเตือนเมื่อพบพฤติกรรมเสี่ยงครบตามเงื่อนไข'),
+    importance: Importance.max,
+    playSound: true,
+    enableVibration: true,
+  );
 
   Future<void> initialize({
     required GlobalKey<NavigatorState> navigatorKey,
   }) async {
-    _navigatorKey = navigatorKey;
+    attachNavigator(navigatorKey);
 
     final settings = await _messaging.requestPermission(
       alert: true,
@@ -60,12 +112,12 @@ class PushNotificationService {
     FirebaseMessaging.onMessage.listen(_showLocalNotification);
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      _navigateToAlert(message.data);
+      _handleAlertData(message.data);
     });
 
     final initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      _navigateToAlert(initialMessage.data);
+      _handleAlertData(initialMessage.data);
     }
   }
 
@@ -111,31 +163,29 @@ class PushNotificationService {
     }
   }
 
-  void _showLocalNotification(RemoteMessage message) {
+  Future<void> _showLocalNotification(RemoteMessage message) async {
     final notification = message.notification;
-    if (notification == null) return;
-
-    _localNotifications.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'drive_guard_alerts',
-          'แจ้งเตือนความเสี่ยงขณะขับขี่',
-          icon: 'ic_notification',
-          importance: Importance.max,
-          priority: Priority.high,
+    if (notification != null) {
+      await _localNotifications.show(
+        notification.hashCode,
+        notification.title == null ? null : _tr(notification.title!),
+        notification.body == null ? null : _tr(notification.body!),
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'drive_guard_alerts',
+            _tr('แจ้งเตือนความเสี่ยงขณะขับขี่'),
+            icon: 'ic_notification',
+            importance: Importance.max,
+            priority: Priority.high,
+            playSound: false,
+          ),
+          iOS: const DarwinNotificationDetails(presentSound: false),
         ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      payload: jsonEncode({
-        'action': 'alert',
-        'device_id': message.data['device_id']?.toString() ?? '',
-      }),
-    );
+        payload: jsonEncode({'action': 'alert', ...message.data}),
+      );
+    }
 
-    _navigateToAlert(message.data);
+    _handleAlertData(message.data);
   }
 
   Future<void> _handleNotificationTap(String? payload) async {
@@ -153,13 +203,13 @@ class PushNotificationService {
         return;
       }
       if (data is Map<String, dynamic>) {
-        _navigateToAlert(data);
+        _handleAlertData(data);
         return;
       }
     } catch (_) {
       // Support notification payloads created by older app versions.
     }
-    _navigateToAlert({'device_id': payload});
+    _handleAlertData({'device_id': payload, 'alert_level': 'critical'});
   }
 
   Future<void> showQrLinkNotification(String url) async {
@@ -170,14 +220,14 @@ class PushNotificationService {
 
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-      'สแกน QR Code สำเร็จ',
+      _tr('สแกน QR Code สำเร็จ'),
       url,
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'qr_scan_results',
-          'ลิงก์จาก QR Code',
+          _tr('ลิงก์จาก QR Code'),
           icon: 'ic_notification',
-          channelDescription: 'แสดงลิงก์ที่อ่านได้จาก QR Code',
+          channelDescription: _tr('แสดงลิงก์ที่อ่านได้จาก QR Code'),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -190,14 +240,14 @@ class PushNotificationService {
   Future<void> showRestModeEndingSoon() async {
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-      'โหมดพักรถใกล้สิ้นสุด',
-      'ระบบจะกลับมาตรวจจับพฤติกรรมและแจ้งเตือนอีกครั้งใน 1 นาที',
-      const NotificationDetails(
+      _tr('โหมดพักรถใกล้สิ้นสุด'),
+      _tr('ระบบจะกลับมาตรวจจับพฤติกรรมและแจ้งเตือนอีกครั้งใน 1 นาที'),
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'rest_mode_status',
-          'สถานะโหมดพักรถ',
+          _tr('สถานะโหมดพักรถ'),
           icon: 'ic_notification',
-          channelDescription: 'แจ้งเตือนก่อนระบบกลับมาตรวจจับพฤติกรรม',
+          channelDescription: _tr('แจ้งเตือนก่อนระบบกลับมาตรวจจับพฤติกรรม'),
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -209,14 +259,14 @@ class PushNotificationService {
   Future<void> showRestModeEnded() async {
     await _localNotifications.show(
       DateTime.now().millisecondsSinceEpoch.remainder(2147483647),
-      'หมดเวลาพักรถแล้ว',
-      'ถึงเวลาตื่นและเตรียมพร้อมเดินทาง ระบบกลับมาตรวจจับตามปกติแล้ว',
-      const NotificationDetails(
+      _tr('หมดเวลาพักรถแล้ว'),
+      _tr('ถึงเวลาตื่นและเตรียมพร้อมเดินทาง ระบบกลับมาตรวจจับตามปกติแล้ว'),
+      NotificationDetails(
         android: AndroidNotificationDetails(
           'rest_mode_status',
-          'สถานะโหมดพักรถ',
+          _tr('สถานะโหมดพักรถ'),
           icon: 'ic_notification',
-          channelDescription: 'แจ้งสถานะการเปิดและปิดโหมดพักรถ',
+          channelDescription: _tr('แจ้งสถานะการเปิดและปิดโหมดพักรถ'),
           importance: Importance.high,
           priority: Priority.high,
           playSound: false,
@@ -236,6 +286,7 @@ class PushNotificationService {
   }
 
   void _navigateToAlert(Map<String, dynamic> data) {
+    _lastHandledCriticalNotificationId = data['notification_id']?.toString();
     final navigator = _navigatorKey?.currentState;
     if (navigator == null) return;
     navigator.push(
@@ -243,5 +294,49 @@ class PushNotificationService {
         builder: (_) => AlertScreen(deviceId: data['device_id']),
       ),
     );
+  }
+
+  void _handleAlertData(Map<String, dynamic> data) {
+    if (RestModeService.instance.isActive ||
+        TripTrackingService.instance.isNavigatingToRestStop) {
+      return;
+    }
+    if (data['alert_level']?.toString() == 'event') {
+      _showRiskEventDialog(data);
+      return;
+    }
+    _showCriticalSequence(data);
+  }
+
+  Future<void> _showCriticalSequence(Map<String, dynamic> data) async {
+    _lastHandledCriticalNotificationId = data['notification_id']?.toString();
+    await _showRiskEventDialog({...data, 'event_count': '3'});
+    if (RestModeService.instance.isActive ||
+        TripTrackingService.instance.isNavigatingToRestStop) {
+      return;
+    }
+    _navigateToAlert(data);
+  }
+
+  Future<void> _showRiskEventDialog(Map<String, dynamic> data) async {
+    _lastHandledAlertId = data['alert_id']?.toString();
+    if (_isShowingEventDialog) return;
+    final context = _navigatorKey?.currentContext;
+    if (context == null) return;
+    _isShowingEventDialog = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => RiskEventDialog(
+          deviceId: data['device_id']?.toString() ?? '',
+          type: data['type']?.toString() ?? 'ไม่ระบุประเภท',
+          eventCount:
+              int.tryParse(data['event_count']?.toString() ?? '') ?? 1,
+        ),
+      );
+    } finally {
+      _isShowingEventDialog = false;
+    }
   }
 }

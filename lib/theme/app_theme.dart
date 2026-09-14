@@ -1,5 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/language_service.dart';
+
+/// Drop-in replacement for [Text] that translates the final value at render
+/// time. This also covers labels assembled from API data without modifying the
+/// canonical values stored in the backend.
+class AppText extends StatelessWidget {
+  const AppText(
+    this.data, {
+    super.key,
+    this.style,
+    this.strutStyle,
+    this.textAlign,
+    this.textDirection,
+    this.locale,
+    this.softWrap,
+    this.overflow,
+    this.textScaler,
+    this.maxLines,
+    this.semanticsLabel,
+    this.textWidthBasis,
+    this.textHeightBehavior,
+    this.selectionColor,
+  });
+
+  final String data;
+  final TextStyle? style;
+  final StrutStyle? strutStyle;
+  final TextAlign? textAlign;
+  final TextDirection? textDirection;
+  final Locale? locale;
+  final bool? softWrap;
+  final TextOverflow? overflow;
+  final TextScaler? textScaler;
+  final int? maxLines;
+  final String? semanticsLabel;
+  final TextWidthBasis? textWidthBasis;
+  final TextHeightBehavior? textHeightBehavior;
+  final Color? selectionColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: LanguageController.instance,
+      builder: (context, _) {
+        final language = LanguageController.instance;
+        return Text(
+          language.translate(data),
+          style: style,
+          strutStyle: strutStyle,
+          textAlign: textAlign,
+          textDirection: textDirection,
+          locale: locale,
+          softWrap: softWrap,
+          overflow: overflow,
+          textScaler: textScaler,
+          maxLines: maxLines,
+          semanticsLabel: semanticsLabel == null
+              ? null
+              : language.translate(semanticsLabel!),
+          textWidthBasis: textWidthBasis,
+          textHeightBehavior: textHeightBehavior,
+          selectionColor: selectionColor,
+        );
+      },
+    );
+  }
+}
+
+String appTr(String source) => LanguageController.instance.translate(source);
+int appDisplayYear(int gregorianYear) =>
+    LanguageController.instance.displayYear(gregorianYear);
 
 /// Shared visual tokens for every mobile screen.
 /// Keep new application colours here instead of declaring them in a screen.
@@ -20,57 +91,86 @@ abstract final class AppColors {
 
   // Legacy screen shades. Names intentionally mirror their hex value so pages
   // can share one source of truth while they use their existing designs.
-  static const cFF047857 = Color(0xFF047857); static const cFF059669 = Color(0xFF059669);
-  static const cFF0A1120 = Color(0xFF0A1120); static const cFF0F2557 = Color(0xFF0F2557);
-  static const cFF0F2647 = Color(0xFF0F2647); static const cFF0F284E = Color(0xFF0F284E);
-  static const cFF112D4E = Color(0xFF112D4E); static const cFF120D1B = Color(0xFF120D1B);
-  static const cFF161022 = Color(0xFF161022); static const cFF1A3B66 = Color(0xFF1A3B66);
-  static const cFF1D4ED8 = Color(0xFF1D4ED8); static const cFF1E293B = Color(0xFF1E293B);
-  static const cFF1E3A66 = Color(0xFF1E3A66); static const cFF1F2937 = Color(0xFF1F2937);
-  static const cFF24469C = Color(0xFF24469C); static const cFF274A75 = Color(0xFF274A75);
-  static const cFF334155 = Color(0xFF334155); static const cFF374151 = Color(0xFF374151);
-  static const cFF3B5998 = Color(0xFF3B5998); static const cFF475569 = Color(0xFF475569);
-  static const cFF4ADE80 = Color(0xFF4ADE80); static const cFF60A5FA = Color(0xFF60A5FA);
-  static const cFF6B7280 = Color(0xFF6B7280); static const cFF818CF8 = Color(0xFF818CF8);
-  static const cFF94A3B8 = Color(0xFF94A3B8); static const cFF9A3412 = Color(0xFF9A3412);
-  static const cFF9CA3AF = Color(0xFF9CA3AF); static const cFFB91C1C = Color(0xFFB91C1C);
-  static const cFFD1FAE5 = Color(0xFFD1FAE5); static const cFFDBEAFE = Color(0xFFDBEAFE);
-  static const cFFDC2626 = Color(0xFFDC2626); static const cFFE5E7EB = Color(0xFFE5E7EB);
-  static const cFFE63946 = Color(0xFFE63946); static const cFFE8EFFD = Color(0xFFE8EFFD);
-  static const cFFEA580C = Color(0xFFEA580C); static const cFFEAB308 = Color(0xFFEAB308);
-  static const cFFECF0F3 = Color(0xFFECF0F3); static const cFFEEF2FF = Color(0xFFEEF2FF);
-  static const cFFEFF6FF = Color(0xFFEFF6FF); static const cFFF1F5F9 = Color(0xFFF1F5F9);
-  static const cFFF6F8FA = Color(0xFFF6F8FA); static const cFFF97316 = Color(0xFFF97316);
-  static const cFFFCA5A5 = Color(0xFFFCA5A5); static const cFFFEF2F2 = Color(0xFFFEF2F2);
-  static const cFFFF4D4D = Color(0xFFFF4D4D); static const cFFFFEDD5 = Color(0xFFFFEDD5);
+  static const cFF047857 = Color(0xFF047857);
+  static const cFF059669 = Color(0xFF059669);
+  static const cFF0A1120 = Color(0xFF0A1120);
+  static const cFF0F2557 = Color(0xFF0F2557);
+  static const cFF0F2647 = Color(0xFF0F2647);
+  static const cFF0F284E = Color(0xFF0F284E);
+  static const cFF112D4E = Color(0xFF112D4E);
+  static const cFF120D1B = Color(0xFF120D1B);
+  static const cFF161022 = Color(0xFF161022);
+  static const cFF1A3B66 = Color(0xFF1A3B66);
+  static const cFF1D4ED8 = Color(0xFF1D4ED8);
+  static const cFF1E293B = Color(0xFF1E293B);
+  static const cFF1E3A66 = Color(0xFF1E3A66);
+  static const cFF1F2937 = Color(0xFF1F2937);
+  static const cFF24469C = Color(0xFF24469C);
+  static const cFF274A75 = Color(0xFF274A75);
+  static const cFF334155 = Color(0xFF334155);
+  static const cFF374151 = Color(0xFF374151);
+  static const cFF3B5998 = Color(0xFF3B5998);
+  static const cFF475569 = Color(0xFF475569);
+  static const cFF4ADE80 = Color(0xFF4ADE80);
+  static const cFF60A5FA = Color(0xFF60A5FA);
+  static const cFF6B7280 = Color(0xFF6B7280);
+  static const cFF818CF8 = Color(0xFF818CF8);
+  static const cFF94A3B8 = Color(0xFF94A3B8);
+  static const cFF9A3412 = Color(0xFF9A3412);
+  static const cFF9CA3AF = Color(0xFF9CA3AF);
+  static const cFFB91C1C = Color(0xFFB91C1C);
+  static const cFFD1FAE5 = Color(0xFFD1FAE5);
+  static const cFFDBEAFE = Color(0xFFDBEAFE);
+  static const cFFDC2626 = Color(0xFFDC2626);
+  static const cFFE5E7EB = Color(0xFFE5E7EB);
+  static const cFFE63946 = Color(0xFFE63946);
+  static const cFFE8EFFD = Color(0xFFE8EFFD);
+  static const cFFEA580C = Color(0xFFEA580C);
+  static const cFFEAB308 = Color(0xFFEAB308);
+  static const cFFECF0F3 = Color(0xFFECF0F3);
+  static const cFFEEF2FF = Color(0xFFEEF2FF);
+  static const cFFEFF6FF = Color(0xFFEFF6FF);
+  static const cFFF1F5F9 = Color(0xFFF1F5F9);
+  static const cFFF6F8FA = Color(0xFFF6F8FA);
+  static const cFFF97316 = Color(0xFFF97316);
+  static const cFFFCA5A5 = Color(0xFFFCA5A5);
+  static const cFFFEF2F2 = Color(0xFFFEF2F2);
+  static const cFFFF4D4D = Color(0xFFFF4D4D);
+  static const cFFFFEDD5 = Color(0xFFFFEDD5);
   static const cFFFFF7ED = Color(0xFFFFF7ED);
-  static const cFF0D2140 = AppColors.primaryDark; static const cFF0F172A = text;
-  static const cFF0F2646 = primary; static const cFF10B981 = success;
-  static const cFF1E3A8A = AppColors.primaryLight; static const cFF3B82F6 = secondary;
-  static const cFF64748B = textMuted; static const cFFE2E8F0 = border;
-  static const cFFEF4444 = danger; static const cFFF3F4F6 = surfaceMuted;
-  static const cFFF59E0B = warning; static const cFFF8FAFC = background;
+  static const cFF0D2140 = AppColors.primaryDark;
+  static const cFF0F172A = text;
+  static const cFF0F2646 = primary;
+  static const cFF10B981 = success;
+  static const cFF1E3A8A = AppColors.primaryLight;
+  static const cFF3B82F6 = secondary;
+  static const cFF64748B = textMuted;
+  static const cFFE2E8F0 = border;
+  static const cFFEF4444 = danger;
+  static const cFFF3F4F6 = surfaceMuted;
+  static const cFFF59E0B = warning;
+  static const cFFF8FAFC = background;
   static const cFFFFFFFF = surface;
 }
 
 abstract final class AppTheme {
   static ThemeData get light => ThemeData(
-        useMaterial3: true,
-        colorScheme: const ColorScheme.light(
-          primary: AppColors.primary,
-          secondary: AppColors.secondary,
-          surface: AppColors.surface,
-          error: AppColors.danger,
-          onPrimary: Colors.white,
-          onSurface: AppColors.text,
-        ),
-        scaffoldBackgroundColor: AppColors.background,
-        textTheme: GoogleFonts.promptTextTheme(),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.surface,
-          foregroundColor: AppColors.primary,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-        ),
-      );
+    useMaterial3: true,
+    colorScheme: const ColorScheme.light(
+      primary: AppColors.primary,
+      secondary: AppColors.secondary,
+      surface: AppColors.surface,
+      error: AppColors.danger,
+      onPrimary: Colors.white,
+      onSurface: AppColors.text,
+    ),
+    scaffoldBackgroundColor: AppColors.background,
+    textTheme: GoogleFonts.promptTextTheme(),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.surface,
+      foregroundColor: AppColors.primary,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+    ),
+  );
 }

@@ -53,7 +53,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _googleSignInSub = GoogleAuthService.instance.onIdTokenReceived.listen((
           token,
         ) async {
-          if (token != null && mounted) {
+          if (mounted) {
             setState(() => _isGoogleLoading = true);
             try {
               await ApiService.instance.loginWithGoogle(idToken: token);
@@ -203,7 +203,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     scale = scale.clamp(0.85, 1.25);
 
     final horizontalPadding = (screenWidth * 0.08).clamp(20.0, 40.0);
-    final logoSize = (96 * scale).clamp(72.0, 120.0);
     final isCompactHeight = screenHeight < 700;
 
     return Scaffold(
@@ -233,7 +232,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     ),
                     SizedBox(height: (isCompactHeight ? 20 : 32) * scale),
 
-                    Text(
+                    AppText(
                       "สมัครสมาชิก",
                       style: GoogleFonts.prompt(
                         fontSize: (24 * scale).clamp(20.0, 28.0),
@@ -242,7 +241,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    AppText(
                       "ลงทะเบียนเพื่อเริ่มติดตามการขับขี่ของคุณ",
                       textAlign: TextAlign.center,
                       style: GoogleFonts.prompt(
@@ -307,7 +306,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                           height: 20 * scale,
                                         ),
                                         SizedBox(width: 8 * scale),
-                                        Text(
+                                        AppText(
                                           "สมัครสมาชิกด้วย Google",
                                           style: GoogleFonts.prompt(
                                             fontSize: 14 * scale,
@@ -329,7 +328,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         Expanded(child: Divider(color: AppColors.border)),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                          child: Text(
+                          child: AppText(
                             "หรือสมัครด้วยอีเมล",
                             style: GoogleFonts.prompt(
                               fontSize: 12 * scale,
@@ -402,7 +401,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppColors.cFFFCA5A5),
                         ),
-                        child: Text(
+                        child: AppText(
                           _errorMessage!,
                           style: GoogleFonts.prompt(
                             fontSize: 13 * scale,
@@ -454,7 +453,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
+                                  AppText(
                                     "ลงทะเบียน",
                                     style: GoogleFonts.prompt(
                                       fontSize: 16 * scale,
@@ -474,7 +473,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
+                        AppText(
                           "มีบัญชีอยู่แล้วใช่ไหม?",
                           style: GoogleFonts.prompt(
                             fontSize: 14 * scale,
@@ -497,7 +496,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          child: Text(
+                          child: AppText(
                             "เข้าสู่ระบบ",
                             style: GoogleFonts.prompt(
                               fontSize: 14 * scale,
@@ -564,7 +563,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         keyboardType: inputType,
         style: GoogleFonts.prompt(color: textColor, fontSize: 16 * scale),
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: appTr(hint),
           hintStyle: GoogleFonts.prompt(
             color: placeholderColor,
             fontSize: 15 * scale,
@@ -599,16 +598,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
-
-  static const String _logoSvg = '''
-  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <path clip-rule="evenodd" d="M50 10C27.9086 10 10 27.9086 10 50C10 72.0914 27.9086 90 50 90C72.0914 90 90 72.0914 90 50C90 27.9086 72.0914 10 50 10ZM4 50C4 24.5949 24.5949 4 50 4C75.4051 4 96 24.5949 96 50C96 75.4051 75.4051 96 50 96C24.5949 96 4 75.4051 4 50Z" fill-rule="evenodd"/>
-    <path d="M15 50H35L42 35L50 65L58 35L65 50H85" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
-    <path d="M50 65V90" stroke="currentColor" stroke-linecap="round" stroke-width="6"/>
-    <path d="M22 72L35 60" stroke="currentColor" stroke-linecap="round" stroke-width="6"/>
-    <path d="M78 72L65 60" stroke="currentColor" stroke-linecap="round" stroke-width="6"/>
-  </svg>
-  ''';
 
   static const String _googleSvg = '''
   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

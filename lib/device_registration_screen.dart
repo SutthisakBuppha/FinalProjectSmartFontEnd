@@ -25,10 +25,8 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
   final TextEditingController _serialController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  int _currentIndex = 1;
   bool _isLoading = false;
   String? _wifiProvisionedSerial;
-  bool _isCheckingDevice = true; // สถานะตรวจเช็กข้อมูลเดิมตอนเปิดหน้าแอป
 
   @override
   void initState() {
@@ -52,12 +50,6 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       }
     } catch (e) {
       debugPrint("Error auto-checking devices: $e");
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isCheckingDevice = false; // ตรวจสอบเสร็จสิ้น ปิดหน้าโหลดนิ่ง
-        });
-      }
     }
   }
 
@@ -75,9 +67,8 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
         final connected = await Navigator.push<bool>(
           context,
           MaterialPageRoute(
-            builder: (context) => WifiProvisioningScreen(
-              serialNumber: serialNumber,
-            ),
+            builder: (context) =>
+                WifiProvisioningScreen(serialNumber: serialNumber),
           ),
         );
         if (!mounted) return;
@@ -92,7 +83,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       if (!isSuccess) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
+            content: AppText(
               "กล้องเชื่อมต่อ Wi-Fi แล้ว แต่บันทึกอุปกรณ์ไม่สำเร็จ กรุณากดลองบันทึกอีกครั้ง",
             ),
           ),
@@ -101,7 +92,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("ลงทะเบียนอุปกรณ์สำเร็จแล้ว")),
+        const SnackBar(content: AppText("ลงทะเบียนอุปกรณ์สำเร็จแล้ว")),
       );
 
       if (widget.onRegistered != null) {
@@ -114,7 +105,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
+        SnackBar(content: AppText("เกิดข้อผิดพลาด: ${e.toString()}")),
       );
     } finally {
       if (mounted) {
@@ -138,7 +129,9 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
       if (isWebLink) {
         try {
           setState(() => _isLoading = true);
-          final response = await http.get(uri).timeout(const Duration(seconds: 15));
+          final response = await http
+              .get(uri)
+              .timeout(const Duration(seconds: 15));
           if (response.statusCode < 200 || response.statusCode >= 300) {
             throw Exception('เว็บไซต์ตอบกลับ HTTP ${response.statusCode}');
           }
@@ -152,13 +145,15 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
           setState(() => _serialController.text = content);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('ดึงข้อมูลจากลิงก์มาใส่ในช่องเรียบร้อยแล้ว'),
+              content: AppText('ดึงข้อมูลจากลิงก์มาใส่ในช่องเรียบร้อยแล้ว'),
             ),
           );
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('ไม่สามารถอ่านข้อมูลจากลิงก์ QR Code ได้: $e')),
+            SnackBar(
+              content: AppText('ไม่สามารถอ่านข้อมูลจากลิงก์ QR Code ได้: $e'),
+            ),
           );
         } finally {
           if (mounted) setState(() => _isLoading = false);
@@ -170,7 +165,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
 
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("สแกนสำเร็จ: $result")));
+      ).showSnackBar(SnackBar(content: AppText("สแกนสำเร็จ: $result")));
     }
   }
 
@@ -202,8 +197,14 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     }
 
     return body
-        .replaceAll(RegExp(r'<script[\s\S]*?</script>', caseSensitive: false), ' ')
-        .replaceAll(RegExp(r'<style[\s\S]*?</style>', caseSensitive: false), ' ')
+        .replaceAll(
+          RegExp(r'<script[\s\S]*?</script>', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(
+          RegExp(r'<style[\s\S]*?</style>', caseSensitive: false),
+          ' ',
+        )
         .replaceAll(RegExp(r'<[^>]+>'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
@@ -214,7 +215,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
     return Scaffold(
       backgroundColor: AppColors.surfaceMuted,
       appBar: AppBar(
-        title: Text(
+        title: AppText(
           "ตั้งค่าอุปกรณ์",
           style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
         ),
@@ -232,7 +233,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
               children: [
                 const SizedBox(height: 32),
 
-                Text(
+                AppText(
                   "ยินดีต้อนรับ!",
                   style: GoogleFonts.prompt(
                     fontSize: 28,
@@ -241,7 +242,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
+                AppText(
                   "กรุณาลงทะเบียนอุปกรณ์ของคุณเพื่อเริ่มต้นใช้งานระบบตรวจจับ",
                   style: GoogleFonts.prompt(
                     fontSize: 15,
@@ -269,7 +270,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Text(
+                        child: AppText(
                           "คำแนะนำ: หมายเลข Serial Number จะอยู่บนสติกเกอร์ที่ติดอยู่กับตัวเครื่องโปรดตรวจสอบให้ถูกต้อง",
                           style: GoogleFonts.prompt(
                             fontSize: 13,
@@ -283,7 +284,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                Text(
+                AppText(
                   "หมายเลข Serial Number อุปกรณ์",
                   style: GoogleFonts.prompt(
                     fontSize: 15,
@@ -301,10 +302,8 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     }
                   },
                   decoration: InputDecoration(
-                    hintText: "เช่น SD-AI-2024XXXX",
-                    hintStyle: GoogleFonts.prompt(
-                      color: Colors.grey[400],
-                    ),
+                    hintText: appTr("เช่น SD-AI-2024XXXX"),
+                    hintStyle: GoogleFonts.prompt(color: Colors.grey[400]),
                     prefixIcon: const Icon(
                       Icons.qr_code_scanner_rounded,
                       color: AppColors.cFF0F2557,
@@ -314,7 +313,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                         Icons.camera_alt_rounded,
                         color: AppColors.cFF0F2557,
                       ),
-                      tooltip: "สแกน QR Code",
+                      tooltip: appTr("สแกน QR Code"),
                       onPressed: _scanQRCode,
                     ),
                     filled: true,
@@ -341,7 +340,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'กรุณากรอกหมายเลข Serial Number อุปกรณ์';
+                      return appTr('กรุณากรอกหมายเลข Serial Number อุปกรณ์');
                     }
                     return null;
                   },
@@ -364,7 +363,7 @@ class _DeviceRegistrationScreenState extends State<DeviceRegistrationScreen> {
                     ),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(
+                        : AppText(
                             _wifiProvisionedSerial ==
                                     _serialController.text.trim()
                                 ? "ลองบันทึกอุปกรณ์อีกครั้ง"

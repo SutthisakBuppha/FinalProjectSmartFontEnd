@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -20,6 +21,7 @@ class ApiService {
   static final ApiService instance = ApiService._();
 
   final http.Client _client = http.Client();
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   String? _token;
   String? _driverId;
@@ -328,14 +330,18 @@ class ApiService {
       try {
         final registeredDevices = await devices();
         final wantedSerial = serialNumber.trim().toUpperCase();
-        return registeredDevices.any(
+        final wasCreated = registeredDevices.any(
           (device) =>
               device['serial_number']?.toString().trim().toUpperCase() ==
               wantedSerial,
         );
+        if (wasCreated) return true;
       } catch (_) {
-        return false;
+        // Preserve the original POST error below. It normally contains the
+        // useful validation reason returned by Laravel (for example, a device
+        // that is still assigned to another account).
       }
+      rethrow;
     }
   }
 
@@ -375,6 +381,7 @@ class ApiService {
     required int volumeLevel,
     required bool soundEnabled,
     required String activeTone,
+    String? eventTone,
   }) async {
     await _request(
       'PUT',
@@ -383,6 +390,7 @@ class ApiService {
         'volume_level': volumeLevel,
         'sound_enabled': soundEnabled,
         'active_tone': activeTone,
+        if (eventTone != null) 'event_tone': eventTone,
       },
     );
   }
@@ -464,6 +472,9 @@ class ApiService {
     dynamic deviceId,
     String tripType = 'main',
     String? parentTripId,
+    String? destinationName,
+    double? destinationLatitude,
+    double? destinationLongitude,
   }) async {
     final response = await _request(
       'POST',
@@ -475,6 +486,11 @@ class ApiService {
         'status': 'active',
         'trip_type': tripType,
         if (parentTripId != null) 'parent_trip_id': parentTripId,
+        if (destinationName != null) 'destination_name': destinationName,
+        if (destinationLatitude != null)
+          'destination_latitude': destinationLatitude,
+        if (destinationLongitude != null)
+          'destination_longitude': destinationLongitude,
       },
     );
     return _dataMap(response);
@@ -529,6 +545,7 @@ class ApiService {
   Future<List<Map<String, dynamic>>> alerts({
     dynamic tripId,
     bool todayOnly = false,
+    int limit = 5000,
   }) async {
     final response = await _request(
       'GET',
@@ -536,6 +553,7 @@ class ApiService {
       query: {
         if (tripId != null) 'trip_id': tripId.toString(),
         if (todayOnly) 'today': '1',
+        'limit': limit.toString(),
       },
     );
     return _dataList(response);
@@ -610,6 +628,7 @@ class ApiService {
     required int volumeLevel,
     required bool soundEnabled,
     required String activeTone,
+    String? eventTone,
   }) async {
     final response = await _request(
       'PUT',
@@ -618,6 +637,7 @@ class ApiService {
         'volume_level': volumeLevel,
         'sound_enabled': soundEnabled,
         'active_tone': activeTone,
+        if (eventTone != null) 'event_tone': eventTone,
       },
     );
     return _dataMap(response);
@@ -741,27 +761,39 @@ class ApiService {
     late http.Response response;
     final encodedBody = body == null ? null : jsonEncode(body);
 
-    switch (method) {
-      case 'GET':
-        response = await _client.get(uri, headers: headers);
-      case 'POST':
-        response = await _client.post(uri, headers: headers, body: encodedBody);
-      case 'PUT':
-        response = await _client.put(uri, headers: headers, body: encodedBody);
-      case 'PATCH':
-        response = await _client.patch(
-          uri,
-          headers: headers,
-          body: encodedBody,
-        );
-      case 'DELETE':
-        response = await _client.delete(
-          uri,
-          headers: headers,
-          body: encodedBody,
-        );
-      default:
-        throw ApiException('Unsupported request method: $method');
+    try {
+      switch (method) {
+        case 'GET':
+          response = await _client
+              .get(uri, headers: headers)
+              .timeout(_requestTimeout);
+        case 'POST':
+          response = await _client
+              .post(uri, headers: headers, body: encodedBody)
+              .timeout(_requestTimeout);
+        case 'PUT':
+          response = await _client
+              .put(uri, headers: headers, body: encodedBody)
+              .timeout(_requestTimeout);
+        case 'PATCH':
+          response = await _client
+              .patch(uri, headers: headers, body: encodedBody)
+              .timeout(_requestTimeout);
+        case 'DELETE':
+          response = await _client
+              .delete(uri, headers: headers, body: encodedBody)
+              .timeout(_requestTimeout);
+        default:
+          throw ApiException('Unsupported request method: $method');
+      }
+    } on TimeoutException {
+      throw const ApiException(
+        'เซิร์ฟเวอร์ตอบกลับช้าเกินไป กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
+      );
+    } on http.ClientException {
+      throw const ApiException(
+        'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบอินเทอร์เน็ต',
+      );
     }
 
     final decoded = _decodeResponse(response);
@@ -778,6 +810,12 @@ class ApiService {
       throw ApiException(
         _messageFrom(decoded) ?? 'Request failed (${response.statusCode}).',
         statusCode: response.statusCode,
+      );
+    }
+
+    if (decoded is Map && decoded['_invalid_response'] == true) {
+      throw ApiException(
+        _messageFrom(decoded) ?? 'เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ',
       );
     }
 
@@ -813,11 +851,22 @@ class ApiService {
       return null;
     }
 
-    final body = utf8.decode(response.bodyBytes);
+    final body = utf8.decode(response.bodyBytes, allowMalformed: true);
+    final trimmedBody = body.trimLeft();
+    if (!trimmedBody.startsWith('{') && !trimmedBody.startsWith('[')) {
+      return {
+        'message':
+            'เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ กรุณาตรวจสอบ API หรือทดลองใหม่ภายหลัง',
+        '_invalid_response': true,
+      };
+    }
     try {
       return jsonDecode(body);
     } on FormatException {
-      return {'message': body};
+      return {
+        'message': 'เซิร์ฟเวอร์ส่งข้อมูล JSON ที่ไม่สมบูรณ์',
+        '_invalid_response': true,
+      };
     }
   }
 

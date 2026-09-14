@@ -19,9 +19,10 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
 
   int _currentIndex = 1;
   String _selectedFilter = 'รายสัปดาห์';
-  final _filterOptions = const ['รายสัปดาห์', 'รายเดือน', 'กำหนดเอง'];
+  final _filterOptions = const ['รายสัปดาห์', 'รายเดือน', 'รายปี', 'กำหนดเอง'];
+  DateTime _referenceDate = DateTime.now();
   DateTimeRange? _customRange;
-  
+
   List<Map<String, dynamic>> _alerts = [];
   bool _isLoading = true;
   String? _error;
@@ -49,6 +50,16 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
     }
   }
 
+  Future<void> _refreshAndResetFilter() async {
+    if (_isLoading) return;
+    setState(() {
+      _selectedFilter = 'รายสัปดาห์';
+      _referenceDate = DateTime.now();
+      _customRange = null;
+    });
+    await _loadAlerts();
+  }
+
   // --- Logic การคำนวณข้อมูล (คงเดิม) ---
   DateTime? _alertTime(Map<String, dynamic> alert) {
     final value = alert['timestamp'] ?? alert['created_at'];
@@ -60,6 +71,22 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
 
   String _shortDate(DateTime date) => '${date.day}/${date.month}';
 
+  Future<void> _pickReferenceDate() async {
+    final now = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _referenceDate,
+      firstDate: DateTime(now.year - 10),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: appTr('เลือกวันที่อ้างอิง'),
+      confirmText: appTr('ใช้วันที่นี้'),
+      cancelText: appTr('ยกเลิก'),
+    );
+    if (selected != null && mounted) {
+      setState(() => _referenceDate = _day(selected));
+    }
+  }
+
   Future<void> _pickCustomRange() async {
     final now = DateTime.now();
     final range = await showDateRangePicker(
@@ -68,9 +95,9 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
       lastDate: DateTime(now.year + 1, 12, 31),
       initialDateRange:
           _customRange ?? DateTimeRange(start: _day(now), end: _day(now)),
-      helpText: 'เลือกช่วงวันที่วิเคราะห์ความเสี่ยง',
-      saveText: 'ใช้ตัวกรอง',
-      cancelText: 'ยกเลิก',
+      helpText: appTr('เลือกช่วงวันที่วิเคราะห์ความเสี่ยง'),
+      saveText: appTr('ใช้ตัวกรอง'),
+      cancelText: appTr('ยกเลิก'),
       builder: (context, child) {
         final theme = Theme.of(context);
         final actionStyle = TextButton.styleFrom(
@@ -113,23 +140,26 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
   }
 
   _ChartData _chartData() {
-    final now = DateTime.now();
+    final reference = _day(_referenceDate);
     final labels = <String>[];
     final starts = <DateTime>[];
     final ends = <DateTime>[];
 
     if (_selectedFilter == 'รายสัปดาห์') {
-      final today = _day(now);
-      final weekStart = today.subtract(Duration(days: now.weekday - 1));
+      final weekStart = reference.subtract(
+        Duration(days: reference.weekday - 1),
+      );
       for (var i = 0; i < 7; i++) {
         final start = weekStart.add(Duration(days: i));
         starts.add(start);
         ends.add(start.add(const Duration(days: 1)));
-        labels.add(const ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'][start.weekday - 1]);
+        labels.add(
+          const ['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'][start.weekday - 1],
+        );
       }
     } else if (_selectedFilter == 'รายเดือน') {
-      final monthStart = DateTime(now.year, now.month, 1);
-      final monthEnd = DateTime(now.year, now.month + 1, 1);
+      final monthStart = DateTime(reference.year, reference.month, 1);
+      final monthEnd = DateTime(reference.year, reference.month + 1, 1);
       var start = monthStart;
       var weekNumber = 1;
       while (start.isBefore(monthEnd)) {
@@ -141,10 +171,31 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
         weekNumber++;
         start = end;
       }
+    } else if (_selectedFilter == 'รายปี') {
+      for (var month = 1; month <= 12; month++) {
+        starts.add(DateTime(reference.year, month, 1));
+        ends.add(DateTime(reference.year, month + 1, 1));
+        labels.add(
+          const [
+            'ม.ค.',
+            'ก.พ.',
+            'มี.ค.',
+            'เม.ย.',
+            'พ.ค.',
+            'มิ.ย.',
+            'ก.ค.',
+            'ส.ค.',
+            'ก.ย.',
+            'ต.ค.',
+            'พ.ย.',
+            'ธ.ค.',
+          ][month - 1],
+        );
+      }
     } else {
       final range = _customRange;
       if (range == null) {
-        final today = _day(now);
+        final today = reference;
         starts.add(today);
         ends.add(today.add(const Duration(days: 1)));
         labels.add(_shortDate(today));
@@ -191,7 +242,8 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
           : 'ไม่ระบุประเภท';
       result[type] = (result[type] ?? 0) + 1;
     }
-    final entries = result.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final entries = result.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
     return Map.fromEntries(entries);
   }
 
@@ -218,7 +270,9 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
         onRefresh: _loadAlerts,
         color: primary,
         child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           slivers: [
             SliverToBoxAdapter(
               child: Stack(
@@ -235,30 +289,46 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                       children: [
                         // กราฟ
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: horizontalPadding,
+                          ),
                           child: _buildTrendChart(chart, scale),
                         ),
-                        
+
                         SizedBox(height: 28 * scale),
-                        
+
                         // หัวข้อรายละเอียด
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: horizontalPadding,
+                          ),
                           child: _buildRiskBreakdownHeader(chart, scale),
                         ),
-                        
+
                         SizedBox(height: 16 * scale),
 
                         // Grid รายละเอียด
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: horizontalPadding,
+                          ),
                           child: _isLoading
-                              ? const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator(color: primary)))
+                              ? const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(32),
+                                    child: CircularProgressIndicator(
+                                      color: primary,
+                                    ),
+                                  ),
+                                )
                               : _error != null
-                                  ? _buildError(scale)
-                                  : _buildRiskBreakdownGrid(_breakdown(chart), scale),
+                              ? _buildError(scale)
+                              : _buildRiskBreakdownGrid(
+                                  _breakdown(chart),
+                                  scale,
+                                ),
                         ),
-                        
+
                         SizedBox(height: 40 * scale),
                       ],
                     ),
@@ -298,7 +368,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                AppText(
                   'แนวโน้มความเสี่ยง',
                   style: GoogleFonts.prompt(
                     color: Colors.white,
@@ -307,7 +377,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                AppText(
                   'กราฟสถิติและรายละเอียดความเสี่ยงจากการขับขี่',
                   style: GoogleFonts.prompt(
                     color: Colors.white.withOpacity(0.8),
@@ -318,13 +388,9 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
             ),
           ),
           IconButton(
-            onPressed: _isLoading ? null : _loadAlerts,
-            tooltip: 'รีเฟรชข้อมูล',
-            icon: const Icon(
-              Icons.refresh,
-              color: Colors.white,
-              size: 24,
-            ),
+            onPressed: _isLoading ? null : _refreshAndResetFilter,
+            tooltip: appTr('รีเฟรชข้อมูล'),
+            icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
           ),
         ],
       ),
@@ -342,11 +408,49 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
             color: Colors.black.withOpacity(0.06),
             blurRadius: 15,
             offset: const Offset(0, 8),
-          )
+          ),
         ],
       ),
       child: Column(
         children: [
+          if (_selectedFilter != 'กำหนดเอง') ...[
+            InkWell(
+              onTap: _pickReferenceDate,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: 14 * scale,
+                  vertical: 10 * scale,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.cFFE5E7EB),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.calendar_month_outlined,
+                      size: 18,
+                      color: primary,
+                    ),
+                    const SizedBox(width: 8),
+                    AppText(
+                      'วันที่อ้างอิง ${_referenceDate.day}/${_referenceDate.month}/${appDisplayYear(_referenceDate.year)}',
+                      style: GoogleFonts.prompt(
+                        fontSize: 12 * scale,
+                        fontWeight: FontWeight.w600,
+                        color: primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 10 * scale),
+          ],
           // Filter แบบปุ่มแคปซูล
           Container(
             padding: const EdgeInsets.all(4),
@@ -373,16 +477,26 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                         color: isSelected ? primary : Colors.transparent,
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: isSelected
-                            ? [BoxShadow(color: primary.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))]
+                            ? [
+                                BoxShadow(
+                                  color: primary.withOpacity(0.2),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
                             : [],
                       ),
                       alignment: Alignment.center,
-                      child: Text(
+                      child: AppText(
                         option,
                         style: GoogleFonts.prompt(
                           fontSize: 12 * scale,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          color: isSelected ? Colors.white : Colors.grey.shade600,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? Colors.white
+                              : Colors.grey.shade600,
                         ),
                       ),
                     ),
@@ -391,27 +505,32 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
               }).toList(),
             ),
           ),
-          
+
           SizedBox(height: 24 * scale),
-          
+
           // Chart Area
           if (_isLoading)
-            SizedBox(height: 180 * scale, child: const Center(child: CircularProgressIndicator(color: primary)))
+            SizedBox(
+              height: 180 * scale,
+              child: const Center(
+                child: CircularProgressIndicator(color: primary),
+              ),
+            )
           else
             SizedBox(
               height: 180 * scale,
               width: double.infinity,
               child: CustomPaint(painter: _TrendPainter(data.values, primary)),
             ),
-            
+
           SizedBox(height: 12 * scale),
-          
+
           // Labels
           Row(
             children: data.labels.map((label) {
               return Expanded(
                 child: Center(
-                  child: Text(
+                  child: AppText(
                     label,
                     textAlign: TextAlign.center,
                     maxLines: 2,
@@ -433,7 +552,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
               color: const Color(0xFFEFF6FF),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(
+            child: AppText(
               'แกน X: ช่วงวันที่เกิดเหตุการณ์  •  แกน Y: จำนวนการแจ้งเตือน (ครั้ง)',
               textAlign: TextAlign.center,
               style: GoogleFonts.prompt(
@@ -452,12 +571,12 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
     final inclusiveEnd = data.end.subtract(const Duration(days: 1));
     final filteredCount = _alertsInRange(data).length;
     final rangeText =
-        '${data.start.day}/${data.start.month}/${data.start.year + 543} - '
-        '${inclusiveEnd.day}/${inclusiveEnd.month}/${inclusiveEnd.year + 543}';
+        '${data.start.day}/${data.start.month}/${appDisplayYear(data.start.year)} - '
+        '${inclusiveEnd.day}/${inclusiveEnd.month}/${appDisplayYear(inclusiveEnd.year)}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           'รายละเอียดความเสี่ยง',
           style: GoogleFonts.prompt(
             fontSize: 18 * scale,
@@ -466,7 +585,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
           ),
         ),
         SizedBox(height: 4 * scale),
-        Text(
+        AppText(
           'ข้อมูลตามตัวกรอง: $rangeText  •  รวม $filteredCount ครั้ง',
           style: GoogleFonts.prompt(
             fontSize: 12 * scale,
@@ -488,12 +607,19 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
         ),
         child: Column(
           children: [
-            Icon(Icons.check_circle_outline_rounded, size: 48 * scale, color: Colors.green),
+            Icon(
+              Icons.check_circle_outline_rounded,
+              size: 48 * scale,
+              color: Colors.green,
+            ),
             SizedBox(height: 12 * scale),
-            Text(
+            AppText(
               'ยอดเยี่ยม! ไม่พบความเสี่ยงในช่วงเวลานี้',
               textAlign: TextAlign.center,
-              style: GoogleFonts.prompt(color: Colors.grey.shade600, fontSize: 14 * scale),
+              style: GoogleFonts.prompt(
+                color: Colors.grey.shade600,
+                fontSize: 14 * scale,
+              ),
             ),
           ],
         ),
@@ -507,7 +633,9 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
       crossAxisSpacing: 12 * scale,
       childAspectRatio: 1.15,
       padding: EdgeInsets.zero,
-      children: types.entries.map((entry) => _buildBreakdownCard(entry.key, entry.value, scale)).toList(),
+      children: types.entries
+          .map((entry) => _buildBreakdownCard(entry.key, entry.value, scale))
+          .toList(),
     );
   }
 
@@ -523,7 +651,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
             color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
       ),
       child: Column(
@@ -539,12 +667,12 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
             ),
             child: Icon(meta.icon, color: meta.color, size: 24 * scale),
           ),
-          
+
           // Texts
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              AppText(
                 type,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -558,7 +686,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
+                  AppText(
                     '$count',
                     style: GoogleFonts.prompt(
                       fontSize: 20 * scale,
@@ -570,7 +698,7 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
                   SizedBox(width: 4 * scale),
                   Padding(
                     padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
+                    child: AppText(
                       'ครั้ง',
                       style: GoogleFonts.prompt(
                         fontSize: 12 * scale,
@@ -591,13 +719,23 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
     return Center(
       child: Column(
         children: [
-          Icon(Icons.error_outline_rounded, color: Colors.red.shade400, size: 48 * scale),
+          Icon(
+            Icons.error_outline_rounded,
+            color: Colors.red.shade400,
+            size: 48 * scale,
+          ),
           SizedBox(height: 12 * scale),
-          Text(_error!, style: GoogleFonts.prompt(color: Colors.red.shade700)),
+          AppText(
+            _error!,
+            style: GoogleFonts.prompt(color: Colors.red.shade700),
+          ),
           TextButton(
             onPressed: _loadAlerts,
-            child: Text('ลองใหม่', style: GoogleFonts.prompt(fontWeight: FontWeight.bold)),
-          )
+            child: AppText(
+              'ลองใหม่',
+              style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
       ),
     );
@@ -609,7 +747,10 @@ class _RiskTrendsScreenState extends State<RiskTrendsScreen> {
         return const _AlertMeta(Icons.bedtime_rounded, Color(0xFFEF4444));
       case 'เสียสมาธิ':
       case 'ไม่มองถนน':
-        return const _AlertMeta(Icons.visibility_off_rounded, Color(0xFFF97316));
+        return const _AlertMeta(
+          Icons.visibility_off_rounded,
+          Color(0xFFF97316),
+        );
       case 'ใช้โทรศัพท์':
         return const _AlertMeta(Icons.phone_android_rounded, Color(0xFF8B5CF6));
       case 'ขับรถเร็ว':
@@ -652,7 +793,7 @@ class _TrendPainter extends CustomPainter {
       ..color = Colors.grey.shade200
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
-      
+
     for (var i = 1; i <= 3; i++) {
       final y = size.height * i / 4;
       // วาดเป็นเส้นประ (Dashed line effect แบบง่ายๆ ทำโดยวาดเส้นตรงสีอ่อนบางๆ)
@@ -712,6 +853,6 @@ class _TrendPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _TrendPainter old) => 
+  bool shouldRepaint(covariant _TrendPainter old) =>
       old.values != values || old.color != color;
 }

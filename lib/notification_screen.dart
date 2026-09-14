@@ -1,12 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 
 import 'login_screen.dart';
 import 'services/api_service.dart';
 
 class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({Key? key}) : super(key: key);
+  const NotificationScreen({super.key});
 
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
@@ -25,6 +26,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
   // รายการแจ้งเตือนทั้งหมด (ล่าสุดก่อน)
   List<Map<String, dynamic>> notifications = [];
   Timer? _refreshTimer;
+  bool _isRefreshing = false;
 
   @override
   void initState() {
@@ -45,7 +47,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
   // ดึงข้อมูลจาก backend ผ่าน ApiService (ใช้ token/driver_id ชุดเดียวกับทั้งแอป
   // แทนการอ่าน SharedPreferences ตรงๆ ซึ่งใช้คนละ key กับที่ ApiService บันทึกไว้)
   Future<void> fetchNotificationData({bool silent = false}) async {
-    if (!mounted) return;
+    if (!mounted || _isRefreshing) return;
+    _isRefreshing = true;
     if (!silent) {
       setState(() {
         isLoading = true;
@@ -62,13 +65,14 @@ class _NotificationScreenState extends State<NotificationScreen> {
         errorMessage = 'ไม่พบข้อมูลการเข้าสู่ระบบ กรุณาล็อกอินใหม่อีกครั้ง';
         isLoading = false;
       });
+      _isRefreshing = false;
       return;
     }
 
     try {
       // Alerts are stored once per buzzer cycle. Only today's alerts are
       // shown, so a new day automatically starts at zero with an empty list.
-      final allAlerts = await ApiService.instance.alerts();
+      final allAlerts = await ApiService.instance.alerts(todayOnly: true);
       final now = DateTime.now();
       final alerts = allAlerts.where((alert) {
         final raw = (alert['timestamp'] ?? alert['created_at'])?.toString();
@@ -119,6 +123,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
         errorMessage = 'ไม่สามารถเชื่อมต่อระบบได้ กรุณาลองใหม่อีกครั้ง';
         isLoading = false;
       });
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -172,7 +178,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Expanded(
-                      child: Text(
+                      child: AppText(
                         'ประวัติการแจ้งเตือน',
                         maxLines: 2,
                         style: TextStyle(
@@ -188,7 +194,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     ),
                   ],
                 ),
-                const Text(
+                const AppText(
                   'ตรวจสอบระดับความเสี่ยงย้อนหลังและเหตุการณ์ที่เกิดขึ้นในวันนี้',
                   style: TextStyle(color: Colors.white70, fontSize: 13),
                 ),
@@ -225,7 +231,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                       MainAxisAlignment.spaceBetween,
                                   children: const [
                                     Expanded(
-                                      child: Text(
+                                      child: AppText(
                                         'วันนี้',
                                         softWrap: true,
                                         style: TextStyle(
@@ -258,9 +264,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                           color: Color(0xFF1B3258),
                                         ),
                                       ),
-                                      const TextSpan(
-                                        text: 'เหตุการณ์',
-                                        style: TextStyle(
+                                      TextSpan(
+                                        text: appTr('เหตุการณ์'),
+                                        style: const TextStyle(
                                           color: Colors.black87,
                                           fontSize: 13,
                                         ),
@@ -289,7 +295,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                       MainAxisAlignment.spaceBetween,
                                   children: const [
                                     Expanded(
-                                      child: Text(
+                                      child: AppText(
                                         'ความเสี่ยงสูงสุด',
                                         softWrap: true,
                                         style: TextStyle(
@@ -314,9 +320,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                 RichText(
                                   text: TextSpan(
                                     children: [
-                                      const TextSpan(
-                                        text: 'ระดับ ',
-                                        style: TextStyle(
+                                      TextSpan(
+                                        text: '${appTr('ระดับ')} ',
+                                        style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.orange,
@@ -356,7 +362,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
+                          AppText(
                             errorMessage,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
@@ -378,7 +384,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               ),
                             ),
                             onPressed: handleRetryOrLogout,
-                            child: Text(
+                            child: AppText(
                               isAuthError ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่',
                               style: const TextStyle(
                                 color: Colors.white,
@@ -391,7 +397,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                     ),
                   )
                 : notifications.isEmpty
-                ? const Center(child: Text('ยังไม่มีการแจ้งเตือน'))
+                ? const Center(child: AppText('ยังไม่มีการแจ้งเตือน'))
                 : RefreshIndicator(
                     onRefresh: fetchNotificationData,
                     child: ListView.builder(
@@ -474,7 +480,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       if (type.isNotEmpty)
-                                        Text(
+                                        AppText(
                                           type,
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
@@ -482,7 +488,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                           ),
                                         ),
                                       const SizedBox(height: 4),
-                                      Text(
+                                      AppText(
                                         message,
                                         style: const TextStyle(
                                           fontSize: 13,
@@ -490,7 +496,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 6),
-                                      Text(
+                                      AppText(
                                         time,
                                         style: const TextStyle(
                                           fontSize: 11,

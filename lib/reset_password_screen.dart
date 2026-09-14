@@ -38,21 +38,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
     if (otp.isEmpty || password.isEmpty || confirm.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('กรุณากรอกข้อมูลให้ครบทุกช่อง')),
+        const SnackBar(content: AppText('กรุณากรอกข้อมูลให้ครบทุกช่อง')),
       );
       return;
     }
 
     if (password.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')),
+        const SnackBar(content: AppText('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')),
       );
       return;
     }
 
     if (password != confirm) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('รหัสผ่านยืนยันไม่ตรงกัน')),
+        const SnackBar(content: AppText('รหัสผ่านยืนยันไม่ตรงกัน')),
       );
       return;
     }
@@ -69,7 +69,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่')),
+        const SnackBar(
+          content: AppText('เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่'),
+        ),
       );
       Navigator.pushAndRemoveUntil(
         context,
@@ -78,11 +80,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: AppText(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ทำรายการไม่สำเร็จ กรุณาลองใหม่')),
+        const SnackBar(content: AppText('ทำรายการไม่สำเร็จ กรุณาลองใหม่')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -109,17 +113,29 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.mark_email_read_rounded, size: 48, color: AppColors.primaryLight),
+              child: const Icon(
+                Icons.mark_email_read_rounded,
+                size: 48,
+                color: AppColors.primaryLight,
+              ),
             ),
             const SizedBox(height: 24),
-            Text(
+            AppText(
               "ยืนยันรหัสและตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.prompt(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.text),
+              style: GoogleFonts.prompt(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.text,
+              ),
             ),
             const SizedBox(height: 8),
-            Text(
+            AppText(
               "กรอกรหัสยืนยัน 6 หลักที่ส่งไปยัง ${widget.email} พร้อมตั้งรหัสผ่านใหม่",
-              style: GoogleFonts.prompt(fontSize: 14, color: AppColors.textMuted, height: 1.5),
+              style: GoogleFonts.prompt(
+                fontSize: 14,
+                color: AppColors.textMuted,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
 
@@ -129,7 +145,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               controller: _otpController,
               keyboardType: TextInputType.number,
               maxLength: 6,
-              decoration: _inputDecoration(hint: "เช่น 123456", icon: Icons.pin_outlined),
+              decoration: _inputDecoration(
+                hint: "เช่น 123456",
+                icon: Icons.pin_outlined,
+              ),
             ),
 
             _buildLabel("รหัสผ่านใหม่"),
@@ -141,8 +160,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 hint: "อย่างน้อย 8 ตัวอักษร",
                 icon: Icons.lock_outline,
                 suffixIcon: IconButton(
-                  icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),
             ),
@@ -157,8 +179,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 hint: "กรอกรหัสผ่านอีกครั้ง",
                 icon: Icons.lock_outline,
                 suffixIcon: IconButton(
-                  icon: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  icon: Icon(
+                    _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                  ),
+                  onPressed: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
                 ),
               ),
             ),
@@ -173,18 +198,27 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryDark,
                   elevation: 8,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   shadowColor: AppColors.primaryDark.withOpacity(0.3),
                 ),
                 child: _isLoading
                     ? const SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
                       )
-                    : Text(
+                    : AppText(
                         "ยืนยันตั้งรหัสผ่านใหม่",
-                        style: GoogleFonts.prompt(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: GoogleFonts.prompt(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
               ),
             ),
@@ -197,23 +231,34 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 0),
-      child: Text(
+      child: AppText(
         text,
-        style: GoogleFonts.prompt(fontWeight: FontWeight.w600, color: AppColors.text, fontSize: 14),
+        style: GoogleFonts.prompt(
+          fontWeight: FontWeight.w600,
+          color: AppColors.text,
+          fontSize: 14,
+        ),
       ),
     );
   }
 
-  InputDecoration _inputDecoration({required String hint, required IconData icon, Widget? suffixIcon}) {
+  InputDecoration _inputDecoration({
+    required String hint,
+    required IconData icon,
+    Widget? suffixIcon,
+  }) {
     return InputDecoration(
-      hintText: hint,
+      hintText: appTr(hint),
       hintStyle: GoogleFonts.prompt(color: Colors.grey.shade400),
       prefixIcon: Icon(icon, color: Colors.grey.shade400),
       suffixIcon: suffixIcon,
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.all(16),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.grey.shade200),

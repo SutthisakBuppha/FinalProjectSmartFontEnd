@@ -18,6 +18,7 @@ class TripTrackingService {
   static final TripTrackingService instance = TripTrackingService._();
 
   static const _tripIdKey = 'active_navigation_trip_id';
+  static const _deviceIdKey = 'active_navigation_device_id';
   static const _destinationKey = 'active_navigation_destination';
   static const _externalNavigationKey = 'is_navigating_to_rest_stop';
   static const _restStopTripIdKey = 'active_rest_stop_trip_id';
@@ -25,6 +26,7 @@ class TripTrackingService {
 
   StreamSubscription<Position>? _subscription;
   String? _tripId;
+  String? _deviceId;
   String? _destinationName;
   String? _restStopTripId;
   bool _sendingLocation = false;
@@ -41,15 +43,17 @@ class TripTrackingService {
   Future<void> restore() async {
     final preferences = await SharedPreferences.getInstance();
     _tripId ??= preferences.getString(_tripIdKey);
+    _deviceId ??= preferences.getString(_deviceIdKey);
     _destinationName ??= preferences.getString(_destinationKey);
     _restStopTripId ??= preferences.getString(_restStopTripIdKey);
     _isNavigatingToRestStop =
         preferences.getBool(_externalNavigationKey) ?? false;
     final restUntilMs = preferences.getInt(_restUntilKey);
-    _isPaused = restUntilMs != null &&
-        DateTime.fromMillisecondsSinceEpoch(restUntilMs).isAfter(
-          DateTime.now(),
-        );
+    _isPaused =
+        restUntilMs != null &&
+        DateTime.fromMillisecondsSinceEpoch(
+          restUntilMs,
+        ).isAfter(DateTime.now());
     if (_tripId != null && _subscription == null) {
       _startPositionStream();
     }
@@ -64,18 +68,33 @@ class TripTrackingService {
   Future<String> startRestStopTrip({
     required Position initialPosition,
     required String destinationName,
+    required double destinationLatitude,
+    required double destinationLongitude,
   }) async {
     if (_tripId == null) {
       throw const ApiException('กรุณาเริ่มทริปหลักก่อนนำทางไปจุดพักรถ');
     }
     if (_restStopTripId != null) return _restStopTripId!;
 
-    final devices = await ApiService.instance.devices();
-    final deviceId = devices.isEmpty ? null : devices.first['device_id'];
+    var deviceId = _deviceId;
+    if (deviceId == null) {
+      final devices = await ApiService.instance.devices();
+      deviceId = devices.isEmpty
+          ? null
+          : devices.first['device_id']?.toString();
+      if (deviceId != null) {
+        _deviceId = deviceId;
+        final preferences = await SharedPreferences.getInstance();
+        await preferences.setString(_deviceIdKey, deviceId);
+      }
+    }
     final trip = await ApiService.instance.startTrip(
       deviceId: deviceId,
       tripType: 'rest_stop',
       parentTripId: _tripId,
+      destinationName: destinationName,
+      destinationLatitude: destinationLatitude,
+      destinationLongitude: destinationLongitude,
     );
     final id = trip['trip_id']?.toString();
     if (id == null || id.isEmpty) {
@@ -87,7 +106,9 @@ class TripTrackingService {
     await preferences.setString(_restStopTripIdKey, id);
     await preferences.setString(_destinationKey, destinationName);
     await beginRestStopNavigation();
-    await _sendPosition(initialPosition);
+    // Do not keep the driver waiting for two location-upload requests before
+    // Google Maps opens. _sendPosition handles its own network errors.
+    unawaited(_sendPosition(initialPosition));
     return id;
   }
 
@@ -127,6 +148,7 @@ class TripTrackingService {
 
     final trip = await ApiService.instance.startTrip(
       deviceId: selectedDevice?['device_id'],
+      destinationName: destinationName,
     );
     final createdTripId = trip['trip_id']?.toString();
     if (createdTripId == null || createdTripId.isEmpty) {
@@ -134,6 +156,7 @@ class TripTrackingService {
     }
 
     _tripId = createdTripId;
+    _deviceId = selectedDevice?['device_id']?.toString();
     _isPaused = false;
     _destinationName = destinationName;
     // A new trip may show the rest-stop AlertScreen once. After the driver
@@ -142,6 +165,9 @@ class TripTrackingService {
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_externalNavigationKey);
     await preferences.setString(_tripIdKey, createdTripId);
+    if (_deviceId != null) {
+      await preferences.setString(_deviceIdKey, _deviceId!);
+    }
     await preferences.setString(_destinationKey, destinationName);
 
     await _sendPosition(initialPosition);
@@ -187,14 +213,13 @@ class TripTrackingService {
       );
     }
 
-    _subscription = Geolocator.getPositionStream(
-      locationSettings: settings,
-    ).listen(
-      (position) => _sendPosition(position),
-      onError: (Object error) {
-        debugPrint('Trip GPS stream error: $error');
-      },
-    );
+    _subscription = Geolocator.getPositionStream(locationSettings: settings)
+        .listen(
+          (position) => _sendPosition(position),
+          onError: (Object error) {
+            debugPrint('Trip GPS stream error: $error');
+          },
+        );
   }
 
   Future<void> _sendPosition(Position position) async {
@@ -242,17 +267,26 @@ class TripTrackingService {
     await _subscription?.cancel();
     _subscription = null;
 
-    final trip = await ApiService.instance.completeTrip(activeTripId);
-    await _clearLocalTrip();
-    return trip;
+    try {
+      final trip = await ApiService.instance.completeTrip(activeTripId);
+      await _clearLocalTrip();
+      return trip;
+    } catch (_) {
+      // หากเซิร์ฟเวอร์หรืออินเทอร์เน็ตล้มเหลว ทริปยังไม่จบ จึงต้องกลับมา
+      // บันทึก GPS ต่อแทนที่จะปล่อยให้สถานะค้างแต่หยุดเก็บเส้นทางเงียบ ๆ
+      _startPositionStream();
+      rethrow;
+    }
   }
 
   Future<void> _clearLocalTrip() async {
     _tripId = null;
+    _deviceId = null;
     _isPaused = false;
     _destinationName = null;
     final preferences = await SharedPreferences.getInstance();
     await preferences.remove(_tripIdKey);
+    await preferences.remove(_deviceIdKey);
     await preferences.remove(_destinationKey);
     await preferences.remove(_externalNavigationKey);
     await preferences.remove(_restStopTripIdKey);

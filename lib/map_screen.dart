@@ -57,14 +57,17 @@ class _MapScreenState extends State<MapScreen>
 
   // ── GPS / ตำแหน่งปัจจุบัน ──────────────────────────────────────────────
   LatLng? _currentLatLng;
+  Position? _latestPosition;
   StreamSubscription<Position>? _positionStream;
-  bool _isResolvingLocation = true; // กำลังเช็ค GPS / ขอ permission / ดึงตำแหน่งแรก
+  bool _isResolvingLocation =
+      true; // กำลังเช็ค GPS / ขอ permission / ดึงตำแหน่งแรก
   String? _locationError; // ข้อความ error ถ้าเปิด GPS ไม่ได้ / โดนปฏิเสธสิทธิ์
 
   // ── สถานที่ใกล้เคียง ────────────────────────────────────────────────────
   List<NearbyPlace> _nearbyPlaces = [];
   bool _isLoadingPlaces = false;
   String? _placesError;
+  double _searchedRadiusMeters = 5000;
   bool _navigationWasBackgrounded = false;
   bool _isStartingNavigation = false;
   bool _isShowingFinishDialog = false;
@@ -123,8 +126,8 @@ class _MapScreenState extends State<MapScreen>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('คุณถึงจุดพักรถแล้วหรือยัง?'),
-        content: Text(
+        title: const AppText('คุณถึงจุดพักรถแล้วหรือยัง?'),
+        content: AppText(
           'กำลังบันทึกเส้นทางไปยัง '
           '${TripTrackingService.instance.destinationName ?? 'จุดหมาย'}\n'
           'เมื่อถึงจุดพักแล้ว ให้เปิดโหมดพักรถเพื่อหยุด AI การแจ้งเตือน และเสียง Buzzer ชั่วคราว',
@@ -132,7 +135,7 @@ class _MapScreenState extends State<MapScreen>
         actions: [
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('เปิดโหมดพักรถ'),
+            child: const AppText('เปิดโหมดพักรถ'),
           ),
         ],
       ),
@@ -146,17 +149,17 @@ class _MapScreenState extends State<MapScreen>
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
-          builder: (_) => const MainLayout(
-            initialIndex: 0,
-            openSleepRestMode: true,
-          ),
+          builder: (_) =>
+              const MainLayout(initialIndex: 0, openSleepRestMode: true),
         ),
         (route) => false,
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เปิดหน้าพักรถไม่สำเร็จ กรุณาลองใหม่: $error')),
+        SnackBar(
+          content: AppText('เปิดหน้าพักรถไม่สำเร็จ กรุณาลองใหม่: $error'),
+        ),
       );
     }
   }
@@ -188,7 +191,8 @@ class _MapScreenState extends State<MapScreen>
       if (permission == LocationPermission.denied) {
         setState(() {
           _isResolvingLocation = false;
-          _locationError = 'แอปต้องการสิทธิ์เข้าถึงตำแหน่งเพื่อค้นหาจุดพักรถที่ใกล้ที่สุด';
+          _locationError =
+              'แอปต้องการสิทธิ์เข้าถึงตำแหน่งเพื่อค้นหาจุดพักรถที่ใกล้ที่สุด';
         });
         return;
       }
@@ -206,13 +210,17 @@ class _MapScreenState extends State<MapScreen>
     // ── ข้อ 5: ดึงตำแหน่งปัจจุบัน (ใช้แทนค่า hardcode เดิม) ────────────
     try {
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
       );
 
       final latLng = LatLng(position.latitude, position.longitude);
 
       if (!mounted) return;
       setState(() {
+        _latestPosition = position;
         _currentLatLng = latLng;
         _isResolvingLocation = false;
       });
@@ -247,30 +255,37 @@ class _MapScreenState extends State<MapScreen>
 
   void _startLiveTracking() {
     _positionStream?.cancel();
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // อัปเดตทุกๆ 10 เมตรที่เคลื่อนที่
-      ),
-    ).listen((Position pos) {
-      if (!mounted) return;
-      final updated = LatLng(pos.latitude, pos.longitude);
-      setState(() {
-        _currentLatLng = updated;
-        // อัปเดตระยะทางของสถานที่ใกล้เคียงตามตำแหน่งใหม่ทุกครั้ง
-        for (final place in _nearbyPlaces) {
-          place.distanceMeters = Geolocator.distanceBetween(
-            updated.latitude,
-            updated.longitude,
-            place.location.latitude,
-            place.location.longitude,
-          );
-        }
-        _nearbyPlaces.sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
-      });
-    }, onError: (_) {
-      // ไม่ต้อง block UI ถ้า stream error ระหว่างทาง แค่เงียบไว้
-    });
+    _positionStream =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10, // อัปเดตทุกๆ 10 เมตรที่เคลื่อนที่
+          ),
+        ).listen(
+          (Position pos) {
+            if (!mounted) return;
+            final updated = LatLng(pos.latitude, pos.longitude);
+            setState(() {
+              _latestPosition = pos;
+              _currentLatLng = updated;
+              // อัปเดตระยะทางของสถานที่ใกล้เคียงตามตำแหน่งใหม่ทุกครั้ง
+              for (final place in _nearbyPlaces) {
+                place.distanceMeters = Geolocator.distanceBetween(
+                  updated.latitude,
+                  updated.longitude,
+                  place.location.latitude,
+                  place.location.longitude,
+                );
+              }
+              _nearbyPlaces.sort(
+                (a, b) => a.distanceMeters.compareTo(b.distanceMeters),
+              );
+            });
+          },
+          onError: (_) {
+            // ไม่ต้อง block UI ถ้า stream error ระหว่างทาง แค่เงียบไว้
+          },
+        );
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -284,18 +299,35 @@ class _MapScreenState extends State<MapScreen>
   //   - ฝั่ง backend ทำ retry ข้ามหลาย mirror + แคชผลลัพธ์ไว้ได้
   //     (ปั๊ม/จุดพักรถไม่ค่อยเปลี่ยนตำแหน่ง) ลดโอกาสเจอ error แบบนี้ได้มาก
   //   - ระยะทางถูกคำนวณและเรียงลำดับมาจาก backend แล้ว ไม่ต้องคำนวณซ้ำที่นี่
-  Future<void> _fetchNearbyPlaces(LatLng center, {double radiusMeters = 5000}) async {
+  Future<void> _fetchNearbyPlaces(
+    LatLng center, {
+    double radiusMeters = 5000,
+  }) async {
     setState(() {
       _isLoadingPlaces = true;
       _placesError = null;
+      _nearbyPlaces = [];
+      _searchedRadiusMeters = radiusMeters;
     });
 
     try {
-      final results = await ApiService.instance.nearbyPlaces(
-        latitude: center.latitude,
-        longitude: center.longitude,
-        radiusMeters: radiusMeters,
-      );
+      final radii = <double>[
+        radiusMeters,
+        if (radiusMeters < 10000) 10000,
+        if (radiusMeters < 20000) 20000,
+      ];
+      List<Map<String, dynamic>> results = [];
+
+      for (final radius in radii) {
+        if (!mounted) return;
+        setState(() => _searchedRadiusMeters = radius);
+        results = await ApiService.instance.nearbyPlaces(
+          latitude: center.latitude,
+          longitude: center.longitude,
+          radiusMeters: radius,
+        );
+        if (results.isNotEmpty) break;
+      }
 
       final places = results.map((item) {
         final lat = (item['latitude'] as num).toDouble();
@@ -307,7 +339,8 @@ class _MapScreenState extends State<MapScreen>
           location: LatLng(lat, lng),
           isGasStation: item['is_gas_station'] == true,
           // backend คำนวณระยะทางมาให้แล้ว ถ้าไม่มีค่อยคำนวณสำรองที่นี่
-          distanceMeters: (item['distance_meters'] as num?)?.toDouble() ??
+          distanceMeters:
+              (item['distance_meters'] as num?)?.toDouble() ??
               Geolocator.distanceBetween(
                 center.latitude,
                 center.longitude,
@@ -356,9 +389,17 @@ class _MapScreenState extends State<MapScreen>
     );
 
     try {
-      final initialPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      // The map already keeps a live GPS fix. Reusing it avoids another
+      // high-accuracy lookup (which could block this button for 20 seconds).
+      final initialPosition =
+          _latestPosition ??
+          await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 8),
+            ),
+          );
+      if (!mounted) return;
       if (!TripTrackingService.instance.isTracking) {
         if (Theme.of(context).platform == TargetPlatform.android) {
           final backgroundStatus = await Permission.locationAlways.status;
@@ -377,6 +418,8 @@ class _MapScreenState extends State<MapScreen>
       await TripTrackingService.instance.startRestStopTrip(
         initialPosition: initialPosition,
         destinationName: place.name,
+        destinationLatitude: place.location.latitude,
+        destinationLongitude: place.location.longitude,
       );
       final launched = await launchUrl(
         googleMapsUrl,
@@ -391,11 +434,24 @@ class _MapScreenState extends State<MapScreen>
       await TripTrackingService.instance.endRestStopNavigation();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('เปิด Google Maps ไม่สำเร็จ: $e')),
+        SnackBar(content: AppText('เปิด Google Maps ไม่สำเร็จ: $e')),
       );
     } finally {
       _isStartingNavigation = false;
       if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _openGoogleMapsPlaceSearch() async {
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': 'ปั๊มน้ำมันหรือจุดพักรถใกล้ฉัน',
+    });
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('ไม่สามารถเปิด Google Maps ได้')),
+      );
     }
   }
 
@@ -422,9 +478,13 @@ class _MapScreenState extends State<MapScreen>
             children: [
               const CircularProgressIndicator(color: AppColors.secondary),
               const SizedBox(height: 16),
-              Text(
+              AppText(
                 'กำลังค้นหาตำแหน่งของคุณ...',
-                style: GoogleFonts.prompt(color: AppColors.cFF1E293B, fontSize: 14, fontWeight: FontWeight.w500),
+                style: GoogleFonts.prompt(
+                  color: AppColors.cFF1E293B,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ),
@@ -455,23 +515,36 @@ class _MapScreenState extends State<MapScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.location_off_rounded, color: AppColors.cFFDC2626, size: 56),
+                  const Icon(
+                    Icons.location_off_rounded,
+                    color: AppColors.cFFDC2626,
+                    size: 56,
+                  ),
                   const SizedBox(height: 16),
-                  Text(
+                  AppText(
                     _locationError!,
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.prompt(color: AppColors.cFF1E293B, fontSize: 15, fontWeight: FontWeight.w500),
+                    style: GoogleFonts.prompt(
+                      color: AppColors.cFF1E293B,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
                     onPressed: _initLocationFlow,
                     icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('ลองอีกครั้ง'),
+                    label: const AppText('ลองอีกครั้ง'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.secondary,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ],
@@ -552,13 +625,7 @@ class _MapScreenState extends State<MapScreen>
           ),
 
           // --- 2. Top UI (Header & Search) ---
-          SafeArea(
-            child: Column(
-              children: [
-                _buildHeader(),
-              ],
-            ),
-          ),
+          SafeArea(child: Column(children: [_buildHeader()])),
 
           // --- 3. Floating Action Buttons ---
           Positioned(
@@ -568,7 +635,10 @@ class _MapScreenState extends State<MapScreen>
               children: [
                 _buildFab(Icons.layers_rounded, onTap: () {}),
                 const SizedBox(height: 12),
-                _buildFab(Icons.my_location_rounded, onTap: _recenterToCurrentLocation),
+                _buildFab(
+                  Icons.my_location_rounded,
+                  onTap: _recenterToCurrentLocation,
+                ),
               ],
             ),
           ),
@@ -584,17 +654,12 @@ class _MapScreenState extends State<MapScreen>
                   foregroundColor: Colors.white,
                 ),
                 icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('จบเส้นทางไปจุดพัก'),
+                label: const AppText('จบเส้นทางไปจุดพัก'),
               ),
             ),
 
           // --- 4. Bottom Sheet (Nearest Locations) ---
-          Positioned(
-            bottom: 85,
-            left: 0,
-            right: 0,
-            child: _buildBottomSheet(),
-          ),
+          Positioned(bottom: 85, left: 0, right: 0, child: _buildBottomSheet()),
 
           // --- 5. Custom Bottom Navigation Bar ---
           Positioned(
@@ -606,9 +671,7 @@ class _MapScreenState extends State<MapScreen>
               onTap: (index) {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const MainLayout(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const MainLayout()),
                   (route) => false,
                 );
               },
@@ -643,7 +706,11 @@ class _MapScreenState extends State<MapScreen>
                   ),
                 ],
               ),
-              child: const Icon(Icons.close_rounded, color: AppColors.cFF1E293B, size: 20),
+              child: const Icon(
+                Icons.close_rounded,
+                color: AppColors.cFF1E293B,
+                size: 20,
+              ),
             ),
           ),
         ],
@@ -661,7 +728,11 @@ class _MapScreenState extends State<MapScreen>
           color: Colors.white,
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2)),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
           ],
         ),
         child: Icon(icon, color: AppColors.cFF1E293B, size: 22),
@@ -682,7 +753,9 @@ class _MapScreenState extends State<MapScreen>
               height: 60 + (_pulseController.value * 50),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.secondary.withOpacity(0.25 * (1 - _pulseController.value)),
+                color: AppColors.secondary.withOpacity(
+                  0.25 * (1 - _pulseController.value),
+                ),
               ),
             );
           },
@@ -698,7 +771,7 @@ class _MapScreenState extends State<MapScreen>
               BoxShadow(
                 color: AppColors.secondary.withOpacity(0.6),
                 blurRadius: 15,
-              )
+              ),
             ],
           ),
         ),
@@ -759,10 +832,14 @@ class _MapScreenState extends State<MapScreen>
             color: AppColors.cFF0F2647,
             borderRadius: BorderRadius.circular(12),
             boxShadow: const [
-              BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
             ],
           ),
-          child: Text(
+          child: AppText(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -815,7 +892,7 @@ class _MapScreenState extends State<MapScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
+                AppText(
                   "สถานที่ใกล้เคียง",
                   style: GoogleFonts.prompt(
                     color: AppColors.cFF1E293B,
@@ -823,18 +900,20 @@ class _MapScreenState extends State<MapScreen>
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text(
-                  "ในระยะ 5 กม.",
-                  style: GoogleFonts.prompt(color: Colors.grey.shade400, fontSize: 12, fontWeight: FontWeight.w500),
+                AppText(
+                  "ในระยะ ${(_searchedRadiusMeters / 1000).toStringAsFixed(0)} กม.",
+                  style: GoogleFonts.prompt(
+                    color: Colors.grey.shade400,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 12),
 
-          Flexible(
-            child: _buildPlacesListContent(),
-          ),
+          Flexible(child: _buildPlacesListContent()),
         ],
       ),
     );
@@ -848,7 +927,10 @@ class _MapScreenState extends State<MapScreen>
           child: SizedBox(
             width: 24,
             height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.secondary),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.secondary,
+            ),
           ),
         ),
       );
@@ -859,17 +941,20 @@ class _MapScreenState extends State<MapScreen>
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Column(
           children: [
-            Text(
+            AppText(
               _placesError!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.prompt(color: Colors.grey.shade500, fontSize: 12),
+              style: GoogleFonts.prompt(
+                color: Colors.grey.shade500,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () {
                 if (_currentLatLng != null) _fetchNearbyPlaces(_currentLatLng!);
               },
-              child: const Text('ลองอีกครั้ง'),
+              child: const AppText('ลองอีกครั้ง'),
             ),
           ],
         ),
@@ -878,10 +963,46 @@ class _MapScreenState extends State<MapScreen>
 
     if (_nearbyPlaces.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Text(
-          'ไม่พบปั๊มน้ำมันหรือจุดพักรถในระยะ 5 กม.',
-          style: GoogleFonts.prompt(color: Colors.grey.shade500, fontSize: 13),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppText(
+              'ไม่พบปั๊มน้ำมันหรือจุดพักรถในระยะ '
+              '${(_searchedRadiusMeters / 1000).toStringAsFixed(0)} กม.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.prompt(
+                color: Colors.grey.shade500,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _currentLatLng == null
+                        ? null
+                        : () => _fetchNearbyPlaces(_currentLatLng!),
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const AppText('ลองอีกครั้ง'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _openGoogleMapsPlaceSearch,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.cFF0F2647,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.map_outlined, size: 18),
+                    label: const AppText('เปิด Google Maps'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       );
     }
@@ -899,7 +1020,9 @@ class _MapScreenState extends State<MapScreen>
   }
 
   Widget _buildLocationCard(NearbyPlace place) {
-    final iconColor = place.isGasStation ? AppColors.secondary : Colors.indigo.shade400;
+    final iconColor = place.isGasStation
+        ? AppColors.secondary
+        : Colors.indigo.shade400;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -921,7 +1044,7 @@ class _MapScreenState extends State<MapScreen>
           // ระยะทาง (มุมซ้าย เหมือนเวลาใน RouteDetails ของดีไซน์ใหม่)
           SizedBox(
             width: 40,
-            child: Text(
+            child: AppText(
               place.distanceLabel,
               style: GoogleFonts.prompt(
                 fontSize: 11,
@@ -937,7 +1060,10 @@ class _MapScreenState extends State<MapScreen>
             child: Container(
               width: 10,
               height: 10,
-              decoration: BoxDecoration(color: iconColor, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: iconColor,
+                shape: BoxShape.circle,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -953,14 +1079,16 @@ class _MapScreenState extends State<MapScreen>
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    place.isGasStation ? Icons.local_gas_station_rounded : Icons.chair_rounded,
+                    place.isGasStation
+                        ? Icons.local_gas_station_rounded
+                        : Icons.chair_rounded,
                     color: iconColor,
                     size: 20,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
+                  child: AppText(
                     place.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
@@ -1005,7 +1133,7 @@ class _MapScreenState extends State<MapScreen>
                       ),
                     )
                   : const Icon(Icons.directions, size: 19),
-              label: Text(
+              label: AppText(
                 _isStartingNavigation ? "กำลังเปิด..." : "นำทาง",
                 style: const TextStyle(
                   fontSize: 13,

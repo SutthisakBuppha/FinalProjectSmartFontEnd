@@ -8,8 +8,7 @@ import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
 
 class AlertScreen extends StatefulWidget {
-  final dynamic
-  deviceId; 
+  final dynamic deviceId;
   const AlertScreen({super.key, this.deviceId});
 
   @override
@@ -175,8 +174,11 @@ class _AlertScreenState extends State<AlertScreen> {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.map_outlined,
-                                      color: Colors.white54, size: 56),
+                                  Icon(
+                                    Icons.map_outlined,
+                                    color: Colors.white54,
+                                    size: 56,
+                                  ),
                                   SizedBox(height: 8),
                                   Text(
                                     'Map view unavailable',

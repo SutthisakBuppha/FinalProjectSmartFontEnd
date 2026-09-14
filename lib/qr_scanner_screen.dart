@@ -13,7 +13,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
   );
-  bool _hasScanned = false; 
+  bool _hasScanned = false;
 
   @override
   void dispose() {
@@ -39,7 +39,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text("สแกน QR Code"),
+        title: const AppText("สแกน QR Code"),
         backgroundColor: AppColors.cFF0F2557,
         foregroundColor: Colors.white,
         actions: [
@@ -60,10 +60,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            controller: _controller,
-            onDetect: _onDetect,
-          ),
+          MobileScanner(controller: _controller, onDetect: _onDetect),
           // กรอบไกด์ตรงกลางให้ผู้ใช้เล็งง่ายขึ้น
           Center(
             child: Container(
@@ -79,7 +76,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             bottom: 40,
             left: 0,
             right: 0,
-            child: Text(
+            child: AppText(
               "เล็งกล้องไปที่ QR Code บนตัวอุปกรณ์",
               textAlign: TextAlign.center,
               style: const TextStyle(

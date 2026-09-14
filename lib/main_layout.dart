@@ -4,7 +4,6 @@ import '/services/api_service.dart';
 import '/services/rest_mode_service.dart';
 import '/services/trip_tracking_service.dart';
 import '/services/push_notification_service.dart';
-import 'alert_screen.dart';
 import 'home_screen.dart';
 import 'history_screen.dart';
 import '/notification_screen.dart';
@@ -33,15 +32,22 @@ class _MainLayoutState extends State<MainLayout> {
   bool _sessionReady = false;
 
   Timer? _pollingTimer;
+  Timer? _riskPollingTimer;
   bool _isShowingAlert = false;
+  bool _isPollingNotifications = false;
   dynamic _lastSeenNotificationId;
   bool _notificationBaselineReady = false;
+  bool _isPollingRiskEvents = false;
+  bool _riskBaselineReady = false;
+  dynamic _lastSeenAlertId;
+  late final DateTime _riskPollingStartedAt;
 
   late final List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    _riskPollingStartedAt = DateTime.now().toUtc();
     _selectedIndex = widget.initialIndex;
     _screens = [
       HomeScreen(
@@ -64,14 +70,13 @@ class _MainLayoutState extends State<MainLayout> {
   }
 
   Future<void> _initializeAuthenticatedLayout() async {
-    final hasSession = ApiService.instance.isLoggedIn ||
+    final hasSession =
+        ApiService.instance.isLoggedIn ||
         await ApiService.instance.restoreSession();
 
     if (!mounted) return;
     if (!hasSession) {
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil('/login', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
       return;
     }
 
@@ -82,6 +87,70 @@ class _MainLayoutState extends State<MainLayout> {
     unawaited(TripTrackingService.instance.restore());
     unawaited(PushNotificationService.instance.registerTokenWithBackend());
     _startNotificationPolling();
+    _startRiskEventPolling();
+  }
+
+  void _startRiskEventPolling() {
+    _riskPollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      if (!mounted || _isPollingRiskEvents || !ApiService.instance.isLoggedIn) {
+        return;
+      }
+
+      _isPollingRiskEvents = true;
+      try {
+        final alerts = await ApiService.instance.alerts(limit: 3);
+        final latestAlert = alerts.isEmpty ? null : alerts.first;
+        final alertId = latestAlert?['alert_id'];
+
+        final isFirstPoll = !_riskBaselineReady;
+        if (isFirstPoll) {
+          _lastSeenAlertId = alertId;
+          _riskBaselineReady = true;
+          final timestamp = DateTime.tryParse(
+            latestAlert?['timestamp']?.toString() ?? '',
+          )?.toUtc();
+          if (timestamp == null || timestamp.isBefore(_riskPollingStartedAt)) {
+            return;
+          }
+        }
+        if (alertId == null ||
+            (!isFirstPoll && alertId == _lastSeenAlertId)) {
+          return;
+        }
+        _lastSeenAlertId = alertId;
+
+        if (PushNotificationService.instance.wasAlertHandled(alertId)) return;
+        if (RestModeService.instance.isActive ||
+            TripTrackingService.instance.isNavigatingToRestStop) {
+          return;
+        }
+
+        final latestIsCritical = latestAlert?['notifications_exists'] == true ||
+            latestAlert?['notifications_exists'] == 1;
+        if (latestIsCritical) {
+          return;
+        }
+
+        var eventCount = 0;
+        for (final alert in alerts) {
+          final isCritical = alert['notifications_exists'] == true ||
+              alert['notifications_exists'] == 1;
+          if (isCritical) break;
+          eventCount++;
+        }
+
+        await PushNotificationService.instance.showRiskEventFromPolling(
+          alertId: alertId.toString(),
+          deviceId: latestAlert?['device_id']?.toString() ?? '',
+          type: latestAlert?['type']?.toString() ?? 'ไม่ระบุประเภท',
+          eventCount: eventCount.clamp(1, 2).toInt(),
+        );
+      } catch (error) {
+        debugPrint('Polling risk event error: $error');
+      } finally {
+        _isPollingRiskEvents = false;
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -102,9 +171,10 @@ class _MainLayoutState extends State<MainLayout> {
   // ═══════════════════════════════════════════════════════════════════════
   void _startNotificationPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      if (!mounted || _isShowingAlert) return;
+      if (!mounted || _isShowingAlert || _isPollingNotifications) return;
       if (!ApiService.instance.isLoggedIn) return;
 
+      _isPollingNotifications = true;
       try {
         final notifications = await ApiService.instance.notifications();
         final notification = notifications.isEmpty ? null : notifications.first;
@@ -124,6 +194,11 @@ class _MainLayoutState extends State<MainLayout> {
         }
 
         _lastSeenNotificationId = notificationId;
+        if (PushNotificationService.instance.wasCriticalNotificationHandled(
+          notificationId,
+        )) {
+          return;
+        }
         final alert = notification?['alert'];
         if (alert is! Map) return;
         final alertData = Map<String, dynamic>.from(alert);
@@ -157,19 +232,20 @@ class _MainLayoutState extends State<MainLayout> {
           debugPrint("Mark notification read error: $e");
         }
 
-        if (!mounted) return;
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AlertScreen(deviceId: alertData['device_id']),
-          ),
-        );
-
-        if (mounted) {
+        try {
+          await PushNotificationService.instance.showCriticalFromPolling(
+            notificationId: notificationId.toString(),
+            alertId: alertData['alert_id']?.toString() ?? '',
+            deviceId: alertData['device_id']?.toString() ?? '',
+            type: alertData['type']?.toString() ?? 'ไม่ระบุประเภท',
+          );
+        } finally {
           _isShowingAlert = false;
         }
       } catch (e) {
         debugPrint("Polling Alert Error: $e");
+      } finally {
+        _isPollingNotifications = false;
       }
     });
   }
@@ -177,6 +253,7 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _riskPollingTimer?.cancel();
     super.dispose();
   }
 
@@ -189,9 +266,7 @@ class _MainLayoutState extends State<MainLayout> {
   @override
   Widget build(BuildContext context) {
     if (!_sessionReady) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(

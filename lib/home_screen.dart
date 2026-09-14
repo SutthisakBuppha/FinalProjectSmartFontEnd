@@ -144,12 +144,12 @@ class _HomeScreenState extends State<HomeScreen>
             color: AppColors.primary,
             size: 48,
           ),
-          title: Text(
+          title: AppText(
             'หมดเวลาพักรถแล้ว',
             textAlign: TextAlign.center,
             style: GoogleFonts.prompt(fontWeight: FontWeight.w700),
           ),
-          content: Text(
+          content: AppText(
             'ถึงเวลากลับมาเดินทางต่อ กดปุ่มด้านล่างเพื่อปิดเสียงปลุก',
             textAlign: TextAlign.center,
             style: GoogleFonts.prompt(),
@@ -162,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen>
                 await RestModeService.instance.stopWakeUpAlarm();
               },
               icon: const Icon(Icons.volume_off_rounded),
-              label: Text(
+              label: AppText(
                 'ปิดเสียงปลุก',
                 style: GoogleFonts.prompt(fontWeight: FontWeight.w600),
               ),
@@ -244,7 +244,10 @@ class _HomeScreenState extends State<HomeScreen>
     if (mounted) setState(() {});
     try {
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
       );
       await TripTrackingService.instance.start(
         initialPosition: position,
@@ -255,7 +258,7 @@ class _HomeScreenState extends State<HomeScreen>
       debugPrint('Trip start failed: $error');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เริ่มบันทึกทริปไม่สำเร็จ: $error')),
+          SnackBar(content: AppText('เริ่มบันทึกทริปไม่สำเร็จ: $error')),
         );
       }
     } finally {
@@ -275,18 +278,18 @@ class _HomeScreenState extends State<HomeScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('ยืนยันจบทริป'),
-        content: const Text(
+        title: const AppText('ยืนยันจบทริป'),
+        content: const AppText(
           'ระบบจะหยุดบันทึกตำแหน่งและสรุประยะทางของทริปนี้ลงใน History',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('เดินทางต่อ'),
+            child: const AppText('เดินทางต่อ'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('ยืนยันจบทริป'),
+            child: const AppText('ยืนยันจบทริป'),
           ),
         ],
       ),
@@ -303,16 +306,16 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: AppText(
             'จบทริปและบันทึกลง History แล้ว ระยะทาง ${distance.toStringAsFixed(2)} กม.',
           ),
         ),
       );
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('จบทริปไม่สำเร็จ: $error')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: AppText('จบทริปไม่สำเร็จ: $error')));
       }
     } finally {
       _isEndingTrip = false;
@@ -354,7 +357,10 @@ class _HomeScreenState extends State<HomeScreen>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('กำหนดเหตุผลและเวลา', style: GoogleFonts.prompt(fontWeight: FontWeight.bold)),
+          title: AppText(
+            'กำหนดเหตุผลและเวลา',
+            style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -362,10 +368,10 @@ class _HomeScreenState extends State<HomeScreen>
                 TextField(
                   controller: reasonController,
                   maxLength: 200,
-                  decoration: const InputDecoration(
-                    labelText: 'เหตุผลที่พักรถ',
-                    hintText: 'เช่น รอรับผู้โดยสาร',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: appTr('เหตุผลที่พักรถ'),
+                    hintText: appTr('เช่น รอรับผู้โดยสาร'),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -377,8 +383,10 @@ class _HomeScreenState extends State<HomeScreen>
                         controller: durationController,
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
-                          labelText: 'ระยะเวลา',
-                          errorText: errorText,
+                          labelText: appTr('ระยะเวลา'),
+                          errorText: errorText == null
+                              ? null
+                              : appTr(errorText!),
                           border: const OutlineInputBorder(),
                         ),
                       ),
@@ -388,10 +396,19 @@ class _HomeScreenState extends State<HomeScreen>
                       width: 115,
                       child: DropdownButtonFormField<String>(
                         value: unit,
-                        decoration: const InputDecoration(labelText: 'หน่วย', border: OutlineInputBorder()),
+                        decoration: InputDecoration(
+                          labelText: appTr('หน่วย'),
+                          border: const OutlineInputBorder(),
+                        ),
                         items: const [
-                          DropdownMenuItem(value: 'minutes', child: Text('นาที')),
-                          DropdownMenuItem(value: 'hours', child: Text('ชั่วโมง')),
+                          DropdownMenuItem(
+                            value: 'minutes',
+                            child: AppText('นาที'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'hours',
+                            child: AppText('ชั่วโมง'),
+                          ),
                         ],
                         onChanged: (value) {
                           if (value != null) setDialogState(() => unit = value);
@@ -404,13 +421,23 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('ยกเลิก')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const AppText('ยกเลิก'),
+            ),
             FilledButton(
               onPressed: () {
                 final value = int.tryParse(durationController.text.trim());
-                final minutes = value == null ? null : (unit == 'hours' ? value * 60 : value);
-                if (reasonController.text.trim().isEmpty || minutes == null || minutes < 1 || minutes > 480) {
-                  setDialogState(() => errorText = 'กำหนดเวลา 1–480 นาที (สูงสุด 8 ชั่วโมง)');
+                final minutes = value == null
+                    ? null
+                    : (unit == 'hours' ? value * 60 : value);
+                if (reasonController.text.trim().isEmpty ||
+                    minutes == null ||
+                    minutes < 1 ||
+                    minutes > 480) {
+                  setDialogState(
+                    () => errorText = 'กำหนดเวลา 1–480 นาที (สูงสุด 8 ชั่วโมง)',
+                  );
                   return;
                 }
                 Navigator.pop(dialogContext, {
@@ -418,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen>
                   'minutes': minutes,
                 });
               },
-              child: const Text('เปิดโหมดพักรถ'),
+              child: const AppText('เปิดโหมดพักรถ'),
             ),
           ],
         ),
@@ -430,22 +457,39 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _showRestModeSheet({String? presetReason}) async {
-    final reason = presetReason ?? await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(
-          'เลือกเหตุผลที่พักรถ',
-          style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
-        ),
-        children: [
-          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'sleep'), child: const Text('นอนพักในรถ')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'break'), child: const Text('จอดพักผ่อน')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'pickup'), child: const Text('หยิบของหรือทำธุระ')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'temporary'), child: const Text('จอดรถชั่วคราว')),
-          SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, 'other'), child: const Text('เหตุผลอื่น')),
-        ],
-      ),
-    );
+    final reason =
+        presetReason ??
+        await showDialog<String>(
+          context: context,
+          builder: (dialogContext) => SimpleDialog(
+            title: AppText(
+              'เลือกเหตุผลที่พักรถ',
+              style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
+            ),
+            children: [
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'sleep'),
+                child: const AppText('นอนพักในรถ'),
+              ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'break'),
+                child: const AppText('จอดพักผ่อน'),
+              ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'pickup'),
+                child: const AppText('หยิบของหรือทำธุระ'),
+              ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'temporary'),
+                child: const AppText('จอดรถชั่วคราว'),
+              ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'other'),
+                child: const AppText('เหตุผลอื่น'),
+              ),
+            ],
+          ),
+        );
     if (reason == null || !mounted) return;
 
     var activationReason = reason;
@@ -464,72 +508,145 @@ class _HomeScreenState extends State<HomeScreen>
       'sleep': [60, 120, 180],
     };
 
-    final selected = customMinutes ?? await showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      isDismissible: presetReason == null,
-      enableDrag: presetReason == null,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        final screenHeight = MediaQuery.sizeOf(sheetContext).height;
+    final selected =
+        customMinutes ??
+        await showModalBottomSheet<int>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          isDismissible: presetReason == null,
+          enableDrag: presetReason == null,
+          backgroundColor: Colors.transparent,
+          builder: (sheetContext) {
+            final screenHeight = MediaQuery.sizeOf(sheetContext).height;
 
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: screenHeight * 0.9),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 44,
-                      height: 5,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  Row(
+            return ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: screenHeight * 0.9),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 5,
+                          margin: const EdgeInsets.only(bottom: 20),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.cFF0F2557.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.bedtime_rounded,
+                              color: AppColors.cFF0F2557,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                AppText(
+                                  "เปิดโหมดพักรถ",
+                                  style: GoogleFonts.prompt(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.cFF1E293B,
+                                  ),
+                                ),
+                                AppText(
+                                  "${_restReasonLabel(reason)} • ระบบจะไม่แจ้งเตือนตามเวลาที่เลือก",
+                                  style: GoogleFonts.prompt(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      ...(durationOptions[reason] ?? [10, 15, 30]).map(
+                        (minutes) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => Navigator.pop(sheetContext, minutes),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 11,
+                                horizontal: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.cFFECF0F3,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 20,
+                                    color: AppColors.cFF1E293B.withOpacity(0.7),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  AppText(
+                                    _formatRestChoice(minutes),
+                                    style: GoogleFonts.prompt(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.cFF1E293B,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppColors.cFF0F2557.withOpacity(0.1),
+                          color: AppColors.cFFFFF7ED,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.bedtime_rounded,
-                          color: AppColors.cFF0F2557,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              "เปิดโหมดพักรถ",
-                              style: GoogleFonts.prompt(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.cFF1E293B,
-                              ),
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              size: 18,
+                              color: AppColors.cFF9A3412,
                             ),
-                            Text(
-                              "${_restReasonLabel(reason)} • ระบบจะไม่แจ้งเตือนตามเวลาที่เลือก",
-                              style: GoogleFonts.prompt(
-                                fontSize: 12,
-                                color: Colors.grey[600],
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: AppText(
+                                "AI จะหยุดสั่ง Buzzer และไม่บันทึกเหตุการณ์ใหม่จนกว่าโหมดพักจะสิ้นสุด",
+                                softWrap: true,
+                                style: GoogleFonts.prompt(
+                                  fontSize: 11,
+                                  color: AppColors.cFF9A3412,
+                                  height: 1.3,
+                                ),
                               ),
                             ),
                           ],
@@ -537,82 +654,11 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  ...(durationOptions[reason] ?? [10, 15, 30]).map(
-                    (minutes) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
-                        onTap: () => Navigator.pop(sheetContext, minutes),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 11,
-                            horizontal: 16,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.cFFECF0F3,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.timer_outlined,
-                                size: 20,
-                                color: AppColors.cFF1E293B.withOpacity(0.7),
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                _formatRestChoice(minutes),
-                                style: GoogleFonts.prompt(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.cFF1E293B,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.cFFFFF7ED,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.info_outline_rounded,
-                          size: 18,
-                          color: AppColors.cFF9A3412,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "AI จะหยุดสั่ง Buzzer และไม่บันทึกเหตุการณ์ใหม่จนกว่าโหมดพักจะสิ้นสุด",
-                            softWrap: true,
-                            style: GoogleFonts.prompt(
-                              fontSize: 11,
-                              color: AppColors.cFF9A3412,
-                              height: 1.3,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
-      },
-    );
 
     if (selected != null) {
       try {
@@ -622,12 +668,12 @@ class _HomeScreenState extends State<HomeScreen>
         );
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("เปิดโหมดพักรถแล้ว $selected นาที")),
+          SnackBar(content: AppText("เปิดโหมดพักรถแล้ว $selected นาที")),
         );
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('เปิดโหมดพักรถไม่สำเร็จ: $e')),
+          SnackBar(content: AppText('เปิดโหมดพักรถไม่สำเร็จ: $e')),
         );
       }
     }
@@ -639,13 +685,13 @@ class _HomeScreenState extends State<HomeScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("ยกเลิกโหมดพักรถแล้ว กลับมาแจ้งเตือนตามปกติ"),
+          content: AppText("ยกเลิกโหมดพักรถแล้ว กลับมาแจ้งเตือนตามปกติ"),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('ยกเลิกโหมดพักรถไม่สำเร็จ: $e')),
+        SnackBar(content: AppText('ยกเลิกโหมดพักรถไม่สำเร็จ: $e')),
       );
     }
   }
@@ -736,7 +782,7 @@ class _HomeScreenState extends State<HomeScreen>
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            AppText(
               "ยินดีต้อนรับกลับมา",
               style: GoogleFonts.prompt(
                 color: AppColors.cFF1E293B.withOpacity(0.55),
@@ -745,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             const SizedBox(height: 2),
-            Text(
+            AppText(
               "ผู้ขับขี่ปลอดภัย",
               style: GoogleFonts.prompt(
                 color: AppColors.cFF1E293B,
@@ -873,7 +919,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           SizedBox(height: 20 * scale),
-          Text(
+          AppText(
             isResting
                 ? "กำลังอยู่ในโหมดพักรถ"
                 : (_isMonitoring
@@ -889,7 +935,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(height: 8),
-          Text(
+          AppText(
             isResting
                 ? "ระงับการแจ้งเตือนชั่วคราว เหลือเวลา ${_formatRemaining(RestModeService.instance.remaining)}"
                 : (_isMonitoring
@@ -967,14 +1013,14 @@ class _HomeScreenState extends State<HomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   label,
                   style: GoogleFonts.prompt(
                     fontSize: 11,
                     color: Colors.grey[500],
                   ),
                 ),
-                Text(
+                AppText(
                   value,
                   style: GoogleFonts.prompt(
                     fontSize: 13,
@@ -1027,7 +1073,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   "โหมดพักรถ",
                   style: GoogleFonts.prompt(
                     fontSize: 14,
@@ -1036,7 +1082,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
+                AppText(
                   isResting
                       ? "${_restReasonLabel(RestModeService.instance.restReason.value)} • เหลือ ${_formatRemaining(RestModeService.instance.remaining)}"
                       : "จอดพัก/นอน/หยิบของ? กดเปิดเพื่อไม่ให้ระบบรบกวน",
@@ -1065,7 +1111,7 @@ class _HomeScreenState extends State<HomeScreen>
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child: Text(
+              child: AppText(
                 "ยกเลิก",
                 style: GoogleFonts.prompt(
                   fontSize: 12.5,
@@ -1088,7 +1134,7 @@ class _HomeScreenState extends State<HomeScreen>
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child: Text(
+              child: AppText(
                 "เปิด",
                 style: GoogleFonts.prompt(
                   fontSize: 12.5,
@@ -1135,7 +1181,7 @@ class _HomeScreenState extends State<HomeScreen>
                 size: 28 * scale,
               ),
               const SizedBox(width: 10),
-              Text(
+              AppText(
                 _isEndingTrip
                     ? "กำลังจบทริป..."
                     : _isStartingTrip
@@ -1188,7 +1234,7 @@ class _HomeScreenState extends State<HomeScreen>
                 size: 28 * scale,
               ),
               const SizedBox(width: 10),
-              Text(
+              AppText(
                 _isMonitoring ? "หยุดการตรวจจับ" : "เริ่มตรวจจับ",
                 style: GoogleFonts.prompt(
                   color: Colors.white,

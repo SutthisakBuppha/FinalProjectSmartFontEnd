@@ -74,6 +74,7 @@ class RestModeService {
   Timer? _warningTimer;
   final AudioPlayer _wakeUpPlayer = AudioPlayer();
   bool _initialized = false;
+  bool _isCancelling = false;
 
   // 🆕 GPS auto-close monitoring state
   StreamSubscription<Position>? _positionSubscription;
@@ -117,7 +118,9 @@ class RestModeService {
       final devices = await ApiService.instance.devices();
       if (devices.isNotEmpty) {
         final raw = devices.first['rest_mode_until']?.toString();
-        final serverUntil = raw == null ? null : DateTime.tryParse(raw)?.toLocal();
+        final serverUntil = raw == null
+            ? null
+            : DateTime.tryParse(raw)?.toLocal();
         if (serverUntil != null && serverUntil.isAfter(DateTime.now())) {
           restUntil.value = serverUntil;
           restReason.value = devices.first['rest_mode_reason']?.toString();
@@ -164,23 +167,29 @@ class RestModeService {
   /// ยกเลิกโหมดพักรถก่อนครบเวลา (เช่น ผู้ใช้พร้อมขับต่อแล้ว หรือระบบ
   /// auto-close จาก GPS ตรวจพบว่ารถเคลื่อนที่จริง)
   Future<void> cancel() async {
-    await stopWakeUpAlarm();
-    final devices = await ApiService.instance.devices();
-    if (devices.isNotEmpty) {
-      await ApiService.instance.cancelRestMode(
-        deviceId: devices.first['device_id'],
-      );
-    }
-    restUntil.value = null;
-    restReason.value = null;
-    _autoExpireTimer?.cancel();
-    _warningTimer?.cancel();
-    _stopMovementMonitoring();
+    if (_isCancelling) return;
+    _isCancelling = true;
+    try {
+      await stopWakeUpAlarm();
+      final devices = await ApiService.instance.devices();
+      if (devices.isNotEmpty) {
+        await ApiService.instance.cancelRestMode(
+          deviceId: devices.first['device_id'],
+        );
+      }
+      restUntil.value = null;
+      restReason.value = null;
+      _autoExpireTimer?.cancel();
+      _warningTimer?.cancel();
+      _stopMovementMonitoring();
 
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kRestUntilKey);
-    await prefs.remove(_kRestReasonKey);
-    TripTrackingService.instance.resume();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kRestUntilKey);
+      await prefs.remove(_kRestReasonKey);
+      TripTrackingService.instance.resume();
+    } finally {
+      _isCancelling = false;
+    }
   }
 
   Future<void> _persistLocal() async {
@@ -190,7 +199,9 @@ class RestModeService {
       await prefs.setInt(_kRestUntilKey, until.millisecondsSinceEpoch);
     }
     final reason = restReason.value;
-    if (reason != null) await prefs.setString(_kRestReasonKey, reason);
+    if (reason != null) {
+      await prefs.setString(_kRestReasonKey, reason);
+    }
   }
 
   /// ตั้งเวลาให้ปิดโหมดพักรถอัตโนมัติเมื่อครบกำหนด โดยไม่ต้องรอ poll
@@ -246,15 +257,19 @@ class RestModeService {
       if (deviceId == null || deviceId.isEmpty) return;
 
       final setting = await ApiService.instance.deviceSetting(deviceId);
-      final soundEnabled = setting?['sound_enabled'] == true ||
-          setting?['sound_enabled'] == 1;
+      final soundEnabled =
+          setting?['sound_enabled'] == true || setting?['sound_enabled'] == 1;
       final activeTone = setting?['active_tone']?.toString();
       if (!soundEnabled || activeTone == null || activeTone.isEmpty) return;
 
-      final media = await MediaUploadService.instance.fetchDeviceMedia(deviceId);
+      final media = await MediaUploadService.instance.fetchDeviceMedia(
+        deviceId,
+      );
       final matches = media.where((item) {
         if (item.type != 'audio') return false;
-        if (!item.isDefault) return item.isActive || item.fileName == activeTone;
+        if (!item.isDefault) {
+          return item.isActive || item.fileName == activeTone;
+        }
         final defaultName = item.displayName ?? item.fileName;
         return defaultName == activeTone || item.fileName == activeTone;
       }).toList();
@@ -305,7 +320,9 @@ class RestModeService {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        debugPrint('RestModeService: Location service ปิดอยู่ -> ข้าม auto-close');
+        debugPrint(
+          'RestModeService: Location service ปิดอยู่ -> ข้าม auto-close',
+        );
         return;
       }
 
@@ -315,26 +332,32 @@ class RestModeService {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        debugPrint('RestModeService: ไม่ได้รับสิทธิ์ location -> ข้าม auto-close');
+        debugPrint(
+          'RestModeService: ไม่ได้รับสิทธิ์ location -> ข้าม auto-close',
+        );
         return;
       }
 
       const settings = LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 0, // อยากได้ update ตามเวลา ไม่ใช่ตามระยะทาง เพื่อจับความเร็วได้ไว
+        distanceFilter:
+            0, // อยากได้ update ตามเวลา ไม่ใช่ตามระยะทาง เพื่อจับความเร็วได้ไว
       );
 
-      _positionSubscription = Geolocator.getPositionStream(
-        locationSettings: settings,
-      ).listen(
-        _onPositionUpdate,
-        onError: (e) {
-          debugPrint('RestModeService: GPS stream error (ไม่กระทบผู้ใช้): $e');
-          // fail-safe: ปล่อยให้ manual cancel ยังใช้ได้ตามปกติ ไม่ throw ต่อ
-        },
-      );
+      _positionSubscription =
+          Geolocator.getPositionStream(locationSettings: settings).listen(
+            _onPositionUpdate,
+            onError: (e) {
+              debugPrint(
+                'RestModeService: GPS stream error (ไม่กระทบผู้ใช้): $e',
+              );
+              // fail-safe: ปล่อยให้ manual cancel ยังใช้ได้ตามปกติ ไม่ throw ต่อ
+            },
+          );
     } catch (e) {
-      debugPrint('RestModeService: เริ่ม GPS monitoring ไม่สำเร็จ (ไม่กระทบผู้ใช้): $e');
+      debugPrint(
+        'RestModeService: เริ่ม GPS monitoring ไม่สำเร็จ (ไม่กระทบผู้ใช้): $e',
+      );
     }
   }
 

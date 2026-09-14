@@ -45,7 +45,9 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
   // เก็บข้อมูลจริงที่ดึงมาจาก API หลังบ้าน
   List<LatLng> routePoints = [];
   List<List<LatLng>> restStopRouteSegments = [];
+  Map<String, List<LatLng>> restStopRoutesByTripId = {};
   List<dynamic> alertsList = [];
+  int notificationCount = 0;
 
   bool isLoadingMap = true;
   bool isLoadingAlerts = true;
@@ -71,11 +73,28 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       final restStopTrips = trip['rest_stop_trips'] is List
           ? trip['rest_stop_trips'] as List
           : const [];
-      if (!mounted) return;
-      setState(() {
-        routePoints = locations
+      final rawMainRoute = locations
+          .where(
+            (item) => item['latitude'] != null && item['longitude'] != null,
+          )
+          .map(
+            (item) => LatLng(
+              double.parse(item['latitude'].toString()),
+              double.parse(item['longitude'].toString()),
+            ),
+          )
+          .toList();
+      final rawRestRouteEntries = <MapEntry<String, List<LatLng>>>[];
+      for (final child in restStopTrips) {
+        final childLocations = child is Map && child['locations'] is List
+            ? child['locations'] as List
+            : const [];
+        final points = childLocations
             .where(
-              (item) => item['latitude'] != null && item['longitude'] != null,
+              (item) =>
+                  item is Map &&
+                  item['latitude'] != null &&
+                  item['longitude'] != null,
             )
             .map(
               (item) => LatLng(
@@ -84,61 +103,112 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
               ),
             )
             .toList();
-        restStopRouteSegments = restStopTrips.map<List<LatLng>>((child) {
-          final childLocations = child is Map && child['locations'] is List
-              ? child['locations'] as List
-              : const [];
-          return childLocations
-              .where(
-                (item) =>
-                    item is Map &&
-                    item['latitude'] != null &&
-                    item['longitude'] != null,
-              )
-              .map(
-                (item) => LatLng(
-                  double.parse(item['latitude'].toString()),
-                  double.parse(item['longitude'].toString()),
-                ),
-              )
-              .toList();
-        }).where((segment) => segment.isNotEmpty).toList();
-        isLoadingMap = false;
-      });
-      return;
-      final baseUrl = ApiService.instance.baseUrl;
-      final response = await http.get(
-        Uri.parse('$baseUrl/trips/${widget.tripId}/locations'),
-        headers: {'Accept': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded['success'] == true && decoded['data'] != null) {
-          final List<dynamic> locations = decoded['data'];
-
-          setState(() {
-            routePoints = locations.map((item) {
-              return LatLng(
-                double.parse(item['latitude'].toString()),
-                double.parse(item['longitude'].toString()),
-              );
-            }).toList();
-            isLoadingMap = false;
-          });
-          return;
+        final childTripId = child is Map ? child['trip_id']?.toString() : null;
+        if (childTripId != null && points.isNotEmpty) {
+          rawRestRouteEntries.add(MapEntry(childTripId, points));
         }
       }
+
+      final routedMain = await _routeAlongRoads(rawMainRoute);
+      final routedRest = await Future.wait(
+        rawRestRouteEntries.map((entry) => _routeAlongRoads(entry.value)),
+      );
+      final routedRestByTripId = <String, List<LatLng>>{
+        for (var i = 0; i < rawRestRouteEntries.length; i++)
+          rawRestRouteEntries[i].key: routedRest[i],
+      };
+
+      if (!mounted) return;
       setState(() {
-        mapError = "ไม่สามารถโหลดข้อมูลพิกัดได้";
+        routePoints = routedMain;
+        restStopRouteSegments = routedRest;
+        restStopRoutesByTripId = routedRestByTripId;
         isLoadingMap = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         mapError = "เกิดข้อผิดพลาดในการเชื่อมต่อเครือข่าย";
         isLoadingMap = false;
       });
     }
+  }
+
+  Future<List<LatLng>> _routeAlongRoads(List<LatLng> rawPoints) async {
+    if (rawPoints.length < 2) return rawPoints;
+
+    // จำกัด waypoint เพื่อป้องกัน URL ยาวเกินไปสำหรับทริปที่เก็บ GPS ถี่มาก
+    const maxWaypoints = 25;
+    final waypoints = <LatLng>[];
+    if (rawPoints.length <= maxWaypoints) {
+      waypoints.addAll(rawPoints);
+    } else {
+      for (var i = 0; i < maxWaypoints; i++) {
+        final index = (i * (rawPoints.length - 1) / (maxWaypoints - 1)).round();
+        waypoints.add(rawPoints[index]);
+      }
+    }
+
+    final coordinates = waypoints
+        .map((point) => '${point.longitude},${point.latitude}')
+        .join(';');
+    final uri = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/$coordinates'
+      '?overview=full&geometries=geojson&steps=false',
+    );
+
+    try {
+      final response = await http
+          .get(uri, headers: {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return rawPoints;
+
+      final decoded = json.decode(response.body);
+      final routes = decoded is Map ? decoded['routes'] : null;
+      if (routes is! List || routes.isEmpty) return rawPoints;
+      final geometry = routes.first['geometry'];
+      final coordinates = geometry is Map ? geometry['coordinates'] : null;
+      if (coordinates is! List || coordinates.length < 2) return rawPoints;
+
+      return coordinates
+          .whereType<List>()
+          .where((coordinate) => coordinate.length >= 2)
+          .map(
+            (coordinate) => LatLng(
+              (coordinate[1] as num).toDouble(),
+              (coordinate[0] as num).toDouble(),
+            ),
+          )
+          .toList();
+    } catch (_) {
+      // ถ้า Routing API ใช้งานไม่ได้ ให้ยังแสดงข้อมูล GPS เดิมแทน
+      return rawPoints;
+    }
+  }
+
+  LatLng _nearestRoutePoint(Map alert, LatLng originalPoint) {
+    final alertTripId = alert['trip_id']?.toString();
+    final matchingRestRoute = alertTripId == null
+        ? null
+        : restStopRoutesByTripId[alertTripId];
+    final candidates = matchingRestRoute?.isNotEmpty == true
+        ? matchingRestRoute!
+        : routePoints;
+    if (candidates.isEmpty) return originalPoint;
+
+    var nearest = candidates.first;
+    var nearestDistance = double.infinity;
+    for (final point in candidates) {
+      final latDifference = point.latitude - originalPoint.latitude;
+      final lngDifference = point.longitude - originalPoint.longitude;
+      final distanceSquared =
+          (latDifference * latDifference) + (lngDifference * lngDifference);
+      if (distanceSquared < nearestDistance) {
+        nearestDistance = distanceSquared;
+        nearest = point;
+      }
+    }
+    return nearest;
   }
 
   // 2. ดึงรายการแจ้งเตือนความเสี่ยงเฉพาะของทริปนี้
@@ -191,38 +261,15 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       if (!mounted) return;
       setState(() {
         alertsList = alerts;
-        isLoadingAlerts = false;
-      });
-      return;
-      final baseUrl = ApiService.instance.baseUrl;
-      // เรียกจุดเชื่อมต่อ API ที่กรองตาม trip_id หรือจุดที่ระบุไว้ของหลังบ้านคุณ
-      final response = await http.get(
-        Uri.parse('$baseUrl/alerts?trip_id=${widget.tripId}'),
-        headers: {'Accept': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final decoded = json.decode(response.body);
-        if (decoded['success'] == true && decoded['data'] != null) {
-          final List<dynamic> allAlerts = decoded['data'];
-
-          // ทำการกรองเอาเฉพาะ alert_id ที่ตรงกับทริปนี้ (กรณี API ดึงรวมมาทั้งหมด)
-          final filteredAlerts = allAlerts
-              .where((alert) => alert['trip_id'] == widget.tripId)
-              .toList();
-
-          setState(() {
-            alertsList = filteredAlerts;
-            isLoadingAlerts = false;
-          });
-          return;
-        }
-      }
-      setState(() {
-        alertsError = "ไม่สามารถโหลดข้อมูลความเสี่ยงได้";
+        notificationCount =
+            num.tryParse(
+              trip['notifications_count']?.toString() ?? '',
+            )?.toInt() ??
+            0;
         isLoadingAlerts = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         alertsError = "เกิดข้อผิดพลาดในการเชื่อมต่อ";
         isLoadingAlerts = false;
@@ -321,7 +368,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        AppText(
                           "ภาพรวมเส้นทาง",
                           style: GoogleFonts.prompt(
                             fontSize: 18,
@@ -344,7 +391,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                             ).scale(1);
                             final stack =
                                 textScale >= 1.3 || constraints.maxWidth < 340;
-                            final title = Text(
+                            final title = AppText(
                               "เหตุการณ์ความเสี่ยง",
                               style: GoogleFonts.prompt(
                                 fontSize: 18,
@@ -352,26 +399,46 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                                 color: AppColors.cFF0F2647,
                               ),
                             );
-                            final countBadge = Container(
+                            Widget badge(String text, Color color) => Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: widget.statusColor.withOpacity(0.1),
+                                color: color.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: Text(
-                                isLoadingAlerts
-                                    ? "กำลังโหลด..."
-                                    : "แจ้งเตือน ${alertsList.length} ครั้ง",
+                              child: AppText(
+                                text,
                                 style: GoogleFonts.prompt(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: widget.statusColor,
+                                  color: color,
                                 ),
                               ),
                             );
+                            final countBadges = isLoadingAlerts
+                                ? badge("กำลังโหลด...", widget.statusColor)
+                                : Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    alignment: WrapAlignment.end,
+                                    children: [
+                                      badge(
+                                        "ความเสี่ยง ${alertsList.length} เหตุการณ์",
+                                        widget.statusColor,
+                                      ),
+                                      badge(
+                                        "แจ้งเตือน ${alertsList.length} ครั้ง",
+                                        AppColors.cFF0F2647,
+                                      ),
+                                      if (notificationCount > 0)
+                                        badge(
+                                          "ระดับสูง $notificationCount ครั้ง",
+                                          AppColors.danger,
+                                        ),
+                                    ],
+                                  );
 
                             if (stack) {
                               return Column(
@@ -379,7 +446,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                                 children: [
                                   title,
                                   const SizedBox(height: 8),
-                                  countBadge,
+                                  countBadges,
                                 ],
                               );
                             }
@@ -389,7 +456,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                               children: [
                                 Expanded(child: title),
                                 const SizedBox(width: 12),
-                                countBadge,
+                                Flexible(child: countBadges),
                               ],
                             );
                           },
@@ -459,7 +526,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   widget.title,
                   style: GoogleFonts.prompt(
                     color: Colors.white,
@@ -468,7 +535,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                     height: 1.1,
                   ),
                 ),
-                Text(
+                AppText(
                   widget.date,
                   style: GoogleFonts.prompt(
                     color: Colors.white.withOpacity(0.7),
@@ -535,7 +602,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
     return Expanded(
       child: Column(
         children: [
-          Text(
+          AppText(
             label,
             style: GoogleFonts.prompt(
               fontSize: 10,
@@ -549,7 +616,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
+              AppText(
                 value,
                 style: GoogleFonts.prompt(
                   fontSize: 20,
@@ -558,7 +625,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                 ),
               ),
               const SizedBox(width: 4),
-              Text(
+              AppText(
                 unit,
                 style: GoogleFonts.prompt(
                   fontSize: 12,
@@ -588,7 +655,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Text(
+          child: AppText(
             alertsError!,
             style: GoogleFonts.prompt(color: AppColors.danger),
           ),
@@ -600,7 +667,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Text(
+          child: AppText(
             "ไม่พบเหตุการณ์ความเสี่ยงในการเดินทางนี้ 🎉",
             style: GoogleFonts.prompt(color: AppColors.cFF6B7280),
           ),
@@ -665,7 +732,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                AppText(
                   title,
                   style: GoogleFonts.prompt(
                     fontSize: 14,
@@ -674,7 +741,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
+                AppText(
                   desc,
                   style: GoogleFonts.prompt(
                     fontSize: 12,
@@ -691,7 +758,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                     color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text(
+                  child: AppText(
                     time,
                     style: GoogleFonts.prompt(
                       fontSize: 12,
@@ -732,7 +799,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           border: Border.all(color: Colors.grey.shade300),
         ),
         child: Center(
-          child: Text(
+          child: AppText(
             mapError!,
             style: GoogleFonts.prompt(color: AppColors.danger),
           ),
@@ -749,7 +816,7 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
           border: Border.all(color: Colors.grey.shade300),
         ),
         child: Center(
-          child: Text(
+          child: AppText(
             "ไม่มีข้อมูลเส้นทางการเดินทางเก็บไว้",
             style: GoogleFonts.prompt(color: AppColors.cFF6B7280),
           ),
@@ -838,12 +905,16 @@ class _HistoryDetailScreenState extends State<HistoryDetailScreen> {
                   );
                   if (latitude == null || longitude == null) return null;
                   final type = alert['type']?.toString() ?? 'เหตุการณ์เสี่ยง';
+                  final markerPoint = _nearestRoutePoint(
+                    alert as Map,
+                    LatLng(latitude, longitude),
+                  );
                   return Marker(
-                    point: LatLng(latitude, longitude),
+                    point: markerPoint,
                     width: 44,
                     height: 44,
                     child: Tooltip(
-                      message: type,
+                      message: appTr(type),
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.red,

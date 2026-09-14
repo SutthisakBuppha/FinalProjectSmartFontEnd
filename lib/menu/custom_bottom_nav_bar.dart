@@ -14,7 +14,6 @@ class CustomBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return Container(
       height: 80,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -34,18 +33,43 @@ class CustomBottomNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _buildNavItem(Icons.home_rounded, "Home", 0, AppColors.cFF0F2557),
-          _buildNavItem(Icons.history_rounded, "History", 1, AppColors.cFF0F2557),          
-          _buildNavItem(Icons.notifications_rounded, "Notification", 2, AppColors.cFF0F2557),  
-          _buildNavItem(Icons.devices_rounded, "Device", 3, AppColors.cFF0F2557),
-          _buildNavItem(Icons.report_rounded, "Report", 4, AppColors.cFF0F2557),        
-          _buildNavItem(Icons.person_rounded, "Profile", 5, AppColors.cFF0F2557),        
+          _buildNavItem(
+            Icons.history_rounded,
+            "History",
+            1,
+            AppColors.cFF0F2557,
+          ),
+          _buildNavItem(
+            Icons.notifications_rounded,
+            "Notification",
+            2,
+            AppColors.cFF0F2557,
+          ),
+          _buildNavItem(
+            Icons.devices_rounded,
+            "Device",
+            3,
+            AppColors.cFF0F2557,
+          ),
+          _buildNavItem(Icons.report_rounded, "Report", 4, AppColors.cFF0F2557),
+          _buildNavItem(
+            Icons.person_rounded,
+            "Profile",
+            5,
+            AppColors.cFF0F2557,
+          ),
         ],
       ),
     );
   }
 
   // Widget สร้างปุ่มเมนูย่อย
-  Widget _buildNavItem(IconData icon, String label, int index, Color activeColor) {
+  Widget _buildNavItem(
+    IconData icon,
+    String label,
+    int index,
+    Color activeColor,
+  ) {
     final bool isActive = currentIndex == index;
 
     return Expanded(
@@ -66,7 +90,7 @@ class CustomBottomNavBar extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               FittedBox(
-                child: Text(
+                child: AppText(
                   label,
                   style: GoogleFonts.prompt(
                     fontSize: 10,

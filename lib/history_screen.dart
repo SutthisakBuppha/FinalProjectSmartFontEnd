@@ -4,11 +4,10 @@ import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'menu/custom_bottom_nav_bar.dart';
 import 'history_detail_screen.dart';
 import '/services/api_service.dart';
 
-enum _HistoryPeriod { all, week, month, custom }
+enum _HistoryPeriod { week, month, year, custom }
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -27,7 +26,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // --- Summary Variables ---
   int _totalAlerts = 0;
   double _totalDistance = 0.0;
-  _HistoryPeriod _selectedPeriod = _HistoryPeriod.all;
+  _HistoryPeriod _selectedPeriod = _HistoryPeriod.week;
+  DateTime _referenceDate = DateTime.now();
   DateTimeRange? _customDateRange;
   Timer? _refreshTimer;
   bool _isRefreshing = false;
@@ -77,8 +77,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ApiService.instance.trips(),
         ApiService.instance.alerts(),
       ]);
-      final fetchedTrips = results[0] as List<Map<String, dynamic>>;
-      final fetchedAlerts = results[1] as List<Map<String, dynamic>>;
+      final fetchedTrips = results[0];
+      final fetchedAlerts = results[1];
       final completedTrips = fetchedTrips
           .where((trip) {
             return trip['status']?.toString() == 'completed' ||
@@ -90,8 +90,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               return alert['trip_id']?.toString() == tripId;
             }).length;
             final serverAlertCount =
-                num.tryParse(trip['alerts_count']?.toString() ?? '')
-                    ?.toInt() ??
+                num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ??
                 0;
             return <String, dynamic>{
               ...trip,
@@ -141,6 +140,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
     } finally {
       _isRefreshing = false;
     }
+  }
+
+  Future<void> _refreshAndResetFilter() async {
+    if (_isRefreshing) return;
+    setState(() {
+      _selectedPeriod = _HistoryPeriod.week;
+      _referenceDate = DateTime.now();
+      _customDateRange = null;
+    });
+    await _fetchHistoryData();
   }
 
   List<Map<String, dynamic>> _alertsOfType(String type) {
@@ -289,7 +298,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
+                                    AppText(
                                       "ประวัติการเดินทางล่าสุด",
                                       style: GoogleFonts.prompt(
                                         fontSize: 18 * scale,
@@ -309,7 +318,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 Padding(
                                   padding: EdgeInsets.all(40 * scale),
                                   child: Center(
-                                    child: Text(
+                                    child: AppText(
                                       "ไม่พบประวัติการเดินทางของท่าน",
                                       style: GoogleFonts.prompt(
                                         color: AppColors.cFF6B7280,
@@ -374,7 +383,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              AppText(
                 "ประวัติการขับขี่",
                 style: GoogleFonts.prompt(
                   color: Colors.white,
@@ -383,8 +392,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
               IconButton(
-                onPressed: _fetchHistoryData,
-                tooltip: 'รีเฟรชข้อมูล',
+                onPressed: _isRefreshing ? null : _refreshAndResetFilter,
+                tooltip: appTr('รีเฟรชข้อมูล'),
                 icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
               ),
             ],
@@ -445,7 +454,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              AppText(
                 title,
                 style: GoogleFonts.prompt(
                   color: Colors.white70,
@@ -455,7 +464,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
+                  AppText(
                     value,
                     style: GoogleFonts.prompt(
                       color: Colors.white,
@@ -467,7 +476,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   SizedBox(width: 4 * scale),
                   Padding(
                     padding: EdgeInsets.only(bottom: 2 * scale),
-                    child: Text(
+                    child: AppText(
                       unit,
                       style: GoogleFonts.prompt(
                         color: Colors.white70,
@@ -491,89 +500,94 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ('ไม่มองถนน', Icons.visibility_off_rounded, AppColors.danger),
     ];
 
-    return SizedBox(
-      height: 130 * scale,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        padding: EdgeInsets.symmetric(horizontal: padding),
-        itemCount: detectionTypes.length,
-        itemBuilder: (context, index) {
-          final item = detectionTypes[index];
-          final alerts = _alertsOfType(item.$1);
-          final latest = alerts.isEmpty
-              ? null
-              : alerts.first['timestamp'] ?? alerts.first['created_at'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.symmetric(horizontal: padding),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: detectionTypes.map((item) {
+            final alerts = _alertsOfType(item.$1);
+            final latest = alerts.isEmpty
+                ? null
+                : alerts.first['timestamp'] ?? alerts.first['created_at'];
 
-          return Container(
-            width: 140 * scale,
-            margin: EdgeInsets.only(right: 12 * scale),
-            padding: EdgeInsets.all(16 * scale),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20 * scale),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(8 * scale),
-                      decoration: BoxDecoration(
-                        color: item.$3.withOpacity(0.12),
-                        shape: BoxShape.circle,
+            return Container(
+              width: 140 * scale,
+              constraints: BoxConstraints(minHeight: 130 * scale),
+              margin: EdgeInsets.only(right: 12 * scale),
+              padding: EdgeInsets.all(16 * scale),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20 * scale),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(8 * scale),
+                        decoration: BoxDecoration(
+                          color: item.$3.withOpacity(0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(item.$2, color: item.$3, size: 20 * scale),
                       ),
-                      child: Icon(item.$2, color: item.$3, size: 20 * scale),
-                    ),
-                    Text(
-                      '${alerts.length}',
-                      style: GoogleFonts.prompt(
-                        fontSize: 22 * scale,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.cFF1F2937,
+                      AppText(
+                        '${alerts.length}',
+                        style: GoogleFonts.prompt(
+                          fontSize: 22 * scale,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.cFF1F2937,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.$1,
-                      style: GoogleFonts.prompt(
-                        fontSize: 14 * scale,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.cFF1F2937,
+                    ],
+                  ),
+                  SizedBox(height: 12 * scale),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppText(
+                        item.$1,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.prompt(
+                          fontSize: 14 * scale,
+                          height: 1.15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.cFF1F2937,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 2 * scale),
-                    Text(
-                      latest == null
-                          ? 'ไม่มีข้อมูล'
-                          : 'ล่าสุด: ${_formatTimeOnly(latest.toString())}',
-                      style: GoogleFonts.prompt(
-                        fontSize: 11 * scale,
-                        color: AppColors.cFF6B7280,
+                      SizedBox(height: 4 * scale),
+                      AppText(
+                        latest == null
+                            ? 'ไม่มีข้อมูล'
+                            : 'ล่าสุด: ${_formatTimeOnly(latest.toString())}',
+                        style: GoogleFonts.prompt(
+                          fontSize: 11 * scale,
+                          color: AppColors.cFF6B7280,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -595,21 +609,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   List<Map<String, dynamic>> get _filteredTrips {
-    if (_selectedPeriod == _HistoryPeriod.all) return _trips;
-
-    final now = DateTime.now();
+    final reference = DateTime(
+      _referenceDate.year,
+      _referenceDate.month,
+      _referenceDate.day,
+    );
     late DateTime start;
     late DateTime endExclusive;
 
     switch (_selectedPeriod) {
       case _HistoryPeriod.week:
-        final today = DateTime(now.year, now.month, now.day);
-        start = today.subtract(Duration(days: now.weekday - 1));
-        endExclusive = today.add(const Duration(days: 1));
+        start = reference.subtract(Duration(days: reference.weekday - 1));
+        endExclusive = start.add(const Duration(days: 7));
         break;
       case _HistoryPeriod.month:
-        start = DateTime(now.year, now.month);
-        endExclusive = DateTime(now.year, now.month + 1);
+        start = DateTime(reference.year, reference.month);
+        endExclusive = DateTime(reference.year, reference.month + 1);
+        break;
+      case _HistoryPeriod.year:
+        start = DateTime(reference.year);
+        endExclusive = DateTime(reference.year + 1);
         break;
       case _HistoryPeriod.custom:
         final range = _customDateRange;
@@ -621,16 +640,36 @@ class _HistoryScreenState extends State<HistoryScreen> {
           range.end.day,
         ).add(const Duration(days: 1));
         break;
-      case _HistoryPeriod.all:
-        return _trips;
     }
 
-    return _trips.where((trip) {
+    final filtered = _trips.where((trip) {
       final date = _tripLocalDate(trip);
       return date != null &&
           !date.isBefore(start) &&
           date.isBefore(endExclusive);
     }).toList();
+    filtered.sort((a, b) {
+      final aDate = _tripLocalDate(a) ?? DateTime(0);
+      final bDate = _tripLocalDate(b) ?? DateTime(0);
+      return bDate.compareTo(aDate);
+    });
+    return filtered;
+  }
+
+  Future<void> _selectReferenceDate() async {
+    final now = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _referenceDate,
+      firstDate: DateTime(now.year - 10),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      helpText: appTr('เลือกวันที่อ้างอิง'),
+      confirmText: appTr('ใช้วันที่นี้'),
+      cancelText: appTr('ยกเลิก'),
+    );
+    if (selected != null && mounted) {
+      setState(() => _referenceDate = selected);
+    }
   }
 
   Future<void> _selectCustomDateRange() async {
@@ -645,9 +684,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
             start: DateTime(now.year, now.month, now.day),
             end: DateTime(now.year, now.month, now.day),
           ),
-      helpText: 'เลือกช่วงวันที่เดินทาง',
-      saveText: 'ใช้ตัวกรอง',
-      cancelText: 'ยกเลิก',
+      helpText: appTr('เลือกช่วงวันที่เดินทาง'),
+      saveText: appTr('ใช้ตัวกรอง'),
+      cancelText: appTr('ยกเลิก'),
       builder: (context, child) {
         final theme = Theme.of(context);
         return Theme(
@@ -713,7 +752,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   String _shortDate(DateTime date) =>
-      '${date.day}/${date.month}/${date.year + 543}';
+      '${date.day}/${date.month}/${appDisplayYear(date.year)}';
 
   Widget _buildHistoryFilters(double scale, double horizontalPadding) {
     final customLabel = _customDateRange == null
@@ -722,7 +761,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     Widget chip(String label, _HistoryPeriod period, {VoidCallback? onTap}) {
       return ChoiceChip(
-        label: Text(label, style: GoogleFonts.prompt(fontSize: 12 * scale)),
+        label: AppText(label, style: GoogleFonts.prompt(fontSize: 12 * scale)),
         selected: _selectedPeriod == period,
         onSelected: (_) {
           if (onTap != null) {
@@ -748,17 +787,43 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          chip('ทั้งหมด', _HistoryPeriod.all),
-          chip('สัปดาห์นี้', _HistoryPeriod.week),
-          chip('เดือนนี้', _HistoryPeriod.month),
-          chip(
-            customLabel,
-            _HistoryPeriod.custom,
-            onTap: _selectCustomDateRange,
+          if (_selectedPeriod != _HistoryPeriod.custom)
+            OutlinedButton.icon(
+              onPressed: _selectReferenceDate,
+              icon: const Icon(Icons.calendar_month_outlined, size: 18),
+              label: AppText(
+                'วันที่อ้างอิง ${_shortDate(_referenceDate)}',
+                style: GoogleFonts.prompt(fontSize: 12 * scale),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.cFF0F2647,
+                backgroundColor: Colors.white,
+                side: const BorderSide(color: AppColors.cFFE5E7EB),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 14 * scale,
+                  vertical: 9 * scale,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              chip('สัปดาห์', _HistoryPeriod.week),
+              chip('เดือน', _HistoryPeriod.month),
+              chip('ปี', _HistoryPeriod.year),
+              chip(
+                customLabel,
+                _HistoryPeriod.custom,
+                onTap: _selectCustomDateRange,
+              ),
+            ],
           ),
         ],
       ),
@@ -782,6 +847,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final displayDate = (trip['created_at'] ?? trip['start_time'])?.toString();
     final startLoc = trip['start_location']?.toString() ?? '';
     final endLoc = trip['end_location']?.toString() ?? '';
+    final destinationName = trip['destination_name']?.toString().trim() ?? '';
+    final restStopNames = <String>[];
+    final restStopTrips = trip['rest_stop_trips'];
+    if (restStopTrips is List) {
+      for (final restTrip in restStopTrips) {
+        if (restTrip is! Map) continue;
+        final name = restTrip['destination_name']?.toString().trim() ?? '';
+        if (name.isNotEmpty) {
+          restStopNames.add(name);
+          continue;
+        }
+        final latitude = restTrip['destination_latitude']?.toString();
+        final longitude = restTrip['destination_longitude']?.toString();
+        if (latitude != null && longitude != null) {
+          restStopNames.add('พิกัด $latitude, $longitude');
+        }
+      }
+    }
 
     String tripTitle = isRestStopTrip
         ? "เส้นทางไปจุดพัก #$tripId"
@@ -790,6 +873,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       tripTitle = "$startLoc  ➔  $endLoc";
     } else if (endLoc.isNotEmpty) {
       tripTitle = "มุ่งสู่ $endLoc";
+    } else if (destinationName.isNotEmpty) {
+      tripTitle = "มุ่งสู่ $destinationName";
     }
 
     final distanceVal =
@@ -858,23 +943,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 14 * scale,
-                          color: AppColors.cFF6B7280,
-                        ),
-                        SizedBox(width: 6 * scale),
-                        Text(
-                          _formatDateTime(displayDate),
-                          style: GoogleFonts.prompt(
-                            fontSize: 13 * scale,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_rounded,
+                            size: 14 * scale,
                             color: AppColors.cFF6B7280,
                           ),
-                        ),
-                      ],
+                          SizedBox(width: 6 * scale),
+                          Expanded(
+                            child: AppText(
+                              _formatDateTime(displayDate),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.prompt(
+                                fontSize: 13 * scale,
+                                color: AppColors.cFF6B7280,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    SizedBox(width: 8 * scale),
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: 8 * scale,
@@ -893,7 +985,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             color: statusColor,
                           ),
                           SizedBox(width: 4 * scale),
-                          Text(
+                          AppText(
                             statusData['text'],
                             style: GoogleFonts.prompt(
                               fontSize: 11 * scale,
@@ -927,7 +1019,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     SizedBox(width: 12 * scale),
                     Expanded(
-                      child: Text(
+                      child: AppText(
                         tripTitle,
                         style: GoogleFonts.prompt(
                           fontSize: 16 * scale,
@@ -940,6 +1032,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                   ],
                 ),
+                if (!isRestStopTrip) ...[
+                  SizedBox(height: 12 * scale),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(12 * scale),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(12 * scale),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildDestinationLine(
+                          Icons.flag_rounded,
+                          'จุดหมายหลัก',
+                          destinationName.isNotEmpty
+                              ? destinationName
+                              : (endLoc.isNotEmpty ? endLoc : 'ยังไม่ได้ระบุ'),
+                          AppColors.success,
+                          scale,
+                        ),
+                        if (restStopNames.isNotEmpty) ...[
+                          SizedBox(height: 8 * scale),
+                          _buildDestinationLine(
+                            Icons.local_gas_station_rounded,
+                            'จุดพัก/ปั๊ม',
+                            restStopNames.join(', '),
+                            AppColors.danger,
+                            scale,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
                 SizedBox(height: 16 * scale),
 
                 // Bottom Row: Stats
@@ -957,20 +1084,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildTripMetric(
-                        "ระยะทาง",
-                        "${_formatDistance(distanceVal)} กม.",
-                        scale,
+                      Expanded(
+                        child: _buildTripMetric(
+                          "ระยะทาง",
+                          "${_formatDistance(distanceVal)} กม.",
+                          scale,
+                        ),
                       ),
-                      _buildTripMetric("เวลา", durationText, scale),
-                      _buildTripMetric(
-                        "แจ้งเตือน",
-                        "$alertsCount ครั้ง",
-                        scale,
-                        valueColor: alertsCount > 0
-                            ? statusColor
-                            : AppColors.success,
-                        onTap: () => _showTripAlertBreakdown(tripId),
+                      Expanded(
+                        child: _buildTripMetric("เวลา", durationText, scale),
+                      ),
+                      Expanded(
+                        child: _buildTripMetric(
+                          "แจ้งเตือน",
+                          "$alertsCount ครั้ง",
+                          scale,
+                          valueColor: alertsCount > 0
+                              ? statusColor
+                              : AppColors.success,
+                          onTap: () => _showTripAlertBreakdown(tripId),
+                        ),
                       ),
                     ],
                   ),
@@ -980,6 +1113,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildDestinationLine(
+    IconData icon,
+    String label,
+    String value,
+    Color color,
+    double scale,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17 * scale, color: color),
+        SizedBox(width: 8 * scale),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: GoogleFonts.prompt(
+                fontSize: 12 * scale,
+                color: AppColors.cFF1F2937,
+              ),
+              children: [
+                TextSpan(
+                  text: '${appTr(label)}: ',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextSpan(text: appTr(value)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -993,16 +1159,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        AppText(
           label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.prompt(
             fontSize: 12 * scale,
             color: AppColors.cFF6B7280,
           ),
         ),
         SizedBox(height: 2 * scale),
-        Text(
+        AppText(
           value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: GoogleFonts.prompt(
             fontSize: 14 * scale,
             fontWeight: FontWeight.w600,
@@ -1057,7 +1227,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
+                AppText(
                   'รายละเอียดการแจ้งเตือน',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.prompt(
@@ -1067,7 +1237,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                AppText(
                   'ทริป #$tripId • รวม ${alerts.length} ครั้ง',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.prompt(color: AppColors.cFF6B7280),
@@ -1079,8 +1249,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       backgroundColor: item.$4.withOpacity(0.12),
                       child: Icon(item.$3, color: item.$4),
                     ),
-                    title: Text(item.$1, style: GoogleFonts.prompt()),
-                    trailing: Text(
+                    title: AppText(item.$1, style: GoogleFonts.prompt()),
+                    trailing: AppText(
                       '${item.$2} ครั้ง',
                       style: GoogleFonts.prompt(
                         fontSize: 16,
@@ -1097,7 +1267,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('โหลดรายละเอียดแจ้งเตือนไม่สำเร็จ: $error')),
+        SnackBar(content: AppText('โหลดรายละเอียดแจ้งเตือนไม่สำเร็จ: $error')),
       );
     }
   }
@@ -1115,7 +1285,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               size: 64 * scale,
             ),
             SizedBox(height: 16 * scale),
-            Text(
+            AppText(
               "เกิดข้อผิดพลาดในการดึงข้อมูล",
               style: GoogleFonts.prompt(
                 color: AppColors.cFF1F2937,
@@ -1124,7 +1294,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
             SizedBox(height: 8 * scale),
-            Text(
+            AppText(
               _errorMessage,
               style: GoogleFonts.prompt(
                 color: AppColors.cFF6B7280,
@@ -1150,7 +1320,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 color: Colors.white,
                 size: 18 * scale,
               ),
-              label: Text(
+              label: AppText(
                 "ลองใหม่อีกครั้ง",
                 style: GoogleFonts.prompt(
                   color: Colors.white,

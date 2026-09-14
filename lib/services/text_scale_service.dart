@@ -15,8 +15,8 @@ class TextScaleController extends ChangeNotifier {
 
   /// ตัวเลือกขนาดตัวอักษรที่ให้ผู้ใช้เลือก (label -> scale factor)
   static const Map<String, double> presets = {
-    'เล็ก': 1.0,//16 px
-    'ปกติ': 1.1,//17.6 px
+    'เล็ก': 1.0, //16 px
+    'ปกติ': 1.1, //17.6 px
     'ใหญ่': 1.25, //20 px
     'ใหญ่มาก': 1.4, //22.4 px
   };

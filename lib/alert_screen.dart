@@ -17,7 +17,8 @@ class AlertScreen extends StatefulWidget {
   State<AlertScreen> createState() => _AlertScreenState();
 }
 
-class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStateMixin {
+class _AlertScreenState extends State<AlertScreen>
+    with SingleTickerProviderStateMixin {
   static const MethodChannel _alarmChannel = MethodChannel(
     'smart_drive_guard/alarm',
   );
@@ -27,7 +28,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
   bool _isSoundPlaying = false;
   bool _webAudioNeedsInteraction = false;
   String? _preparedAudioUrl;
-  
+
   // สำหรับ Animation ตอนเปิดหน้า
   late AnimationController _entranceController;
   late Animation<double> _scaleAnimation;
@@ -35,7 +36,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    
+
     // Setup Entrance Animation
     _entranceController = AnimationController(
       vsync: this,
@@ -82,7 +83,8 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
     try {
       final setting = await ApiService.instance.deviceSetting(deviceId);
       final activeTone = setting?['active_tone'];
-      final soundEnabled = setting?['sound_enabled'] == 1 || setting?['sound_enabled'] == true;
+      final soundEnabled =
+          setting?['sound_enabled'] == 1 || setting?['sound_enabled'] == true;
 
       if (!soundEnabled || activeTone == null) {
         debugPrint('ปิดเสียงไว้ หรือไม่มี active_tone -> ไม่เล่นเสียง');
@@ -94,8 +96,6 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       );
       final match = mediaList.where((media) {
         if (media.type != 'audio') return false;
-        if (!media.isDefault) return media.isActive;
-
         final defaultName = media.displayName ?? media.fileName;
         return defaultName == activeTone || media.fileName == activeTone;
       }).toList();
@@ -106,7 +106,8 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       }
 
       final volumeLevel = setting?['volume_level'] ?? 100;
-      final volume = (volumeLevel is int
+      final volume =
+          (volumeLevel is int
               ? volumeLevel
               : int.tryParse(volumeLevel.toString()) ?? 100) /
           100.0;
@@ -176,7 +177,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       debugPrint('เปิดเสียงบน Chrome ไม่สำเร็จ: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Chrome ไม่สามารถเล่นเสียงได้: $e')),
+          SnackBar(content: AppText('Chrome ไม่สามารถเล่นเสียงได้: $e')),
         );
       }
     }
@@ -208,10 +209,10 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
     if (!mounted) return;
     setState(() => _isLoading = true);
     await _stopAlertSound();
-    
+
     // หน่วงเวลาเล็กน้อยให้เห็นปุ่ม Loading
-    await Future.delayed(const Duration(milliseconds: 300)); 
-    
+    await Future.delayed(const Duration(milliseconds: 300));
+
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const MapScreen()),
@@ -235,11 +236,14 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                 children: [
                   // Header
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        const AppText(
                           "SaveDriveAi",
                           style: TextStyle(
                             color: Colors.white,
@@ -257,7 +261,10 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                   // Map Placeholder Area
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 8.0,
+                      ),
                       child: Stack(
                         children: [
                           Container(
@@ -272,15 +279,21 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.05),
+                              ),
                             ),
                             child: const Center(
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.map_rounded, color: Colors.white24, size: 80),
+                                  Icon(
+                                    Icons.map_rounded,
+                                    color: Colors.white24,
+                                    size: 80,
+                                  ),
                                   SizedBox(height: 16),
-                                  Text(
+                                  AppText(
                                     'Map view unavailable',
                                     style: TextStyle(
                                       color: Colors.white38,
@@ -298,9 +311,21 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                             right: 16,
                             child: Row(
                               children: [
-                                Expanded(child: _buildInfoCard("ความเร็ว", "65", "กม./ชม.")),
+                                Expanded(
+                                  child: _buildInfoCard(
+                                    "ความเร็ว",
+                                    "65",
+                                    "กม./ชม.",
+                                  ),
+                                ),
                                 const SizedBox(width: 12),
-                                Expanded(child: _buildInfoCard("เวลาขับขี่", "2:15", "ชม.")),
+                                Expanded(
+                                  child: _buildInfoCard(
+                                    "เวลาขับขี่",
+                                    "2:15",
+                                    "ชม.",
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -329,13 +354,18 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                   padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 360),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 32,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(32),
                       boxShadow: [
                         BoxShadow(
-                          color: alertRed.withOpacity(0.2), // แสงเงาสีแดงรอบๆ การ์ด
+                          color: alertRed.withOpacity(
+                            0.2,
+                          ), // แสงเงาสีแดงรอบๆ การ์ด
                           blurRadius: 40,
                           spreadRadius: 10,
                           offset: const Offset(0, 10),
@@ -355,21 +385,30 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                         const SizedBox(height: 28),
 
                         // Title
-                        const Text(
-                          "ตรวจพบความเสี่ยง\nง่วงนอนหลับใน!",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: AppColors.cFF120D1B,
-                            fontSize: 26,
-                            height: 1.2,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+                        const SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.center,
+                            child: AppText(
+                              "ตรวจพบพฤติกรรมเสี่ยง\nระหว่างการขับขี่",
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              softWrap: true,
+                              style: TextStyle(
+                                color: AppColors.cFF120D1B,
+                                fontSize: 26,
+                                height: 1.2,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
 
                         // Subtitle
-                        const Text(
+                        const AppText(
                           "ระบบแจ้งเตือนความปลอดภัยกำลังทำงาน\nโปรดหาที่จอดพักที่ปลอดภัยทันที",
                           textAlign: TextAlign.center,
                           style: TextStyle(
@@ -385,9 +424,15 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            _buildStatusChip(Icons.volume_up_rounded, "เสียงเตือน"),
+                            _buildStatusChip(
+                              Icons.volume_up_rounded,
+                              "เสียงเตือน",
+                            ),
                             const SizedBox(width: 12),
-                            _buildStatusChip(Icons.vibration_rounded, "ระบบสั่น"),
+                            _buildStatusChip(
+                              Icons.vibration_rounded,
+                              "ระบบสั่น",
+                            ),
                           ],
                         ),
                         if (kIsWeb && _webAudioNeedsInteraction) ...[
@@ -395,15 +440,19 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                           OutlinedButton.icon(
                             onPressed: _playPreparedWebAudio,
                             icon: const Icon(Icons.volume_up_rounded),
-                            label: const Text('แตะเพื่อเปิดเสียงเตือน'),
+                            label: const AppText('แตะเพื่อเปิดเสียงเตือน'),
                           ),
                         ],
                         const SizedBox(height: 32),
 
                         // 🔴 Button
                         _buildFilledButton(
-                          text: _isLoading ? "กำลังค้นหาจุดพักรถ..." : "นำทางไปจุดพักรถใกล้ฉัน",
-                          icon: _isLoading ? Icons.hourglass_top_rounded : Icons.navigation_rounded,
+                          text: _isLoading
+                              ? "กำลังค้นหาจุดพักรถ..."
+                              : "นำทางไปจุดพักรถใกล้ฉัน",
+                          icon: _isLoading
+                              ? Icons.hourglass_top_rounded
+                              : Icons.navigation_rounded,
                           color: alertRed,
                           onPressed: _isLoading ? null : _navigateToNearestRest,
                         ),
@@ -445,7 +494,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              AppText(
                 title,
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.6),
@@ -458,7 +507,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Text(
+                  AppText(
                     value,
                     style: const TextStyle(
                       color: Colors.white,
@@ -467,7 +516,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text(
+                  AppText(
                     unit,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
@@ -497,7 +546,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
         children: [
           Icon(icon, color: const Color(0xFF3B82F6), size: 18),
           const SizedBox(width: 6),
-          Text(
+          AppText(
             label,
             style: const TextStyle(
               color: Color(0xFF2563EB),
@@ -521,13 +570,15 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
       height: 60,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(100),
-        boxShadow: onPressed == null ? [] : [
-          BoxShadow(
-            color: color.withOpacity(0.4),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: onPressed == null
+            ? []
+            : [
+                BoxShadow(
+                  color: color.withOpacity(0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
       ),
       child: ElevatedButton(
         onPressed: onPressed,
@@ -536,7 +587,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
           foregroundColor: Colors.white,
           disabledBackgroundColor: color.withOpacity(0.6),
           disabledForegroundColor: Colors.white70,
-          elevation: 0, 
+          elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(100),
           ),
@@ -556,7 +607,7 @@ class _AlertScreenState extends State<AlertScreen> with SingleTickerProviderStat
                 : Icon(icon, size: 26),
             const SizedBox(width: 12),
             Flexible(
-              child: Text(
+              child: AppText(
                 text,
                 textAlign: TextAlign.center,
                 maxLines: 1,
@@ -586,7 +637,8 @@ class PulseWarningIcon extends StatefulWidget {
   State<PulseWarningIcon> createState() => _PulseWarningIconState();
 }
 
-class _PulseWarningIconState extends State<PulseWarningIcon> with SingleTickerProviderStateMixin {
+class _PulseWarningIconState extends State<PulseWarningIcon>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
@@ -599,12 +651,14 @@ class _PulseWarningIconState extends State<PulseWarningIcon> with SingleTickerPr
       vsync: this,
     )..repeat();
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.5).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-    _opacityAnimation = Tween<double>(begin: 0.5, end: 0.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.5,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _opacityAnimation = Tween<double>(
+      begin: 0.5,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -658,11 +712,7 @@ class _PulseWarningIconState extends State<PulseWarningIcon> with SingleTickerPr
               color: widget.color.withOpacity(0.2),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.warning_rounded,
-              color: widget.color,
-              size: 36,
-            ),
+            child: Icon(Icons.warning_rounded, color: widget.color, size: 36),
           ),
         ],
       ),

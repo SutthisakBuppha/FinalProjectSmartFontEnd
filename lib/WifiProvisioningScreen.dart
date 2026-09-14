@@ -287,9 +287,9 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
     StreamSubscription<List<int>>? statusSubscription;
     try {
       // ค้นหา Service และ Characteristic ของกล้อง
-      final services = await _targetDevice!
-          .discoverServices()
-          .timeout(const Duration(seconds: 12));
+      final services = await _targetDevice!.discoverServices().timeout(
+        const Duration(seconds: 12),
+      );
       BluetoothCharacteristic? targetCharacteristic;
 
       for (final service in services) {
@@ -312,7 +312,9 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
       statusSubscription = targetCharacteristic.onValueReceived.listen((value) {
         final status = utf8.decode(value).trim().toLowerCase();
         debugPrint("สถานะ Wi-Fi จากกล้อง: $status");
-        if ((status == 'connected' || status == 'failed' || status == 'invalid') &&
+        if ((status == 'connected' ||
+                status == 'failed' ||
+                status == 'invalid') &&
             !connectionResult.isCompleted) {
           connectionResult.complete(status);
         }
@@ -376,8 +378,8 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text("เชื่อมต่อสำเร็จ"),
-        content: const Text(
+        title: const AppText("เชื่อมต่อสำเร็จ"),
+        content: const AppText(
           "กล้องเชื่อมต่อ Wi-Fi สำเร็จแล้ว เมื่อกดตกลงระบบจะบันทึกอุปกรณ์ลงฐานข้อมูลให้อัตโนมัติ",
         ),
         actions: [
@@ -385,7 +387,7 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
             onPressed: () {
               Navigator.of(dialogContext).pop();
             },
-            child: const Text("ตกลง"),
+            child: const AppText("ตกลง"),
           ),
         ],
       ),
@@ -397,7 +399,7 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("ตั้งค่าเครือข่ายกล้อง S/N: ${widget.serialNumber}"),
+        title: AppText("ตั้งค่าเครือข่ายกล้อง S/N: ${widget.serialNumber}"),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),
@@ -408,13 +410,13 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
                   children: [
                     const CircularProgressIndicator(),
                     const SizedBox(height: 16),
-                    Text(_statusMessage, textAlign: TextAlign.center),
+                    AppText(_statusMessage, textAlign: TextAlign.center),
                   ],
                 ),
               )
             : Column(
                 children: [
-                  Text(
+                  AppText(
                     _isConnected
                         ? "เชื่อมต่อกับกล้องสำเร็จแล้ว"
                         : _statusMessage,
@@ -431,31 +433,31 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
                         TextButton.icon(
                           onPressed: _isScanning ? null : _startScan,
                           icon: const Icon(Icons.refresh),
-                          label: const Text("ลองค้นหาใหม่"),
+                          label: const AppText("ลองค้นหาใหม่"),
                         ),
                         if (_permissionPermanentlyDenied)
                           TextButton.icon(
                             onPressed: openAppSettings,
                             icon: const Icon(Icons.settings),
-                            label: const Text('เปิดการตั้งค่าแอป'),
+                            label: const AppText('เปิดการตั้งค่าแอป'),
                           ),
                       ],
                     ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _ssidController,
-                    decoration: const InputDecoration(
-                      labelText: "ชื่อ Wi-Fi (SSID)",
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: appTr("ชื่อ Wi-Fi (SSID)"),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: "รหัสผ่าน Wi-Fi",
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: appTr("รหัสผ่าน Wi-Fi"),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -463,10 +465,9 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed:
-                          _isConnected && !_isSending
-                              ? _sendWifiCredentials
-                              : null,
+                      onPressed: _isConnected && !_isSending
+                          ? _sendWifiCredentials
+                          : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.cFF0F2647,
                       ),
@@ -479,7 +480,7 @@ class _WifiProvisioningScreenState extends State<WifiProvisioningScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text(
+                          : const AppText(
                               "ส่งข้อมูลให้กล้องเชื่อมต่อเน็ต",
                               style: TextStyle(color: Colors.white),
                             ),

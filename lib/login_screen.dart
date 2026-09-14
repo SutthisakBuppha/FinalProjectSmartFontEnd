@@ -40,42 +40,48 @@ class _LoginScreenState extends State<LoginScreen> {
     if (kIsWeb) {
       GoogleAuthService.instance.ensureInitialized().then((_) {
         if (!mounted) return;
-        _googleSignInSubscription = GoogleAuthService.instance.googleSignInEvents
+        _googleSignInSubscription = GoogleAuthService
+            .instance
+            .googleSignInEvents
             .listen((event) async {
-          if (event is! GoogleSignInAuthenticationEventSignIn) return;
+              if (event is! GoogleSignInAuthenticationEventSignIn) return;
 
-          final account = event.user;
-          final token = account.authentication.idToken;
+              final account = event.user;
+              final token = account.authentication.idToken;
 
-          if (token != null) {
-            if (mounted) setState(() => _isGoogleLoading = true);
-            try {
-              await ApiService.instance.loginWithGoogle(idToken: token);
-              if (mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => const MainLayout()),
-                );
+              if (token != null) {
+                if (mounted) setState(() => _isGoogleLoading = true);
+                try {
+                  await ApiService.instance.loginWithGoogle(idToken: token);
+                  if (mounted) {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MainLayout(),
+                      ),
+                    );
+                  }
+                } on ApiException catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: AppText(e.message)));
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: AppText(
+                          'เข้าสู่ระบบด้วย Google ไม่สำเร็จ: $e',
+                        ),
+                      ),
+                    );
+                  }
+                } finally {
+                  if (mounted) setState(() => _isGoogleLoading = false);
+                }
               }
-            } on ApiException catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(e.message)));
-              }
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('เข้าสู่ระบบด้วย Google ไม่สำเร็จ: $e'),
-                  ),
-                );
-              }
-            } finally {
-              if (mounted) setState(() => _isGoogleLoading = false);
-            }
-          }
-        });
+            });
       });
     }
   }
@@ -94,20 +100,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (username.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน')),
+        const SnackBar(content: AppText('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน')),
       );
       return;
     }
 
     if (username.contains(' ')) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ชื่อผู้ใช้ต้องไม่มีช่องว่าง')),
+        const SnackBar(content: AppText('ชื่อผู้ใช้ต้องไม่มีช่องว่าง')),
       );
       return;
     }
     if (password.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')),
+        const SnackBar(content: AppText('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร')),
       );
       return;
     }
@@ -128,11 +134,11 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ).showSnackBar(SnackBar(content: AppText(e.message)));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่')),
+        const SnackBar(content: AppText('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่')),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -160,13 +166,13 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      ).showSnackBar(SnackBar(content: AppText(e.message)));
     } catch (e) {
       if (!mounted) return;
       final isTimeout = e.toString().contains('TIMEOUT');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: AppText(
             isTimeout
                 ? 'การเชื่อมต่อ Google ใช้เวลานานเกินไป กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่'
                 : 'เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่',
@@ -178,12 +184,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Color get background =>
-      _isDarkMode ? AppColors.cFF0A1120 : AppColors.surface;
-  Color get surface =>
-      _isDarkMode ? AppColors.cFF1E293B : AppColors.background;
-  Color get inputBorder =>
-      _isDarkMode ? AppColors.cFF334155 : AppColors.border;
+  Color get background => _isDarkMode ? AppColors.cFF0A1120 : AppColors.surface;
+  Color get surface => _isDarkMode ? AppColors.cFF1E293B : AppColors.background;
+  Color get inputBorder => _isDarkMode ? AppColors.cFF334155 : AppColors.border;
   Color get iconColor =>
       _isDarkMode ? AppColors.textMuted : AppColors.cFF94A3B8;
 
@@ -263,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         SizedBox(height: 8 * scale),
-                        Text(
+                        AppText(
                           "ระบบติดตามอัจฉริยะ เพื่อการขับขี่ที่ปลอดภัย",
                           textAlign: TextAlign.center,
                           style: GoogleFonts.prompt(
@@ -273,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         SizedBox(height: (isCompactHeight ? 24 : 36) * scale),
-                        Text(
+                        AppText(
                           "ยินดีต้อนรับกลับ",
                           style: GoogleFonts.prompt(
                             fontSize: 22 * scale,
@@ -282,7 +285,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         SizedBox(height: 4 * scale),
-                        Text(
+                        AppText(
                           "กรุณากรอกข้อมูลเพื่อเข้าสู่ระบบ",
                           style: GoogleFonts.prompt(
                             fontSize: 13 * scale,
@@ -328,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              child: Text(
+                              child: AppText(
                                 "ลืมรหัสผ่าน?",
                                 style: GoogleFonts.prompt(
                                   fontSize: 12 * scale,
@@ -377,7 +380,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Text(
+                                      AppText(
                                         "เข้าสู่ระบบ",
                                         style: GoogleFonts.prompt(
                                           fontSize: 15 * scale,
@@ -401,7 +404,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               padding: EdgeInsets.symmetric(
                                 horizontal: 16.0 * scale,
                               ),
-                              child: Text(
+                              child: AppText(
                                 "หรือเข้าสู่ระบบด้วย",
                                 style: GoogleFonts.prompt(
                                   fontSize: 12 * scale,
@@ -447,7 +450,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
+                            AppText(
                               "ยังไม่มีบัญชี?",
                               style: GoogleFonts.prompt(
                                 fontSize: 13 * scale,
@@ -470,7 +473,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              child: Text(
+                              child: AppText(
                                 "สมัครสมาชิก",
                                 style: GoogleFonts.prompt(
                                   fontSize: 13 * scale,
@@ -501,7 +504,7 @@ class _LoginScreenState extends State<LoginScreen> {
       padding: EdgeInsets.only(left: 4.0 * scale),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(
+        child: AppText(
           text,
           style: GoogleFonts.prompt(
             fontSize: 13 * scale,
@@ -536,7 +539,7 @@ class _LoginScreenState extends State<LoginScreen> {
           color: AppColors.cFF1F2937,
         ),
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: appTr(hint),
           hintStyle: GoogleFonts.prompt(color: AppColors.cFF94A3B8),
           border: InputBorder.none,
           contentPadding: EdgeInsets.symmetric(vertical: 14 * scale),
@@ -595,7 +598,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 20 * scale,
                 ),
                 SizedBox(width: 8 * scale),
-                Text(
+                AppText(
                   label,
                   style: GoogleFonts.prompt(
                     fontSize: 13 * scale,

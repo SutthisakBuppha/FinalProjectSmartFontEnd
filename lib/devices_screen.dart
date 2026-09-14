@@ -22,6 +22,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
   bool _isLoading = true;
   String? _deletingDeviceId;
   Timer? _pollTimer;
+  bool _isRefreshing = false;
 
   // ตัวกรองสถานะอุปกรณ์ (ทั้งหมด / ออนไลน์ / ออฟไลน์)
   String _selectedFilter = 'ทั้งหมด';
@@ -45,6 +46,8 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
   }
 
   Future<void> _loadDevices({bool silent = false}) async {
+    if (!mounted || _isRefreshing) return;
+    _isRefreshing = true;
     try {
       final list = await ApiService.instance.devices();
 
@@ -69,9 +72,11 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
         return;
       }
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("โหลดข้อมูลอุปกรณ์ล้มเหลว: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText("โหลดข้อมูลอุปกรณ์ล้มเหลว: $e")),
+      );
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -93,12 +98,12 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('ลบอุปกรณ์'),
+          title: const AppText('ลบอุปกรณ์'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('ต้องการลบ “$deviceName” ออกจากบัญชีหรือไม่?'),
+              AppText('ต้องการลบ “$deviceName” ออกจากบัญชีหรือไม่?'),
               const SizedBox(height: 14),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -108,8 +113,8 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                     ? (value) =>
                           setDialogState(() => resetWifi = value ?? false)
                     : null,
-                title: const Text('ล้างการตั้งค่า Wi-Fi ของอุปกรณ์ด้วย'),
-                subtitle: Text(
+                title: const AppText('ล้างการตั้งค่า Wi-Fi ของอุปกรณ์ด้วย'),
+                subtitle: AppText(
                   canResetWifi
                       ? 'บอร์ดจะรีสตาร์ตและเข้าสู่โหมดเชื่อมต่อผ่าน BLE'
                       : kIsWeb
@@ -118,7 +123,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
+              const AppText(
                 'หากไม่เลือกล้าง Wi-Fi คุณสามารถลงทะเบียนอุปกรณ์กลับมาใหม่ได้ทันที',
                 style: TextStyle(fontSize: 12, color: Colors.black54),
               ),
@@ -127,12 +132,12 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('ยกเลิก'),
+              child: const AppText('ยกเลิก'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () => Navigator.of(dialogContext).pop(resetWifi),
-              child: const Text('ลบอุปกรณ์'),
+              child: const AppText('ลบอุปกรณ์'),
             ),
           ],
         ),
@@ -184,7 +189,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       setState(() => _deviceList = remainingDevices);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
+          content: AppText(
             resetWifiRequested && wifiResetWarning == null
                 ? 'ลบอุปกรณ์และล้าง Wi-Fi แล้ว บอร์ดกำลังเข้าสู่โหมด BLE'
                 : wifiResetWarning != null
@@ -197,7 +202,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('ลบอุปกรณ์ไม่สำเร็จ: $e')));
+      ).showSnackBar(SnackBar(content: AppText('ลบอุปกรณ์ไม่สำเร็จ: $e')));
     } finally {
       if (mounted) setState(() => _deletingDeviceId = null);
     }
@@ -374,7 +379,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                AppText(
                   "รายการอุปกรณ์",
                   style: GoogleFonts.prompt(
                     color: Colors.white,
@@ -383,7 +388,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                   ),
                 ),
                 SizedBox(height: 2 * scale),
-                Text(
+                AppText(
                   "เชื่อมต่อแล้ว $onlineCount จาก $totalCount อุปกรณ์",
                   style: GoogleFonts.prompt(
                     color: Colors.white.withOpacity(0.75),
@@ -428,7 +433,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              AppText(
                 title,
                 style: GoogleFonts.prompt(
                   color: AppColors.cFF6B7280,
@@ -440,7 +445,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
             ],
           ),
           SizedBox(height: 6 * scale),
-          Text(
+          AppText(
             value,
             style: GoogleFonts.prompt(
               color: color,
@@ -481,7 +486,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                 ]
               : [],
         ),
-        child: Text(
+        child: AppText(
           label,
           style: GoogleFonts.prompt(
             fontSize: 13 * scale,
@@ -568,7 +573,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
+                      AppText(
                         device['device_name'] ?? 'ไม่ระบุชื่ออุปกรณ์',
                         style: GoogleFonts.prompt(
                           fontSize: 16 * scale,
@@ -577,7 +582,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                         ),
                       ),
                       SizedBox(height: 2 * scale),
-                      Text(
+                      AppText(
                         "S/N: ${device['serial_number'] ?? '-'}",
                         style: GoogleFonts.prompt(
                           fontSize: 12 * scale,
@@ -600,7 +605,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                         color: statusColor.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(
+                      child: AppText(
                         isOnline ? "ออนไลน์" : "ออฟไลน์",
                         style: GoogleFonts.prompt(
                           fontSize: 11 * scale,
@@ -621,7 +626,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
                       )
                     else
                       IconButton(
-                        tooltip: 'ลบอุปกรณ์',
+                        tooltip: appTr('ลบอุปกรณ์'),
                         visualDensity: VisualDensity.compact,
                         padding: EdgeInsets.zero,
                         constraints: BoxConstraints(
@@ -671,7 +676,7 @@ class _DeviceManagementScreenState extends State<DeviceManagementScreen> {
             color: AppColors.cFF9CA3AF,
           ),
           SizedBox(height: 12 * scale),
-          Text(
+          AppText(
             "ไม่พบอุปกรณ์ในหมวดหมู่นี้",
             style: GoogleFonts.prompt(
               fontSize: 15 * scale,

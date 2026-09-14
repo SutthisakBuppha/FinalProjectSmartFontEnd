@@ -44,12 +44,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ]);
       final fetchedTrips = results[0] as List<Map<String, dynamic>>;
       final fetchedAlerts = results[1] as List<Map<String, dynamic>>;
-      
+
       double distanceSum = 0.0;
 
       for (var trip in fetchedTrips) {
         // แก้ไขจุดนี้: ใช้ num.tryParse เพื่อป้องกัน Error ในกรณีที่ API คืนค่าเป็น String
-        final distance = num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
+        final distance =
+            num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
 
         distanceSum += distance;
       }
@@ -70,10 +71,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   List<Map<String, dynamic>> _alertsOfType(String type) {
-    final result = _alerts.where((alert) => alert['type']?.toString() == type).toList();
+    final result = _alerts
+        .where((alert) => alert['type']?.toString() == type)
+        .toList();
     result.sort((a, b) {
-      final aTime = DateTime.tryParse((a['timestamp'] ?? a['created_at'] ?? '').toString()) ?? DateTime(0);
-      final bTime = DateTime.tryParse((b['timestamp'] ?? b['created_at'] ?? '').toString()) ?? DateTime(0);
+      final aTime =
+          DateTime.tryParse(
+            (a['timestamp'] ?? a['created_at'] ?? '').toString(),
+          ) ??
+          DateTime(0);
+      final bTime =
+          DateTime.tryParse(
+            (b['timestamp'] ?? b['created_at'] ?? '').toString(),
+          ) ??
+          DateTime(0);
       return bTime.compareTo(aTime);
     });
     return result;
@@ -90,25 +101,66 @@ class _HistoryScreenState extends State<HistoryScreen> {
       children: [
         Text(
           'ประวัติการตรวจจับจาก AI',
-          style: GoogleFonts.prompt(fontSize: 18 * scale, fontWeight: FontWeight.bold, color: AppColors.cFF0F2647),
+          style: GoogleFonts.prompt(
+            fontSize: 18 * scale,
+            fontWeight: FontWeight.bold,
+            color: AppColors.cFF0F2647,
+          ),
         ),
         SizedBox(height: 12 * scale),
         ...detectionTypes.map((item) {
           final alerts = _alertsOfType(item.$1);
-          final latest = alerts.isEmpty ? null : alerts.first['timestamp'] ?? alerts.first['created_at'];
+          final latest = alerts.isEmpty
+              ? null
+              : alerts.first['timestamp'] ?? alerts.first['created_at'];
           return Container(
             margin: EdgeInsets.only(bottom: 10 * scale),
             padding: EdgeInsets.all(14 * scale),
-            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14 * scale)),
-            child: Row(children: [
-              CircleAvatar(backgroundColor: item.$3.withOpacity(.12), child: Icon(item.$2, color: item.$3)),
-              SizedBox(width: 12 * scale),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(item.$1, style: GoogleFonts.prompt(fontSize: 15 * scale, fontWeight: FontWeight.w600, color: AppColors.cFF1F2937)),
-                Text(latest == null ? 'ยังไม่พบการตรวจจับ' : _formatDateTime(latest.toString()), style: GoogleFonts.prompt(fontSize: 12 * scale, color: AppColors.cFF6B7280)),
-              ])),
-              Text('${alerts.length} ครั้ง', style: GoogleFonts.prompt(fontSize: 14 * scale, fontWeight: FontWeight.bold, color: item.$3)),
-            ]),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14 * scale),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: item.$3.withOpacity(.12),
+                  child: Icon(item.$2, color: item.$3),
+                ),
+                SizedBox(width: 12 * scale),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.$1,
+                        style: GoogleFonts.prompt(
+                          fontSize: 15 * scale,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.cFF1F2937,
+                        ),
+                      ),
+                      Text(
+                        latest == null
+                            ? 'ยังไม่พบการตรวจจับ'
+                            : _formatDateTime(latest.toString()),
+                        style: GoogleFonts.prompt(
+                          fontSize: 12 * scale,
+                          color: AppColors.cFF6B7280,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '${alerts.length} ครั้ง',
+                  style: GoogleFonts.prompt(
+                    fontSize: 14 * scale,
+                    fontWeight: FontWeight.bold,
+                    color: item.$3,
+                  ),
+                ),
+              ],
+            ),
           );
         }),
       ],
@@ -121,10 +173,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (dateTime == null) return dateStr;
 
     final months = [
-      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+      'ม.ค.',
+      'ก.พ.',
+      'มี.ค.',
+      'เม.ย.',
+      'พ.ค.',
+      'มิ.ย.',
+      'ก.ค.',
+      'ส.ค.',
+      'ก.ย.',
+      'ต.ค.',
+      'พ.ย.',
+      'ธ.ค.',
     ];
-    final days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+    final days = [
+      'อาทิตย์',
+      'จันทร์',
+      'อังคาร',
+      'พุธ',
+      'พฤหัสบดี',
+      'ศุกร์',
+      'เสาร์',
+    ];
 
     String dayName = days[dateTime.weekday % 7];
     String monthName = months[dateTime.month - 1];
@@ -175,170 +245,232 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: _isLoading
                     ? const Center(
                         child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.cFF0F2647),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppColors.cFF0F2647,
+                          ),
                         ),
                       )
                     : _errorMessage.isNotEmpty
-                        ? Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(24.0 * scale),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.error_outline, color: AppColors.danger, size: 48 * scale),
-                                  SizedBox(height: 16 * scale),
-                                  Text(
-                                    _errorMessage,
-                                    style: GoogleFonts.prompt(color: AppColors.cFF1F2937, fontSize: 14 * scale),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                  SizedBox(height: 16 * scale),
-                                  ElevatedButton(
-                                    onPressed: _fetchHistoryData,
-                                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.cFF0F2647),
-                                    child: Text("ลองใหม่อีกครั้ง", style: GoogleFonts.prompt(color: Colors.white, fontSize: 14 * scale)),
-                                  )
-                                ],
+                    ? Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0 * scale),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                color: AppColors.danger,
+                                size: 48 * scale,
                               ),
-                            ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _fetchHistoryData,
-                            color: AppColors.cFF0F2647,
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: Padding(
-                                padding: EdgeInsets.fromLTRB(horizontalPadding, 24 * scale, horizontalPadding, 120 * scale),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _buildSummaryCard(
-                                            title: "แจ้งเตือนทั้งหมด",
-                                            value: "$_totalAlerts",
-                                            suffix: " ครั้ง",
-                                            icon: Icons.warning_amber_rounded,
-                                            iconColor: AppColors.warning,
-                                            scale: scale,
-                                          ),
-                                        ),
-                                        SizedBox(width: 16 * scale),
-                                        Expanded(
-                                          child: _buildSummaryCard(
-                                            title: "ระยะทางรวม",
-                                            value: _totalDistance.toStringAsFixed(1),
-                                            suffix: " กม.",
-                                            icon: Icons.route_rounded,
-                                            iconColor: AppColors.secondary,
-                                            scale: scale,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    SizedBox(height: 24 * scale),
-                                    _buildDetectionHistory(scale),
-                                    SizedBox(height: 24 * scale),
-
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      crossAxisAlignment: CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          "การเดินทางล่าสุด",
-                                          style: GoogleFonts.prompt(
-                                            fontSize: 18 * scale,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.cFF0F2647,
-                                          ),
-                                        ),
-                                        Text(
-                                          "ดูทั้งหมด",
-                                          style: GoogleFonts.prompt(
-                                            fontSize: 14 * scale,
-                                            fontWeight: FontWeight.w500,
-                                            color: AppColors.secondary,
-                                            decoration: TextDecoration.underline,
-                                            decorationColor: AppColors.secondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    SizedBox(height: 16 * scale),
-
-                                    if (_trips.isEmpty)
-                                      Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 40 * scale),
-                                        child: Center(
-                                          child: Text(
-                                            "ไม่พบประวัติการเดินทางของท่าน",
-                                            style: GoogleFonts.prompt(color: AppColors.cFF6B7280, fontSize: 16 * scale),
-                                          ),
-                                        ),
-                                      )
-                                    else
-                                      ListView.builder(
-                                        shrinkWrap: true,
-                                        physics: const NeverScrollableScrollPhysics(),
-                                        itemCount: _trips.length,
-                                        itemBuilder: (context, index) {
-                                          final trip = _trips[index];
-                                          
-                                          // แก้ไขจุดนี้เช่นกัน: ใช้การ parse ที่ปลอดภัยสำหรับแต่ละไอเทมในลิสต์
-                                          final alertsCount = num.tryParse(trip['alerts_count']?.toString() ?? '')?.toInt() ?? 0;
-                                          final statusData = _getSafetyStatus(alertsCount);
-
-                                          final tripId = (trip['trip_id'] ?? trip['id'] ?? '').toString();
-                                          final tripIdInt = tripId;
-
-                                          final startLoc = trip['start_location']?.toString() ?? '';
-                                          final endLoc = trip['end_location']?.toString() ?? '';
-                                          String tripTitle = "การเดินทาง #$tripIdInt";
-                                          
-                                          if (startLoc.isNotEmpty && endLoc.isNotEmpty) {
-                                            tripTitle = "$startLoc ไป $endLoc";
-                                          } else if (endLoc.isNotEmpty) {
-                                            tripTitle = "มุ่งสู่ $endLoc";
-                                          }
-
-                                          final distanceVal = num.tryParse(trip['distance']?.toString() ?? '')?.toDouble() ?? 0.0;
-                                          
-                                          String durationText = '-';
-                                          if (trip['duration'] != null) {
-                                            durationText = trip['duration'].toString();
-                                            if (!durationText.contains('นาที') && !durationText.contains('ชม.')) {
-                                              durationText = "$durationText นาที";
-                                            }
-                                          } else if (trip['start_time'] != null && trip['end_time'] != null) {
-                                            final start = DateTime.tryParse(trip['start_time'].toString());
-                                            final end = DateTime.tryParse(trip['end_time'].toString());
-                                            if (start != null && end != null) {
-                                              durationText = "${end.difference(start).inMinutes} นาที";
-                                            }
-                                          }
-
-                                          return _buildTripCard(
-                                            tripId: tripId,
-                                            title: tripTitle,
-                                            date: _formatDateTime(trip['start_time']),
-                                            status: statusData['text'],
-                                            statusColor: statusData['color'],
-                                            statusIcon: statusData['icon'],
-                                            icon: Icons.directions_car_filled_outlined,
-                                            distance: "${distanceVal.toStringAsFixed(1)} กม.",
-                                            duration: durationText,
-                                            alerts: alertsCount.toString(),
-                                            scale: scale,
-                                          );
-                                        },
-                                      ),
-                                  ],
+                              SizedBox(height: 16 * scale),
+                              Text(
+                                _errorMessage,
+                                style: GoogleFonts.prompt(
+                                  color: AppColors.cFF1F2937,
+                                  fontSize: 14 * scale,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              SizedBox(height: 16 * scale),
+                              ElevatedButton(
+                                onPressed: _fetchHistoryData,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.cFF0F2647,
+                                ),
+                                child: Text(
+                                  "ลองใหม่อีกครั้ง",
+                                  style: GoogleFonts.prompt(
+                                    color: Colors.white,
+                                    fontSize: 14 * scale,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _fetchHistoryData,
+                        color: AppColors.cFF0F2647,
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              horizontalPadding,
+                              24 * scale,
+                              horizontalPadding,
+                              120 * scale,
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildSummaryCard(
+                                        title: "แจ้งเตือนทั้งหมด",
+                                        value: "$_totalAlerts",
+                                        suffix: " ครั้ง",
+                                        icon: Icons.warning_amber_rounded,
+                                        iconColor: AppColors.warning,
+                                        scale: scale,
+                                      ),
+                                    ),
+                                    SizedBox(width: 16 * scale),
+                                    Expanded(
+                                      child: _buildSummaryCard(
+                                        title: "ระยะทางรวม",
+                                        value: _totalDistance.toStringAsFixed(
+                                          1,
+                                        ),
+                                        suffix: " กม.",
+                                        icon: Icons.route_rounded,
+                                        iconColor: AppColors.secondary,
+                                        scale: scale,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                SizedBox(height: 24 * scale),
+                                _buildDetectionHistory(scale),
+                                SizedBox(height: 24 * scale),
+
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      "การเดินทางล่าสุด",
+                                      style: GoogleFonts.prompt(
+                                        fontSize: 18 * scale,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.cFF0F2647,
+                                      ),
+                                    ),
+                                    Text(
+                                      "ดูทั้งหมด",
+                                      style: GoogleFonts.prompt(
+                                        fontSize: 14 * scale,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppColors.secondary,
+                                        decoration: TextDecoration.underline,
+                                        decorationColor: AppColors.secondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                SizedBox(height: 16 * scale),
+
+                                if (_trips.isEmpty)
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: 40 * scale,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        "ไม่พบประวัติการเดินทางของท่าน",
+                                        style: GoogleFonts.prompt(
+                                          color: AppColors.cFF6B7280,
+                                          fontSize: 16 * scale,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: _trips.length,
+                                    itemBuilder: (context, index) {
+                                      final trip = _trips[index];
+
+                                      // แก้ไขจุดนี้เช่นกัน: ใช้การ parse ที่ปลอดภัยสำหรับแต่ละไอเทมในลิสต์
+                                      final alertsCount =
+                                          num.tryParse(
+                                            trip['alerts_count']?.toString() ??
+                                                '',
+                                          )?.toInt() ??
+                                          0;
+                                      final statusData = _getSafetyStatus(
+                                        alertsCount,
+                                      );
+
+                                      final tripId =
+                                          (trip['trip_id'] ?? trip['id'] ?? '')
+                                              .toString();
+                                      final tripIdInt = tripId;
+
+                                      final startLoc =
+                                          trip['start_location']?.toString() ??
+                                          '';
+                                      final endLoc =
+                                          trip['end_location']?.toString() ??
+                                          '';
+                                      String tripTitle =
+                                          "การเดินทาง #$tripIdInt";
+
+                                      if (startLoc.isNotEmpty &&
+                                          endLoc.isNotEmpty) {
+                                        tripTitle = "$startLoc ไป $endLoc";
+                                      } else if (endLoc.isNotEmpty) {
+                                        tripTitle = "มุ่งสู่ $endLoc";
+                                      }
+
+                                      final distanceVal =
+                                          num.tryParse(
+                                            trip['distance']?.toString() ?? '',
+                                          )?.toDouble() ??
+                                          0.0;
+
+                                      String durationText = '-';
+                                      if (trip['duration'] != null) {
+                                        durationText = trip['duration']
+                                            .toString();
+                                        if (!durationText.contains('นาที') &&
+                                            !durationText.contains('ชม.')) {
+                                          durationText = "$durationText นาที";
+                                        }
+                                      } else if (trip['start_time'] != null &&
+                                          trip['end_time'] != null) {
+                                        final start = DateTime.tryParse(
+                                          trip['start_time'].toString(),
+                                        );
+                                        final end = DateTime.tryParse(
+                                          trip['end_time'].toString(),
+                                        );
+                                        if (start != null && end != null) {
+                                          durationText =
+                                              "${end.difference(start).inMinutes} นาที";
+                                        }
+                                      }
+
+                                      return _buildTripCard(
+                                        tripId: tripId,
+                                        title: tripTitle,
+                                        date: _formatDateTime(
+                                          trip['start_time'],
+                                        ),
+                                        status: statusData['text'],
+                                        statusColor: statusData['color'],
+                                        statusIcon: statusData['icon'],
+                                        icon: Icons
+                                            .directions_car_filled_outlined,
+                                        distance:
+                                            "${distanceVal.toStringAsFixed(1)} กม.",
+                                        duration: durationText,
+                                        alerts: alertsCount.toString(),
+                                        scale: scale,
+                                      );
+                                    },
+                                  ),
+                              ],
                             ),
                           ),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -397,7 +529,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             onTap: _fetchHistoryData,
                             child: Padding(
                               padding: EdgeInsets.all(8.0 * scale),
-                              child: Icon(Icons.refresh_rounded, color: Colors.white, size: 20 * scale),
+                              child: Icon(
+                                Icons.refresh_rounded,
+                                color: Colors.white,
+                                size: 20 * scale,
+                              ),
                             ),
                           ),
                         ),
@@ -405,7 +541,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                   SizedBox(height: 24 * scale),
-                  
+
                   Container(
                     padding: EdgeInsets.all(4 * scale),
                     decoration: BoxDecoration(
@@ -416,23 +552,39 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         IconButton(
-                          icon: Icon(Icons.chevron_left_rounded, color: Colors.white70, size: 24 * scale),
+                          icon: Icon(
+                            Icons.chevron_left_rounded,
+                            color: Colors.white70,
+                            size: 24 * scale,
+                          ),
                           onPressed: () {},
                         ),
                         Column(
                           children: [
                             Text(
                               "ประวัติทั้งหมด",
-                              style: GoogleFonts.prompt(color: Colors.white, fontSize: 18 * scale, fontWeight: FontWeight.w600),
+                              style: GoogleFonts.prompt(
+                                color: Colors.white,
+                                fontSize: 18 * scale,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             Text(
                               "ระยะทางรวม ${_totalDistance.toStringAsFixed(1)} กม.",
-                              style: GoogleFonts.prompt(color: Colors.white60, fontSize: 12 * scale, fontWeight: FontWeight.w500),
+                              style: GoogleFonts.prompt(
+                                color: Colors.white60,
+                                fontSize: 12 * scale,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ],
                         ),
                         IconButton(
-                          icon: Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 24 * scale),
+                          icon: Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white70,
+                            size: 24 * scale,
+                          ),
                           onPressed: () {},
                         ),
                       ],
@@ -462,7 +614,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
@@ -533,9 +689,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: statusColor, width: 4 * scale)),
+        border: Border(
+          left: BorderSide(color: statusColor, width: 4 * scale),
+        ),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Material(
@@ -576,7 +738,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               color: Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(icon, color: AppColors.cFF6B7280, size: 24 * scale),
+                            child: Icon(
+                              icon,
+                              color: AppColors.cFF6B7280,
+                              size: 24 * scale,
+                            ),
                           ),
                           SizedBox(width: 12 * scale),
                           Expanded(
@@ -606,7 +772,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8 * scale, vertical: 4 * scale),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8 * scale,
+                        vertical: 4 * scale,
+                      ),
                       decoration: BoxDecoration(
                         color: statusColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
@@ -614,7 +783,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(statusIcon, color: statusColor, size: 14 * scale),
+                          Icon(
+                            statusIcon,
+                            color: statusColor,
+                            size: 14 * scale,
+                          ),
                           SizedBox(width: 4 * scale),
                           Text(
                             status,
@@ -636,10 +809,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: Row(
                   children: [
                     _buildTripStatItem("ระยะทาง", distance, false, scale),
-                    Container(width: 1, height: 24 * scale, color: Colors.grey.shade100),
+                    Container(
+                      width: 1,
+                      height: 24 * scale,
+                      color: Colors.grey.shade100,
+                    ),
                     _buildTripStatItem("เวลาที่ใช้", duration, false, scale),
-                    Container(width: 1, height: 24 * scale, color: Colors.grey.shade100),
-                    _buildTripStatItem("แจ้งเตือน", alerts, true, scale, valueColor: statusColor),
+                    Container(
+                      width: 1,
+                      height: 24 * scale,
+                      color: Colors.grey.shade100,
+                    ),
+                    _buildTripStatItem(
+                      "แจ้งเตือน",
+                      alerts,
+                      true,
+                      scale,
+                      valueColor: statusColor,
+                    ),
                   ],
                 ),
               ),
@@ -650,14 +837,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildTripStatItem(String label, String value, bool isAlert, double scale, {Color? valueColor}) {
+  Widget _buildTripStatItem(
+    String label,
+    String value,
+    bool isAlert,
+    double scale, {
+    Color? valueColor,
+  }) {
     return Expanded(
       child: Column(
         children: [
           Text(
             label,
             style: GoogleFonts.prompt(
-              color: isAlert && valueColor != null ? valueColor : AppColors.cFF6B7280,
+              color: isAlert && valueColor != null
+                  ? valueColor
+                  : AppColors.cFF6B7280,
               fontSize: 12 * scale,
               fontWeight: isAlert ? FontWeight.w500 : FontWeight.normal,
             ),
@@ -666,7 +861,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Text(
             value,
             style: GoogleFonts.prompt(
-              color: isAlert && valueColor != null ? valueColor : AppColors.cFF1F2937,
+              color: isAlert && valueColor != null
+                  ? valueColor
+                  : AppColors.cFF1F2937,
               fontSize: 14 * scale,
               fontWeight: FontWeight.bold,
             ),

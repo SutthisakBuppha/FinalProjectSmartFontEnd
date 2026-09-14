@@ -7,7 +7,7 @@ class GoogleAuthService {
 
   static const String _webClientId =
       '813400070963-t55qlrbag595qe51rmrq95m5k2sbn1om.apps.googleusercontent.com';
-      // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com';
+  // '813400070963-4u3uh33snabf60hk3fcldqc94bmnsaf3.apps.googleusercontent.com';
 
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
@@ -43,7 +43,8 @@ class GoogleAuthService {
     try {
       account = await _googleSignIn.authenticate().timeout(
         const Duration(seconds: 15),
-        onTimeout: () => throw Exception('TIMEOUT: authenticate ค้างเกิน 15 วิ'),
+        onTimeout: () =>
+            throw Exception('TIMEOUT: authenticate ค้างเกิน 15 วิ'),
       );
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
