@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -401,7 +402,7 @@ class _MapScreenState extends State<MapScreen>
           );
       if (!mounted) return;
       if (!TripTrackingService.instance.isTracking) {
-        if (Theme.of(context).platform == TargetPlatform.android) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
           final backgroundStatus = await Permission.locationAlways.status;
           if (!backgroundStatus.isGranted) {
             await Permission.locationAlways.request();
