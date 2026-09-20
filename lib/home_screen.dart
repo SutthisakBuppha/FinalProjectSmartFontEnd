@@ -347,113 +347,13 @@ class _HomeScreenState extends State<HomeScreen>
     return '$minutes นาที';
   }
 
-  Future<Map<String, dynamic>?> _showCustomRestDialog() async {
-    final reasonController = TextEditingController();
-    final durationController = TextEditingController();
-    String unit = 'minutes';
-    String? errorText;
-
-    final result = await showDialog<Map<String, dynamic>>(
+  Future<Map<String, dynamic>?> _showCustomRestDialog() {
+    // ให้ตัว dialog เป็น StatefulWidget ที่ดูแล TextEditingController เอง
+    // เพื่อไม่ dispose ระหว่างที่ dialog ยังเล่นแอนิเมชันปิดอยู่
+    return showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: AppText(
-            'กำหนดเหตุผลและเวลา',
-            style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: reasonController,
-                  maxLength: 200,
-                  decoration: InputDecoration(
-                    labelText: appTr('เหตุผลที่พักรถ'),
-                    hintText: appTr('เช่น รอรับผู้โดยสาร'),
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: durationController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: appTr('ระยะเวลา'),
-                          errorText: errorText == null
-                              ? null
-                              : appTr(errorText!),
-                          border: const OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                      width: 115,
-                      child: DropdownButtonFormField<String>(
-                        value: unit,
-                        decoration: InputDecoration(
-                          labelText: appTr('หน่วย'),
-                          border: const OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'minutes',
-                            child: AppText('นาที'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'hours',
-                            child: AppText('ชั่วโมง'),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) setDialogState(() => unit = value);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const AppText('ยกเลิก'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = int.tryParse(durationController.text.trim());
-                final minutes = value == null
-                    ? null
-                    : (unit == 'hours' ? value * 60 : value);
-                if (reasonController.text.trim().isEmpty ||
-                    minutes == null ||
-                    minutes < 1 ||
-                    minutes > 480) {
-                  setDialogState(
-                    () => errorText = 'กำหนดเวลา 1–480 นาที (สูงสุด 8 ชั่วโมง)',
-                  );
-                  return;
-                }
-                Navigator.pop(dialogContext, {
-                  'reason': 'other:${reasonController.text.trim()}',
-                  'minutes': minutes,
-                });
-              },
-              child: const AppText('เปิดโหมดพักรถ'),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => const _CustomRestDialog(),
     );
-    reasonController.dispose();
-    durationController.dispose();
-    return result;
   }
 
   Future<void> _showRestModeSheet({String? presetReason}) async {
@@ -1246,6 +1146,119 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CustomRestDialog extends StatefulWidget {
+  const _CustomRestDialog();
+
+  @override
+  State<_CustomRestDialog> createState() => _CustomRestDialogState();
+}
+
+class _CustomRestDialogState extends State<_CustomRestDialog> {
+  final TextEditingController _reasonController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController();
+  String _unit = 'minutes';
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _durationController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = int.tryParse(_durationController.text.trim());
+    final minutes = value == null ? null : (_unit == 'hours' ? value * 60 : value);
+    if (_reasonController.text.trim().isEmpty ||
+        minutes == null ||
+        minutes < 1 ||
+        minutes > 480) {
+      setState(
+        () => _errorText = 'กำหนดเวลา 1–480 นาที (สูงสุด 8 ชั่วโมง)',
+      );
+      return;
+    }
+    // ปิดคีย์บอร์ดก่อน pop เพื่อลดการ rebuild ซ้อนกับแอนิเมชันปิด dialog
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.pop(context, {
+      'reason': 'other:${_reasonController.text.trim()}',
+      'minutes': minutes,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: AppText(
+        'กำหนดเหตุผลและเวลา',
+        style: GoogleFonts.prompt(fontWeight: FontWeight.bold),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _reasonController,
+              maxLength: 200,
+              decoration: InputDecoration(
+                labelText: appTr('เหตุผลที่พักรถ'),
+                hintText: appTr('เช่น รอรับผู้โดยสาร'),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _durationController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: appTr('ระยะเวลา'),
+                      errorText:
+                          _errorText == null ? null : appTr(_errorText!),
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 115,
+                  child: DropdownButtonFormField<String>(
+                    value: _unit,
+                    decoration: InputDecoration(
+                      labelText: appTr('หน่วย'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'minutes', child: AppText('นาที')),
+                      DropdownMenuItem(value: 'hours', child: AppText('ชั่วโมง')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setState(() => _unit = value);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const AppText('ยกเลิก'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const AppText('เปิดโหมดพักรถ'),
+        ),
+      ],
     );
   }
 }

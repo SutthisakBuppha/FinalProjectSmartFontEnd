@@ -26,6 +26,10 @@ class UploadedMedia {
   final bool isDefault;
   final String? displayName;
 
+  /// ประเภทการใช้งานของไฟล์เสียงที่เซิร์ฟเวอร์จำไว้: 'event' (แจ้งเตือนรายครั้ง)
+  /// หรือ 'alert' (หน้า alert / หมดเวลาพักรถ) เป็น null สำหรับไฟล์เก่า
+  final String? category;
+
   UploadedMedia({
     required this.mediaId,
     required this.fileName,
@@ -35,6 +39,7 @@ class UploadedMedia {
     this.isActive = false,
     this.isDefault = false,
     this.displayName,
+    this.category,
   });
 
   factory UploadedMedia.fromJson(Map<String, dynamic> json) {
@@ -49,6 +54,7 @@ class UploadedMedia {
       isActive: json['is_active'] == true || json['is_active'] == 1,
       isDefault: json['is_default'] == true || json['is_default'] == 1,
       displayName: json['display_name']?.toString(),
+      category: json['category']?.toString(),
     );
   }
 }
@@ -253,6 +259,7 @@ class MediaUploadService {
     required String fileName,
     required String deviceId,
     required String type, // 'image', 'video' หรือ 'audio'
+    String? category, // 'event' หรือ 'alert' (เฉพาะไฟล์เสียง)
   }) async {
     final uri = Uri.parse('$_baseUrl/device-media/upload');
     final request = http.MultipartRequest('POST', uri);
@@ -261,6 +268,9 @@ class MediaUploadService {
 
     request.fields['device_id'] = deviceId;
     request.fields['type'] = type;
+    if (category != null && category.isNotEmpty) {
+      request.fields['category'] = category;
+    }
 
     final extension = p.extension(fileName).replaceFirst('.', '').toLowerCase();
     final audioContentTypes = <String, String>{
@@ -400,7 +410,10 @@ class MediaUploadService {
   /// แก้บั๊กเว็บ: ใช้ PlatformFile.bytes แทน File(path) เพราะบน Flutter Web
   /// ไม่มี filesystem path ให้เข้าถึง (path จะเป็น null เสมอ) การอัปโหลดจึง
   /// ใช้ uploadBytes() ซึ่งทำงานได้ทั้งบนเว็บและมือถือ
-  Future<UploadedMedia?> pickAndUploadAudio({required String deviceId}) async {
+  Future<UploadedMedia?> pickAndUploadAudio({
+    required String deviceId,
+    String? category,
+  }) async {
     final platformFile = await pickAudio();
     if (platformFile == null) return null;
 
@@ -439,6 +452,7 @@ class MediaUploadService {
       fileName: platformFile.name,
       deviceId: deviceId,
       type: 'audio',
+      category: category,
     );
   }
 }

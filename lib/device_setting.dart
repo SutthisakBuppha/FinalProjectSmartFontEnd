@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'theme/app_theme.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'main_layout.dart';
 import '/services/api_service.dart';
 import '/services/media_upload_service.dart';
 import 'utils/device_status.dart';
+
+/// คลังเสียงแยกเป็น 2 ส่วนที่ไม่ยุ่งกัน (อัปโหลด/ลบ/เลือกใช้แยกอิสระ)
+/// - event: การแจ้งเตือนรายครั้ง (ครั้งที่ 1–2)
+/// - alert: เมื่อเปิดหน้า alert_screen และเมื่อหมดเวลาในโหมดพักรถ
+enum _AudioScope { event, alert }
 
 class DeviceCustomizationScreen extends StatefulWidget {
   final Map<String, dynamic> deviceData;
@@ -24,10 +30,18 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   double _volumeLevel = 75.0;
   String _activeTone = 'เสียงคลาสสิก (Classic)';
   String _eventTone = 'เสียงสัญญาณสั้น (Beep)';
+  // ค่าที่บันทึกไว้บนเซิร์ฟเวอร์แล้ว ใช้เทียบว่ามีการเปลี่ยนที่ยังไม่บันทึกหรือไม่
+  String _savedActiveTone = 'เสียงคลาสสิก (Classic)';
+  String _savedEventTone = 'เสียงสัญญาณสั้น (Beep)';
+  bool _isSavingActiveTone = false;
+  bool _isSavingEventTone = false;
   bool _isLoadingSetting = true;
   bool _isSavingSetting = false;
 
   List<UploadedMedia> _audioTones = [];
+  // mediaId ของไฟล์ที่ผู้ใช้เพิ่มในแต่ละส่วน (เก็บในเครื่อง แยกตามอุปกรณ์)
+  final Set<String> _eventMediaIds = {};
+  final Set<String> _alertMediaIds = {};
   bool _isLoadingAudio = true;
   bool _isUploadingAudio = false;
   String? _deletingAudioId;
@@ -55,8 +69,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchDeviceConfig();
-    _fetchAudioTones();
+    _loadInitialData();
     _previewPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _previewingAudioId = null);
     });
@@ -87,6 +100,94 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     }
   }
 
+  Future<void> _loadInitialData() async {
+    await _fetchDeviceConfig();
+    await _fetchAudioTones();
+  }
+
+  // ── การแบ่งไฟล์เสียงเป็นสองส่วน ─────────────────────────────────────────
+  String _scopePrefsKey(_AudioScope scope) =>
+      'device_audio_scope_${scope.name}_$_deviceId';
+
+  List<UploadedMedia> get _eventTones =>
+      _audioTones.where((a) => _eventMediaIds.contains(a.mediaId)).toList();
+
+  List<UploadedMedia> get _alertTones =>
+      _audioTones.where((a) => _alertMediaIds.contains(a.mediaId)).toList();
+
+  List<UploadedMedia> _tonesOf(_AudioScope scope) =>
+      scope == _AudioScope.event ? _eventTones : _alertTones;
+
+  Future<void> _persistScopeAssignments() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _scopePrefsKey(_AudioScope.event),
+      _eventMediaIds.toList(),
+    );
+    await prefs.setStringList(
+      _scopePrefsKey(_AudioScope.alert),
+      _alertMediaIds.toList(),
+    );
+  }
+
+  /// โหลดว่าไฟล์ไหนอยู่ส่วนไหน ไฟล์เก่าที่ยังไม่เคยจัดกลุ่มจะถูกจัดให้ครั้งเดียว:
+  /// ถ้าเป็นเสียงแจ้งเตือนรายครั้งที่ใช้อยู่ → ส่วนบน ที่เหลือ → ส่วนล่าง
+  Future<void> _syncScopeAssignments() async {
+    final prefs = await SharedPreferences.getInstance();
+    final eventIds = (prefs.getStringList(_scopePrefsKey(_AudioScope.event)) ??
+            <String>[])
+        .toSet();
+    final alertIds = (prefs.getStringList(_scopePrefsKey(_AudioScope.alert)) ??
+            <String>[])
+        .toSet();
+
+    final existingIds = _audioTones.map((a) => a.mediaId).toSet();
+    var changed = false;
+    final before = eventIds.length + alertIds.length;
+    eventIds.removeWhere((id) => !existingIds.contains(id));
+    alertIds.removeWhere((id) => !existingIds.contains(id));
+    if (eventIds.length + alertIds.length != before) changed = true;
+
+    // ค่า category จากเซิร์ฟเวอร์มาก่อนเสมอ เพื่อให้ทุกเครื่องเห็นตรงกัน
+    for (final audio in _audioTones) {
+      final category = audio.category;
+      if (category == 'event' && !eventIds.contains(audio.mediaId)) {
+        eventIds.add(audio.mediaId);
+        alertIds.remove(audio.mediaId);
+        changed = true;
+      } else if (category == 'alert' && !alertIds.contains(audio.mediaId)) {
+        alertIds.add(audio.mediaId);
+        eventIds.remove(audio.mediaId);
+        changed = true;
+      }
+    }
+
+    // ไฟล์เก่าที่เซิร์ฟเวอร์ยังไม่มี category และยังไม่เคยจัดกลุ่มในเครื่องนี้
+    for (final audio in _audioTones) {
+      if (eventIds.contains(audio.mediaId) ||
+          alertIds.contains(audio.mediaId)) {
+        continue;
+      }
+      if (audio.fileName == _savedEventTone) {
+        eventIds.add(audio.mediaId);
+      } else {
+        alertIds.add(audio.mediaId);
+      }
+      changed = true;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _eventMediaIds
+        ..clear()
+        ..addAll(eventIds);
+      _alertMediaIds
+        ..clear()
+        ..addAll(alertIds);
+    });
+    if (changed) await _persistScopeAssignments();
+  }
+
   Future<void> _fetchDeviceConfig() async {
     try {
       final config = await ApiService.instance.deviceSetting(
@@ -102,6 +203,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
               : double.tryParse(rawVolume?.toString() ?? '75') ?? 75.0;
           _activeTone = config['active_tone'] ?? 'เสียงคลาสสิก (Classic)';
           _eventTone = config['event_tone'] ?? 'เสียงสัญญาณสั้น (Beep)';
+          _savedActiveTone = _activeTone;
+          _savedEventTone = _eventTone;
         });
       }
     } catch (e) {
@@ -126,6 +229,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
               .where((m) => m.type == 'audio' && !m.isDefault)
               .toList(),
         );
+        await _syncScopeAssignments();
       }
     } catch (e) {
       debugPrint('โหลดรายการไฟล์เสียงไม่สำเร็จ: $e');
@@ -159,12 +263,12 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     }
   }
 
-  Future<void> _handleUploadAudio({bool selectAsEventTone = false}) async {
-    if (_audioTones.length >= _maxUploadedAudioTones) {
+  Future<void> _handleUploadAudio(_AudioScope scope) async {
+    if (_tonesOf(scope).length >= _maxUploadedAudioTones) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: AppText(
-            'อัปโหลดเสียงได้สูงสุด 5 เสียงต่ออุปกรณ์ โดยไม่นับเสียงหลัก 3 เสียง',
+            'อัปโหลดเสียงได้สูงสุด 5 เสียงต่อส่วน โดยไม่นับเสียงหลัก 3 เสียง',
           ),
         ),
       );
@@ -175,38 +279,23 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     try {
       final result = await MediaUploadService.instance.pickAndUploadAudio(
         deviceId: _deviceId,
+        category: scope.name,
       );
       if (result != null) {
+        // เพิ่มเข้าคลังเสียงเท่านั้น ไม่เลือกและไม่บันทึกให้อัตโนมัติ
         setState(() {
           _audioTones.insert(0, result);
-          if (selectAsEventTone) {
-            _eventTone = result.fileName;
-          } else {
-            _activeTone = result.fileName;
-          }
-        });
-        if (!selectAsEventTone) {
-          try {
-            await MediaUploadService.instance.selectMedia(result.mediaId);
-          } catch (e) {
-            debugPrint('ตั้งเสียงที่เพิ่งอัปโหลดเป็นเสียงใช้งานไม่สำเร็จ: $e');
-          }
-        } else {
-          await ApiService.instance.upsertDeviceSetting(
-            deviceId: _deviceId,
-            volumeLevel: _volumeLevel.round(),
-            soundEnabled: _soundEnabled,
-            activeTone: _activeTone,
-            eventTone: result.fileName,
+          (scope == _AudioScope.event ? _eventMediaIds : _alertMediaIds).add(
+            result.mediaId,
           );
-        }
-
+        });
+        await _persistScopeAssignments();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: AppText(selectAsEventTone
-                ? 'อัปโหลดและเลือกเป็นเสียงแจ้งเตือนทั่วไปแล้ว'
-                : 'อัปโหลดไฟล์เสียงสำเร็จแล้ว และตั้งเป็นเสียงที่ใช้งานให้อัตโนมัติ'),
+          const SnackBar(
+            content: AppText(
+              'อัปโหลดไฟล์เสียงสำเร็จแล้ว เลือกเสียงแล้วกดบันทึกเพื่อใช้งาน',
+            ),
           ),
         );
       }
@@ -218,6 +307,91 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     } finally {
       if (mounted) setState(() => _isUploadingAudio = false);
     }
+  }
+
+  // ── helper: หาไฟล์/URL ของเสียงจากชื่อ ─────────────────────────────────
+  UploadedMedia? _mediaForTone(String name) {
+    for (final audio in _audioTones) {
+      if (audio.fileName == name) return audio;
+    }
+    return null;
+  }
+
+  // ── บันทึกแยกของแต่ละส่วน ──────────────────────────────────────────────
+  Future<void> _saveActiveTone() async {
+    setState(() => _isSavingActiveTone = true);
+    try {
+      final media = _mediaForTone(_activeTone);
+      if (media != null) {
+        await MediaUploadService.instance.selectMedia(media.mediaId);
+      }
+      await ApiService.instance.upsertDeviceSetting(
+        deviceId: _deviceId,
+        volumeLevel: _volumeLevel.round(),
+        soundEnabled: _soundEnabled,
+        activeTone: _activeTone,
+        eventTone: _savedEventTone,
+      );
+      if (!mounted) return;
+      setState(() => _savedActiveTone = _activeTone);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('บันทึกเสียงระดับเสี่ยงสูงแล้ว')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText('บันทึกเสียงไม่สำเร็จ: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingActiveTone = false);
+    }
+  }
+
+  Future<void> _saveEventTone() async {
+    setState(() => _isSavingEventTone = true);
+    try {
+      await ApiService.instance.upsertDeviceSetting(
+        deviceId: _deviceId,
+        volumeLevel: _volumeLevel.round(),
+        soundEnabled: _soundEnabled,
+        activeTone: _savedActiveTone,
+        eventTone: _eventTone,
+      );
+      if (!mounted) return;
+      setState(() => _savedEventTone = _eventTone);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: AppText('บันทึกเสียงแจ้งเตือนทั่วไปแล้ว')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: AppText('บันทึกเสียงไม่สำเร็จ: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingEventTone = false);
+    }
+  }
+
+  Widget _buildSaveButton({
+    required String label,
+    required bool dirty,
+    required bool saving,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: (dirty && !saving) ? onPressed : null,
+        icon: saving
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(dirty ? Icons.save_outlined : Icons.check_rounded, size: 18),
+        label: AppText(dirty ? label : 'บันทึกแล้ว'),
+      ),
+    );
   }
 
   Future<void> _confirmDeleteAudio(UploadedMedia audio) async {
@@ -249,18 +423,42 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
     final wasEventTone = _eventTone == audio.fileName;
 
     try {
+      if (_previewingAudioId == audio.mediaId) {
+        await _previewPlayer.stop();
+        _previewingAudioId = null;
+      }
       await MediaUploadService.instance.deleteMedia(audio.mediaId);
       if (!mounted) return;
 
+      final savedActiveWasDeleted = _savedActiveTone == audio.fileName;
+      final savedEventWasDeleted = _savedEventTone == audio.fileName;
       setState(() {
         _audioTones.removeWhere((item) => item.mediaId == audio.mediaId);
+        _eventMediaIds.remove(audio.mediaId);
+        _alertMediaIds.remove(audio.mediaId);
         if (wasSelected) {
           _activeTone = 'เสียงคลาสสิก (Classic)';
         }
         if (wasEventTone) {
           _eventTone = 'เสียงสัญญาณสั้น (Beep)';
         }
+        if (savedActiveWasDeleted) _savedActiveTone = 'เสียงคลาสสิก (Classic)';
+        if (savedEventWasDeleted) _savedEventTone = 'เสียงสัญญาณสั้น (Beep)';
       });
+      await _persistScopeAssignments();
+      if (savedActiveWasDeleted || savedEventWasDeleted) {
+        try {
+          await ApiService.instance.upsertDeviceSetting(
+            deviceId: _deviceId,
+            volumeLevel: _volumeLevel.round(),
+            soundEnabled: _soundEnabled,
+            activeTone: _savedActiveTone,
+            eventTone: _savedEventTone,
+          );
+        } catch (e) {
+          debugPrint('บันทึกเสียงเริ่มต้นหลังลบไม่สำเร็จ: $e');
+        }
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -328,22 +526,34 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                     const SizedBox(height: 24),
                     _buildSectionTitle(
                       icon: Icons.graphic_eq_rounded,
-                      title: "เสียงแจ้งเตือน",
+                      title: "เสียงแจ้งเตือนรายครั้ง (ครั้งที่ 1–2)",
                       subtitle:
-                          "กำหนดเสียงทั่วไปและเสียงระดับเสี่ยงสูงแยกจากกัน",
+                          "เล่นทุกครั้งที่ตรวจพบพฤติกรรมเสี่ยง ลบได้เฉพาะเสียงที่คุณเพิ่มเอง",
                     ),
                     const SizedBox(height: 12),
                     _buildEventToneSelector(),
                     const SizedBox(height: 16),
                     _buildSectionTitle(
                       icon: Icons.warning_amber_rounded,
-                      title: "เสียงระดับเสี่ยงสูง (ครบ 3 ครั้ง)",
-                      subtitle: "เสียงที่เล่นในหน้าแจ้งเตือนและจากอุปกรณ์",
+                      title: "เสียงเมื่อเปิดหน้าแจ้งเตือน / หมดเวลาพักรถ",
+                      subtitle:
+                          "เล่นเมื่อเปิดหน้า Alert และเมื่อหมดเวลาในโหมดพักรถ",
                     ),
                     const SizedBox(height: 12),
-                    _buildSoundPreferences(),
+                    _buildToneListCard(
+                      tones: _alertTones,
+                      selectedTone: _activeTone,
+                      onSelect: (tone) => setState(() => _activeTone = tone),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSaveButton(
+                      label: 'บันทึกเสียงหน้าแจ้งเตือน / หมดเวลาพักรถ',
+                      dirty: _activeTone != _savedActiveTone,
+                      saving: _isSavingActiveTone,
+                      onPressed: _saveActiveTone,
+                    ),
                     const SizedBox(height: 20),
-                    _buildUploadCard(),
+                    _buildUploadCard(_AudioScope.alert),
                     // const SizedBox(height: 20),
                     // _buildInfoNoteCard(),
                     const SizedBox(height: 32),
@@ -544,7 +754,11 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   }
 
   // ── รายการเสียง: การ์ดเลือกได้ พร้อมไฮไลต์ตัวที่ถูกเลือก ──────────────
-  Widget _buildSoundPreferences() {
+  Widget _buildToneListCard({
+    required List<UploadedMedia> tones,
+    required String selectedTone,
+    required ValueChanged<String> onSelect,
+  }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -563,6 +777,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           _buildToneOption(
             'เสียงคลาสสิก (Classic)',
             icon: Icons.music_note_rounded,
+            selectedTone: selectedTone,
+            onSelect: onSelect,
             previewUrl:
                 'https://krzpmhifnpbstikhnbpf.supabase.co/storage/v1/object/public/driver-images/default-audio/classic.mp3',
           ),
@@ -570,6 +786,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           _buildToneOption(
             'เสียงสัญญาณสั้น (Beep)',
             icon: Icons.notifications_active_rounded,
+            selectedTone: selectedTone,
+            onSelect: onSelect,
             previewUrl:
                 'https://krzpmhifnpbstikhnbpf.supabase.co/storage/v1/object/public/driver-images/default-audio/beep.mp3',
           ),
@@ -577,6 +795,8 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
           _buildToneOption(
             'เสียงแจ้งเตือนไซเรน (Siren)',
             icon: Icons.warning_amber_rounded,
+            selectedTone: selectedTone,
+            onSelect: onSelect,
             previewUrl:
                 'https://krzpmhifnpbstikhnbpf.supabase.co/storage/v1/object/public/driver-images/default-audio/siren.mp3',
           ),
@@ -594,7 +814,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
               ),
             ),
             const SizedBox(height: 4),
-          ] else if (_audioTones.isNotEmpty) ...[
+          ] else if (tones.isNotEmpty) ...[
             const SizedBox(height: 6),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -616,11 +836,13 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                 ],
               ),
             ),
-            ..._audioTones.map(
+            ...tones.map(
               (audio) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: _buildToneOption(
                   audio.fileName,
+                  selectedTone: selectedTone,
+                  onSelect: onSelect,
                   icon: Icons.audiotrack_rounded,
                   mediaId: audio.mediaId,
                   previewUrl: audio.url,
@@ -638,62 +860,21 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   }
 
   Widget _buildEventToneSelector() {
-    final toneNames = <String>[
-      'เสียงคลาสสิก (Classic)',
-      'เสียงสัญญาณสั้น (Beep)',
-      'เสียงแจ้งเตือนไซเรน (Siren)',
-      ..._audioTones.map((audio) => audio.fileName),
-    ];
-    if (!toneNames.contains(_eventTone)) {
-      toneNames.add(_eventTone);
-    }
-
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: DropdownButtonFormField<String>(
-        value: _eventTone,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: appTr('เสียงแจ้งเตือนทั่วไป (ครั้งที่ 1–2)'),
-          prefixIcon: const Icon(Icons.notifications_active_rounded),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        items: toneNames
-            .map(
-              (tone) => DropdownMenuItem<String>(
-                value: tone,
-                child: AppText(tone, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            )
-            .toList(),
-            onChanged: (tone) {
-              if (tone != null) setState(() => _eventTone = tone);
-            },
-          ),
+        _buildToneListCard(
+          tones: _eventTones,
+          selectedTone: _eventTone,
+          onSelect: (tone) => setState(() => _eventTone = tone),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _isUploadingAudio
-                ? null
-                : () => _handleUploadAudio(selectAsEventTone: true),
-            icon: const Icon(Icons.upload_file_rounded),
-            label: const AppText('เพิ่มไฟล์เสียงแจ้งเตือน'),
-          ),
+        _buildUploadCard(_AudioScope.event),
+        const SizedBox(height: 12),
+        _buildSaveButton(
+          label: 'บันทึกเสียงแจ้งเตือนทั่วไป',
+          dirty: _eventTone != _savedEventTone,
+          saving: _isSavingEventTone,
+          onPressed: _saveEventTone,
         ),
       ],
     );
@@ -701,29 +882,19 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
 
   Widget _buildToneOption(
     String title, {
+    required String selectedTone,
+    required ValueChanged<String> onSelect,
     required IconData icon,
     String? mediaId,
     String? previewUrl,
     int? fileSizeBytes,
     VoidCallback? onDelete,
   }) {
-    final isSelected = _activeTone == title;
+    final isSelected = selectedTone == title;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () async {
-        setState(() => _activeTone = title);
-        if (mediaId != null) {
-          try {
-            await MediaUploadService.instance.selectMedia(mediaId);
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: AppText('เลือกไฟล์เสียงไม่สำเร็จ: $e')),
-              );
-            }
-          }
-        }
-      },
+      // แค่เลือกในหน้าจอ ยังไม่บันทึกจนกว่าจะกดปุ่มบันทึก
+      onTap: () => onSelect(title),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -831,12 +1002,13 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
   }
 
   // ── การ์ดอัปโหลดเสียงใหม่ ──────────────────────────────────────────────
-  Widget _buildUploadCard() {
-    final hasReachedAudioLimit = _audioTones.length >= _maxUploadedAudioTones;
+  Widget _buildUploadCard(_AudioScope scope) {
+    final scopeCount = _tonesOf(scope).length;
+    final hasReachedAudioLimit = scopeCount >= _maxUploadedAudioTones;
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: _isUploadingAudio ? null : _handleUploadAudio,
+      onTap: _isUploadingAudio ? null : () => _handleUploadAudio(scope),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
@@ -879,7 +1051,7 @@ class _DeviceCustomizationScreenState extends State<DeviceCustomizationScreen> {
                   ? "กำลังอัปโหลด..."
                   : hasReachedAudioLimit
                   ? "อัปโหลดครบ 5/5 เสียงแล้ว"
-                  : "อัปโหลดเสียงใหม่ (${_audioTones.length}/$_maxUploadedAudioTones)",
+                  : "อัปโหลดเสียงใหม่ ($scopeCount/$_maxUploadedAudioTones)",
               style: GoogleFonts.prompt(
                 color: AppColors.cFF0F2557,
                 fontWeight: FontWeight.bold,
